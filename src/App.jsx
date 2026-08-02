@@ -1,425 +1,518 @@
-import React, { useState, useEffect } from 'react';
-import { db } from './firebase';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect } from "react";
+import { 
+  ShoppingCart, Search, Trash2, Plus, Minus, X, 
+  LayoutDashboard, ShoppingBag, Package, TrendingUp, 
+  Sun
+} from "lucide-react";
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, collection, onSnapshot, addDoc, 
+  updateDoc, deleteDoc, doc, serverTimestamp 
+} from "firebase/firestore";
 
+/* ===== 1. Categories & Devices Data ===== */
+export const CATEGORIES = [
+  "Mobile Back Case",
+  "Hybrid Solar Inverter",
+  "Solar Panel",
+  "Accessories",
+];
+
+export const DEVICES = [
+  // --- Samsung Galaxy Z Fold Series ---
+  "Galaxy Z Fold 7",
+  "Galaxy Z Fold 6",
+  "Galaxy Z Fold 5",
+  "Galaxy Z Fold 4",
+  "Galaxy Z Fold 3",
+  "Galaxy Z Fold 2",
+  "Galaxy Fold",
+
+  // --- iPhone Series (11 through 17) ---
+  "iPhone 17 Pro Max",
+  "iPhone 17 Pro",
+  "iPhone 17 Plus",
+  "iPhone 17",
+  "iPhone 16 Pro Max",
+  "iPhone 16 Pro",
+  "iPhone 16 Plus",
+  "iPhone 16",
+  "iPhone 15 Pro Max",
+  "iPhone 15 Pro",
+  "iPhone 15 Plus",
+  "iPhone 15",
+  "iPhone 14 Pro Max",
+  "iPhone 14 Pro",
+  "iPhone 14 Plus",
+  "iPhone 14",
+  "iPhone 13 Pro Max",
+  "iPhone 13 Pro",
+  "iPhone 13 Mini",
+  "iPhone 13",
+  "iPhone 12 Pro Max",
+  "iPhone 12 Pro",
+  "iPhone 12 Mini",
+  "iPhone 12",
+  "iPhone 11 Pro Max",
+  "iPhone 11 Pro",
+  "iPhone 11",
+
+  // --- Samsung Galaxy S Series (S22 through S26) ---
+  "Galaxy S26 Ultra",
+  "Galaxy S26 Plus",
+  "Galaxy S26 FE",
+  "Galaxy S26",
+  "Galaxy S25 Ultra",
+  "Galaxy S25 Plus",
+  "Galaxy S25 FE",
+  "Galaxy S25",
+  "Galaxy S24 Ultra",
+  "Galaxy S24 Plus",
+  "Galaxy S24 FE",
+  "Galaxy S24",
+  "Galaxy S23 Ultra",
+  "Galaxy S23 Plus",
+  "Galaxy S23 FE",
+  "Galaxy S23",
+  "Galaxy S22 Ultra",
+  "Galaxy S22 Plus",
+  "Galaxy S22 FE",
+  "Galaxy S22",
+
+  // --- Hybrid Solar Inverters ---
+  "Hybrid Solar Inverter 3KW 24V",
+  "Hybrid Solar Inverter 3.5KW 24V",
+  "Hybrid Solar Inverter 5KW 24V",
+  "Hybrid Solar Inverter 5KW 48V",
+  "Hybrid Solar Inverter 5.5KW 24V",
+  "Hybrid Solar Inverter 5.5KW 48V",
+  "Hybrid Solar Inverter 6KW 48V",
+  "Hybrid Solar Inverter 6.2KW 48V",
+  "Hybrid Solar Inverter 6.5KW 48V",
+  "Hybrid Solar Inverter 8KW 48V",
+  "Hybrid Solar Inverter 8.5KW 48V",
+  "Hybrid Solar Inverter 10KW 48V",
+  "Hybrid Solar Inverter 10.5KW 48V",
+  "Hybrid Solar Inverter 11KW 48V",
+  "Hybrid Solar Inverter 11.5KW 48V",
+  "Hybrid Solar Inverter 12KW 48V",
+  "Hybrid Solar Inverter 12.5KW 48V",
+
+  // --- Solar Panels ---
+  "Mono PERC Solar Panel 330W",
+  "Mono PERC Solar Panel 440W",
+  "Half-Cut Mono PERC 540W",
+  "Bifacial Solar Panel 550W",
+  "TOPCon Solar Panel 580,590W",
+  "TOPCon Solar Panel 600w,615w,630w,700w,715W",
+
+  // --- Solar & Mobile Accessories ---
+  "MC4 Solar Connectors (Pair)",
+  "4 Sq mm DC Solar Cable (10m)",
+  "6 Sq mm DC Solar Cable (10m)",
+  "Solar Panel Mounting Structure (2 Panel)",
+  "Solar Structure (4 Panel)",
+  "DC Distribution Box (DDB) all accessories",
+  "20W 40w Fast Charging Adapter",
+  "MagSafe Wireless Charger",
+  "MagSafe Ring Sticker",
+  "Camera Lens Protector Glass",
+  "UV Tempered Glass Guard",
+];
+
+/* ===== 2. Firebase Config ===== */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const STORE_UPI_ID = "yourstore@upi"; 
+
+/* ===== 3. Main App Component ===== */
 export default function App() {
+  const [activeTab, setActiveTab] = useState("store");
+  const [adminTab, setAdminTab] = useState("analytics");
+  
   const [products, setProducts] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedDevice, setSelectedDevice] = useState('All');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [orders, setOrders] = useState([]);
+  
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  const [cart, setCart] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [previewProduct, setPreviewProduct] = useState(null);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
 
-  // Form State for Adding/Editing
-  const [formData, setFormData] = useState({
-    title: '',
-    category: 'Mobile Back Case',
-    device: 'iPhone 17 Pro Max',
-    material: 'Titanium frame',
-    price: '',
-    stock: '10',
-    description: '',
-    images: ['', '', '', '', '', '']
+  const [customer, setCustomer] = useState({
+    name: "", phone: "", address: "", city: "", pincode: "", paymentMethod: "UPI"
   });
 
-  // Fetch Products Realtime from Firebase Firestore
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productForm, setProductForm] = useState({
+    title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10,
+    images: ["", "", "", "", "", ""]
+  });
+
+  // Realtime Firebase Listener
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
-      const productList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setProducts(productList);
+    const unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => {
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setProducts(items);
     });
 
-    return () => unsubscribe();
+    const unsubOrders = onSnapshot(collection(db, "orders"), (snapshot) => {
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setOrders(items);
+    });
+
+    return () => {
+      unsubProducts();
+      unsubOrders();
+    };
   }, []);
 
-  // Filter Products
-  const filteredProducts = products.filter(product => {
-    const categoryMatch = selectedCategory === 'All' || product.category === selectedCategory;
-    const deviceMatch = selectedDevice === 'All' || product.device === selectedDevice;
-    return categoryMatch && deviceMatch;
-  });
-
-  // Open Edit Modal
-  const handleEditClick = (product) => {
-    setEditingProduct(product);
-    const existingImages = product.images || [];
-    // Ensure array has 6 slots for inputs
-    const paddedImages = [...existingImages];
-    while (paddedImages.length < 6) paddedImages.push('');
-
-    setFormData({
-      title: product.title || '',
-      category: product.category || 'Mobile Back Case',
-      device: product.device || 'iPhone 17 Pro Max',
-      material: product.material || 'Titanium frame',
-      price: product.price || '',
-      stock: product.stock || '10',
-      description: product.description || '',
-      images: paddedImages
+  const addToCart = (product) => {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.id === product.id);
+      if (existing) {
+        return prev.map((item) =>
+          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
+        );
+      }
+      return [...prev, { ...product, qty: 1 }];
     });
   };
 
-  // Add or Update Product
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const validImages = formData.images.filter(url => url && url.trim() !== '');
+  const updateCartQty = (id, delta) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.id === id) {
+            const newQty = item.qty + delta;
+            return newQty > 0 ? { ...item, qty: newQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean)
+    );
+  };
 
-    const payload = {
-      title: formData.title,
-      category: formData.category,
-      device: formData.device,
-      material: formData.material,
-      price: Number(formData.price),
-      stock: Number(formData.stock),
-      description: formData.description,
-      images: validImages.length > 0 ? validImages : ['https://via.placeholder.com/480?text=No+Image'],
-      updatedAt: serverTimestamp()
+  const cartTotal = cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0);
+  const cartItemCount = cart.reduce((sum, item) => sum + item.qty, 0);
+
+  const filteredProducts = products.filter((p) => {
+    const matchesCat = selectedCategory === "All" || p.category === selectedCategory;
+    const matchesSearch =
+      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.device && p.device.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesCat && matchesSearch;
+  });
+
+  const handlePlaceOrder = async (e) => {
+    e.preventDefault();
+    if (cart.length === 0) return alert("Cart is empty!");
+
+    const orderData = {
+      customer,
+      items: cart,
+      totalAmount: cartTotal,
+      status: "Pending",
+      createdAt: serverTimestamp()
     };
 
     try {
-      if (editingProduct) {
-        // Update Existing Product
-        await updateDoc(doc(db, "products", editingProduct.id), payload);
-        alert('Product updated successfully!');
-        setEditingProduct(null);
+      await addDoc(collection(db, "orders"), orderData);
+      
+      if (customer.paymentMethod === "UPI") {
+        const upiUrl = `upi://pay?pa=${STORE_UPI_ID}&pn=Store&am=${cartTotal}&cu=INR`;
+        window.location.href = upiUrl;
       } else {
-        // Add New Product
-        await addDoc(collection(db, "products"), {
-          ...payload,
-          createdAt: serverTimestamp()
-        });
-        alert('Product added successfully!');
+        alert("🎉 Order Placed Successfully! (Cash on Delivery)");
       }
 
-      setFormData({
-        title: '',
-        category: 'Mobile Back Case',
-        device: 'iPhone 17 Pro Max',
-        material: 'Titanium frame',
-        price: '',
-        stock: '10',
-        description: '',
-        images: ['', '', '', '', '', '']
-      });
-    } catch (error) {
-      console.error("Error saving product: ", error);
-      alert('Error saving product to Firebase!');
+      setCart([]);
+      setIsCheckoutOpen(false);
+      setIsCartOpen(false);
+    } catch (err) {
+      alert("Error placing order: " + err.message);
     }
   };
 
-  // Delete Product
-  const handleDelete = async (id) => {
+  const handleSaveProduct = async (e) => {
+    e.preventDefault();
+    const cleanImages = productForm.images.filter((img) => img.trim() !== "");
+    const data = { ...productForm, images: cleanImages, price: Number(productForm.price) };
+
+    try {
+      if (editingProduct) {
+        await updateDoc(doc(db, "products", editingProduct.id), data);
+      } else {
+        await addDoc(collection(db, "products"), data);
+      }
+      setEditingProduct(null);
+      setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", ""] });
+    } catch (err) {
+      alert("Error saving product: " + err.message);
+    }
+  };
+
+  const handleDeleteProduct = async (id) => {
     if (window.confirm("Are you sure you want to delete this product?")) {
-      try {
-        await deleteDoc(doc(db, "products", id));
-      } catch (error) {
-        console.error("Error deleting product: ", error);
-      }
+      await deleteDoc(doc(db, "products", id));
     }
   };
+
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    await updateDoc(doc(db, "orders", orderId), { status: newStatus });
+  };
+
+  const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  const pendingOrders = orders.filter((o) => o.status === "Pending").length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold tracking-wider text-amber-500 uppercase">Luxmo Hub</h1>
-            <p className="text-xs text-slate-400">PREMIUM STORE &amp; ACCESSORIES</p>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* Header Bar */}
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Sun className="h-7 w-7 text-amber-500" />
+            <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-amber-600 bg-clip-text text-transparent">
+              ElectroSolar Hub
+            </span>
           </div>
-          <button 
-            onClick={() => setIsAdmin(!isAdmin)}
-            className="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-700 transition"
-          >
-            {isAdmin ? 'Storefront' : 'Admin Panel'}
-          </button>
+
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setActiveTab(activeTab === "store" ? "admin" : "store")}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 hover:bg-slate-100 flex items-center gap-1 transition"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              {activeTab === "store" ? "Admin Panel" : "Store Front"}
+            </button>
+
+            {activeTab === "store" && (
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="relative p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+              >
+                <ShoppingCart className="w-5 h-5" />
+                {cartItemCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-slate-950 font-extrabold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
+                    {cartItemCount}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {isAdmin ? (
-          /* Admin Panel Form */
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-2xl mx-auto">
-            <h2 className="text-xl font-bold text-amber-500 mb-6">
-              {editingProduct ? 'Edit Product Details' : 'Add New Product (Up to 6 Images)'}
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">PRODUCT TITLE</label>
-                <input 
-                  type="text" 
-                  required 
-                  value={formData.title} 
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-                  placeholder="e.g. Galaxy S24 Ultra Titanium Case"
-                />
-              </div>
+      {/* Main Content Area */}
+      {activeTab === "store" ? (
+        <main className="max-w-7xl mx-auto px-4 py-6">
+          {/* Search & Dynamic Category Filter */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6 items-center justify-between">
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search case, inverter, solar panel..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">CATEGORY</label>
-                  <select 
-                    value={formData.category} 
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="Mobile Back Case">Mobile Back Case</option>
-                    <option value="Chargers">Chargers</option>
-                    <option value="Accessories">Accessories</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">DEVICE MODEL</label>
-                  <select 
-                    value={formData.device} 
-                    onChange={(e) => setFormData({...formData, device: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="iPhone 17 Pro Max">iPhone 17 Pro Max</option>
-                    <option value="iPhone 17 Pro">iPhone 17 Pro</option>
-                    <option value="iPhone 16 Pro Max">iPhone 16 Pro Max</option>
-                    <option value="iPhone 15 Pro Max">iPhone 15 Pro Max</option>
-                    <option value="Galaxy S25 Ultra">Galaxy S25 Ultra</option>
-                    <option value="Galaxy S24 Ultra">Galaxy S24 Ultra</option>
-                    <option value="Galaxy S23 Ultra">Galaxy S23 Ultra</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">PRICE (₹)</label>
-                  <input 
-                    type="number" 
-                    required 
-                    value={formData.price} 
-                    onChange={(e) => setFormData({...formData, price: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-                    placeholder="1999"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">STOCK QTY</label>
-                  <input 
-                    type="number" 
-                    value={formData.stock} 
-                    onChange={(e) => setFormData({...formData, stock: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">MATERIAL / FINISH</label>
-                <input 
-                  type="text" 
-                  value={formData.material} 
-                  onChange={(e) => setFormData({...formData, material: e.target.value})}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-                  placeholder="e.g. Titanium frame"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Product Image Direct URLs (Add up to 6 photos)</label>
-                {formData.images.map((img, idx) => (
-                  <input 
-                    key={idx}
-                    type="url" 
-                    value={img} 
-                    onChange={(e) => {
-                      const newImgs = [...formData.images];
-                      newImgs[idx] = e.target.value;
-                      setFormData({...formData, images: newImgs});
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500 mb-2 text-xs"
-                    placeholder={`#${idx + 1} Image Direct URL (https://i.ibb.co/...)`}
-                  />
-                ))}
-              </div>
-
-              <div className="flex gap-2">
-                <button 
-                  type="submit" 
-                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded transition mt-2"
+            <div className="flex gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-none">
+              {["All", ...CATEGORIES].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                    selectedCategory === cat
+                      ? "bg-slate-900 text-white shadow"
+                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                  }`}
                 >
-                  {editingProduct ? 'Update Product' : 'Save & Add Product'}
+                  {cat}
                 </button>
-                {editingProduct && (
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      setEditingProduct(null);
-                      setFormData({
-                        title: '',
-                        category: 'Mobile Back Case',
-                        device: 'iPhone 17 Pro Max',
-                        material: 'Titanium frame',
-                        price: '',
-                        stock: '10',
-                        description: '',
-                        images: ['', '', '', '', '', '']
-                      });
-                    }}
-                    className="px-4 bg-slate-800 text-slate-300 rounded py-2.5 mt-2 hover:bg-slate-700"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
-          </section>
-        ) : (
-          /* Store Front */
-          <>
-            <h2 className="text-3xl font-bold text-slate-100 mb-6">Featured Collection</h2>
-
-            {/* Product Grid */}
-            {filteredProducts.length === 0 ? (
-              <div className="text-center py-20 text-slate-500">
-                No products found in database. Switch to Admin Panel to add new products!
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {filteredProducts.map(product => (
-                  <div 
-                    key={product.id} 
-                    className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition flex flex-col group relative"
-                  >
-                    <div 
-                      className="aspect-square bg-slate-950 overflow-hidden cursor-pointer relative"
-                      onClick={() => { setSelectedProduct(product); setActiveImageIndex(0); }}
-                    >
-                      <img 
-                        src={product.images?.[0] || 'https://via.placeholder.com/480?text=No+Image'} 
-                        alt={product.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      />
-                      {product.images?.length > 1 && (
-                        <span className="absolute top-2 right-2 bg-slate-950/80 text-amber-500 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
-                          +{product.images.length - 1} Photos
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="p-4 flex-1 flex flex-col justify-between">
-                      <div>
-                        <span className="inline-block bg-slate-800 text-amber-500 text-[10px] px-2 py-0.5 rounded font-medium mb-2">
-                          {product.category || 'Mobile Back Case'}
-                        </span>
-                        <h3 className="font-semibold text-slate-100 text-sm line-clamp-2">{product.title}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{product.device} • {product.material}</p>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-800/80">
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="text-xl font-bold text-slate-100">₹{product.price}</span>
-                          <button 
-                            onClick={() => { setSelectedProduct(product); setActiveImageIndex(0); }}
-                            className="px-3 py-1 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs hover:bg-slate-700 transition"
-                          >
-                            View Details
-                          </button>
-                        </div>
-
-                        {/* Admin Controls on Cards */}
-                        {isAdmin && (
-                          <div className="flex gap-2 pt-2 border-t border-slate-800">
-                            <button 
-                              onClick={() => handleEditClick(product)}
-                              className="flex-1 py-1 bg-amber-500/10 text-amber-500 border border-amber-500/30 rounded text-xs hover:bg-amber-500 hover:text-slate-950 transition font-medium text-center"
-                            >
-                              ✏️ Edit
-                            </button>
-                            <button 
-                              onClick={() => handleDelete(product.id)}
-                              className="flex-1 py-1 bg-red-500/10 text-red-400 border border-red-500/30 rounded text-xs hover:bg-red-500 hover:text-white transition text-center"
-                            >
-                              🗑️ Delete
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </main>
-
-      {/* Product Details Modal with Image Gallery */}
-      {selectedProduct && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-3xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button 
-              onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-xl"
-            >
-              ✕
-            </button>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <div className="aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3 border border-slate-800">
-                  <img 
-                    src={selectedProduct.images?.[activeImageIndex] || selectedProduct.images?.[0]} 
-                    alt={selectedProduct.title}
-                    className="w-full h-full object-cover" 
-                  />
-                </div>
-                {/* Thumbnails */}
-                {selectedProduct.images?.length > 1 && (
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {selectedProduct.images.map((img, idx) => (
-                      <button 
-                        key={idx} 
-                        onClick={() => setActiveImageIndex(idx)}
-                        className={`w-14 h-14 rounded overflow-hidden border shrink-0 ${
-                          activeImageIndex === idx ? 'border-amber-500 ring-2 ring-amber-500/30' : 'border-slate-800 opacity-60 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={img} alt="" className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col justify-between">
-                <div>
-                  <span className="text-xs font-semibold text-amber-500 uppercase tracking-wider">{selectedProduct.category}</span>
-                  <h2 className="text-xl font-bold text-slate-100 mt-1">{selectedProduct.title}</h2>
-                  <p className="text-xs text-slate-400 mt-1">For: {selectedProduct.device}</p>
-                  
-                  <div className="text-2xl font-bold text-amber-500 my-4">₹{selectedProduct.price}</div>
-                  
-                  <p className="text-xs text-slate-300 mb-4">{selectedProduct.description || 'Premium quality accessory crafted for maximum durability and sleek visual style.'}</p>
-                  
-                  <div className="border-t border-slate-800 pt-3 text-xs text-slate-400 space-y-1">
-                    <div><strong className="text-slate-300">Material:</strong> {selectedProduct.material || 'Titanium frame'}</div>
-                    <div><strong className="text-slate-300">Availability:</strong> In Stock ({selectedProduct.stock || 10} units)</div>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => alert('Order process initiated!')}
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 rounded-lg transition mt-6"
-                >
-                  Buy Now
-                </button>
-              </div>
+              ))}
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
+          {/* Product Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {filteredProducts.map((p) => (
+              <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition">
+                <div 
+                  className="cursor-pointer" 
+                  onClick={() => { setPreviewProduct(p); setActiveImageIdx(0); }}
+                >
+                  <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden mb-2 relative">
+                    <img
+                      src={p.images?.[0] || "https://via.placeholder.com/300"}
+                      alt={p.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <span className="absolute top-2 left-2 bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded-full font-medium backdrop-blur-sm">
+                      {p.category}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-800 line-clamp-1">{p.title}</h3>
+                  {p.device && <p className="text-xs text-slate-500 mb-1">{p.device}</p>}
+                </div>
+
+                <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span className="text-sm font-bold text-slate-900">₹{p.price}</span>
+                  <button
+                    onClick={() => addToCart(p)}
+                    className="p-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-md transition text-xs flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+      ) : (
+        /* ===== Admin Panel ===== */
+        <main className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex border-b border-slate-200 mb-6 gap-6">
+            <button
+              onClick={() => setAdminTab("analytics")}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
+                adminTab === "analytics" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500"
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" /> Analytics
+            </button>
+            <button
+              onClick={() => setAdminTab("products")}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
+                adminTab === "products" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500"
+              }`}
+            >
+              <Package className="w-4 h-4" /> Products Manager
+            </button>
+            <button
+              onClick={() => setAdminTab("orders")}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition relative ${
+                adminTab === "orders" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500"
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" /> Orders
+              {pendingOrders > 0 && (
+                <span className="bg-amber-500 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {pendingOrders}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Admin Analytics Tab */}
+          {adminTab === "analytics" && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-xl border border-slate-200">
+                <p className="text-xs font-medium text-slate-500">Total Revenue</p>
+                <h2 className="text-2xl font-bold text-slate-900 mt-1">₹{totalRevenue.toLocaleString()}</h2>
+              </div>
+              <div className="bg-white p-5 rounded-xl border border-slate-200">
+                <p className="text-xs font-medium text-slate-500">Total Orders</p>
+                <h2 className="text-2xl font-bold text-slate-900 mt-1">{orders.length}</h2>
+              </div>
+              <div className="bg-white p-5 rounded-xl border border-slate-200">
+                <p className="text-xs font-medium text-slate-500">Active Products</p>
+                <h2 className="text-2xl font-bold text-slate-900 mt-1">{products.length}</h2>
+              </div>
+            </div>
+          )}
+
+          {/* Admin Products CRUD */}
+          {adminTab === "products" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <form onSubmit={handleSaveProduct} className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+                <h3 className="font-bold text-slate-800 text-sm">{editingProduct ? "Edit Product" : "Add New Product"}</h3>
+                <input
+                  type="text"
+                  placeholder="Title"
+                  required
+                  value={productForm.title}
+                  onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                />
+                <input
+                  type="number"
+                  placeholder="Price (INR)"
+                  required
+                  value={productForm.price}
+                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                />
+                
+                {/* Dynamic Category Selector */}
+                <select
+                  value={productForm.category}
+                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                {/* Dynamic Devices/Specs Selector */}
+                <select
+                  value={productForm.device}
+                  onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                >
+                  <option value="">-- Select Model/Spec --</option>
+                  {DEVICES.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+
+                <p className="text-[11px] font-semibold text-slate-500 mt-2">Up to 6 Image Links:</p>
+                {productForm.images.map((img, idx) => (
+                  <input
+                    key={idx}
+                    type="url"
+                    placeholder={`Image URL ${idx + 1}`}
+                    value={img}
+                    onChange={(e) => {
+                      const newImgs = [...productForm.images];
+                      newImgs[idx] = e.target.value;
+                      setProductForm({ ...productForm, images: newImgs });
+                    }}
+                    className="w-full p-1.5 border border-slate-200 rounded text-[11px]"
+                  />
+                ))}
+                <button type="submit" className="w-full py-2 bg-amber-500 font-bold text-xs rounded hover:bg-amber-600 transition">
+                  {editingProduct ? "Update Product" : "Save Product"}
+                </button>
+              </form>
+
+              <div className="lg:col-span-2 space-y-2">
+                {products.map((p) => (
+                  <div key={p.id} className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <img src={p.images?.[0] || "https://via.placeholder.com/50"} alt="" className="w-10 h-10 object-cover rounded" />
+                      <div>
+                        <h4 className="text-xs font-semibold">{p.title}</h4>
+                        <p className="text-[10px] text-slate-500">₹{p.price} | {p.category} {p.device ? `(${p.device})` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          se
