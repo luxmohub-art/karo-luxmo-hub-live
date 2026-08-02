@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Search, PlusCircle, LayoutDashboard, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ShoppingBag, PlusCircle, LayoutDashboard, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const initialProducts = [
   {
@@ -12,8 +12,7 @@ const initialProducts = [
     stock: 10,
     description: 'Protect your iPhone 17 Pro Max with the Luxmo Premium Magnetic MagSafe Case.',
     images: [
-      'https://i.ibb.co/sample1.jpg',
-      'https://i.ibb.co/sample2.jpg'
+      'https://i.ibb.co/sample1.jpg'
     ]
   }
 ];
@@ -44,7 +43,8 @@ export default function App() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const validImages = formData.images.filter((url) => url.trim() !== '');
+    // Corrected trim function
+    const validImages = formData.images.filter((url) => url && url.trim() !== '');
     
     const newProd = {
       id: Date.now(),
@@ -250,7 +250,7 @@ export default function App() {
         )}
       </main>
 
-      {/* PRODUCT GALLERY MODAL (When clicked on product) */}
+      {/* PRODUCT GALLERY MODAL */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 max-w-2xl w-full rounded-2xl overflow-hidden relative max-h-[90vh] flex flex-col">
@@ -262,7 +262,6 @@ export default function App() {
             </button>
 
             <div className="p-6 overflow-y-auto space-y-4">
-              {/* Main Image View */}
               <div className="relative aspect-square bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center">
                 <img
                   src={selectedProduct.images[activeImgIndex]}
@@ -288,7 +287,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Thumbnails (All 10 photos preview bar) */}
               {selectedProduct.images.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {selectedProduct.images.map((img, i) => (
@@ -305,7 +303,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Product Details */}
               <h2 className="text-xl font-bold text-white">{selectedProduct.title}</h2>
               <p className="text-2xl font-black text-amber-400">₹{selectedProduct.price}</p>
               <p className="text-xs text-slate-400">{selectedProduct.description}</p>
