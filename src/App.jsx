@@ -121,6 +121,7 @@ export const DEVICES = [
 ];
 
 /* ===== 2. Firebase Config ===== */
+// अपना असली Firebase Config यहाँ डालें
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_AUTH_DOMAIN",
@@ -515,4 +516,4 @@ export default function App() {
                         onClick={() => {
                           setEditingProduct(p);
                           setProductForm({
-                            title: p.title
+  
