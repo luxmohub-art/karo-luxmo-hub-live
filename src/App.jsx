@@ -4,7 +4,7 @@ import {
   Star, ShoppingCart, Zap, ChevronLeft, ChevronRight, Ruler,
   SlidersHorizontal, Minus, Plus, Trash2, Tag, CheckCircle2,
   Smartphone, Wallet, CreditCard, Pencil, Package, ClipboardList,
-  LayoutGrid, Phone, Mail, MapPin
+  LayoutGrid, Phone, Mail, MapPin, Search
 } from "lucide-react";
 
 /* ===== Categories & Specs ===== */
@@ -15,7 +15,16 @@ export const CATEGORIES = [
 ];
 
 export const DEVICES = [
-  // --- iPhone Series ---
+  // --- Samsung Galaxy Z Fold Series ---
+  "Galaxy Z Fold 7",
+  "Galaxy Z Fold 6",
+  "Galaxy Z Fold 5",
+  "Galaxy Z Fold 4",
+  "Galaxy Z Fold 3",
+  "Galaxy Z Fold 2",
+  "Galaxy Fold",
+
+  // --- iPhone Series (11 through 17) ---
   "iPhone 17 Pro Max",
   "iPhone 17 Pro",
   "iPhone 17 Plus",
@@ -44,7 +53,7 @@ export const DEVICES = [
   "iPhone 11 Pro",
   "iPhone 11",
 
-  // --- Samsung Galaxy Ultra, FE & Plus Series ---
+  // --- Samsung Galaxy S Series (S22 through S26) ---
   "Galaxy S26 Ultra",
   "Galaxy S26 Plus",
   "Galaxy S26 FE",
@@ -67,19 +76,30 @@ export const DEVICES = [
   "Galaxy S22",
 
   // --- Hybrid Solar Inverters ---
+  "Hybrid Solar Inverter 3KW 24V",
   "Hybrid Solar Inverter 3.5KW 24V",
+  "Hybrid Solar Inverter 5KW 24V",
+  "Hybrid Solar Inverter 5KW 48V",
   "Hybrid Solar Inverter 5.5KW 24V",
   "Hybrid Solar Inverter 5.5KW 48V",
+  "Hybrid Solar Inverter 6KW 48V",
   "Hybrid Solar Inverter 6.2KW 48V",
+  "Hybrid Solar Inverter 6.5KW 48V",
   "Hybrid Solar Inverter 8KW 48V",
+  "Hybrid Solar Inverter 8.5KW 48V",
   "Hybrid Solar Inverter 10KW 48V",
-  "Hybrid Solar Inverter 12KW 48V"
+  "Hybrid Solar Inverter 10.5KW 48V",
+  "Hybrid Solar Inverter 11KW 48V",
+  "Hybrid Solar Inverter 11.5KW 48V",
+  "Hybrid Solar Inverter 12KW 48V",
+  "Hybrid Solar Inverter 12.5KW 48V"
 ];
 
 export const MATERIALS = [
   "Leather",
   "Titanium frame",
   "MagSafe Clear",
+  "Hinge Protection Armor",
   "Pure Sine Wave Solar",
   "Hybrid Inverter Specs"
 ];
@@ -102,17 +122,17 @@ export const initialProducts = [
   },
   {
     id: "P-1002",
-    title: "Titan Frame Armor",
+    title: "Fold Shield Hinge Armor",
     category: "Mobile Back Case",
-    device: "iPhone 16 Pro",
-    material: "Titanium Frame",
-    price: 2499,
-    stock: 18,
+    device: "Galaxy Z Fold 6",
+    material: "Hinge Protection Armor",
+    price: 2799,
+    stock: 25,
     inStock: true,
     magsafe: true,
     rating: 4.9,
-    reviews: 156,
-    description: "Aerospace-grade brushed titanium rail bonded to an aramid-fiber back plate.",
+    reviews: 88,
+    description: "Dual-layer magnetic hinge coverage case designed for smooth folding and MagSafe support.",
     image: "https://images.unsplash.com/photo-1601593346740-925612772716?q=80&w=800&auto=format&fit=crop"
   }
 ];
@@ -156,7 +176,7 @@ export function Header({ view, setView, cartCount, onOpenCart }) {
   );
 }
 
-export function AdminDashboard({ products, setProducts, orders }) {
+export function AdminDashboard({ products, setProducts }) {
   const [formData, setFormData] = useState({
     title: "",
     category: CATEGORIES[0],
@@ -216,7 +236,7 @@ export function AdminDashboard({ products, setProducts, orders }) {
             <label className="block text-xs text-slate-400 mb-1">Product Title</label>
             <input
               type="text"
-              placeholder="e.g. Aurum Leather Wrap or 5.5KW Hybrid Inverter"
+              placeholder="e.g. Galaxy Z Fold 6 Magnetic Armor Case"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full p-2.5 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-amber-500 text-sm"
@@ -270,7 +290,7 @@ export function AdminDashboard({ products, setProducts, orders }) {
               <label className="block text-xs text-slate-400 mb-1">Price (₹)</label>
               <input
                 type="number"
-                placeholder="1899"
+                placeholder="2799"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                 className="w-full p-2.5 bg-slate-800 text-white rounded-lg border border-slate-700 text-sm"
@@ -328,7 +348,10 @@ export default function App() {
   const [products, setProducts] = useState(initialProducts);
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [orders, setOrders] = useState([]);
+
+  // Search & Category Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
   const addToCart = (product) => {
     setCart((prev) => {
@@ -343,37 +366,119 @@ export default function App() {
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
+  // Filtered Products Logic
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesCategory =
+        selectedCategory === "All" || product.category === selectedCategory;
+
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        product.title?.toLowerCase().includes(q) ||
+        product.device?.toLowerCase().includes(q) ||
+        product.material?.toLowerCase().includes(q) ||
+        product.category?.toLowerCase().includes(q) ||
+        product.description?.toLowerCase().includes(q);
+
+      return matchesCategory && matchesSearch;
+    });
+  }, [products, selectedCategory, searchQuery]);
+
   return (
     <div className="min-h-screen bg-[#0b0f19] font-sans text-slate-100">
       <Header view={view} setView={setView} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} />
 
       {view === "store" ? (
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <h2 className="text-3xl font-bold text-white mb-6">Featured Collection</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map((p) => (
-              <div key={p.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden p-4">
-                <img src={p.image} alt={p.title} className="w-full h-48 object-cover rounded-xl mb-4" />
-                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-full border border-amber-500/20">
-                  {p.category || "Accessories"}
-                </span>
-                <h3 className="text-lg font-bold text-white mt-2">{p.title}</h3>
-                <p className="text-xs text-slate-400 mb-2">{p.device} • {p.material}</p>
-                <div className="flex items-center justify-between mt-4">
-                  <span className="text-xl font-bold text-amber-400">₹{p.price}</span>
-                  <button
-                    onClick={() => addToCart(p)}
-                    className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2 rounded-lg border border-slate-700 transition"
-                  >
-                    Add to Cart
-                  </button>
-                </div>
-              </div>
+          {/* Header & Title */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-3xl font-bold text-white">Featured Collection</h2>
+              <p className="text-xs text-slate-400 mt-1">Explore our high-end phone cases & hybrid solar inverters</p>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search Z Fold 6, iPhone, 5.5KW..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-900 text-white placeholder-slate-500 text-sm pl-9 pr-8 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-amber-500 transition"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Category Tabs Filter */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
+            {["All", ...CATEGORIES].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`text-xs px-4 py-2 rounded-xl transition whitespace-nowrap font-medium border ${
+                  selectedCategory === cat
+                    ? "bg-amber-500 text-slate-950 border-amber-500 font-semibold"
+                    : "bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700"
+                }`}
+              >
+                {cat}
+              </button>
             ))}
           </div>
+
+          {/* Product Grid */}
+          {filteredProducts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProducts.map((p) => (
+                <div key={p.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden p-4 flex flex-col justify-between hover:border-slate-700 transition">
+                  <div>
+                    <img src={p.image} alt={p.title} className="w-full h-48 object-cover rounded-xl mb-4" />
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-full border border-amber-500/20 font-medium">
+                        {p.category || "Accessories"}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-white">{p.title}</h3>
+                    <p className="text-xs text-slate-400 mt-1">{p.device} • {p.material}</p>
+                    <p className="text-xs text-slate-500 mt-2 line-clamp-2">{p.description}</p>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-800">
+                    <span className="text-xl font-bold text-amber-400">₹{p.price}</span>
+                    <button
+                      onClick={() => addToCart(p)}
+                      className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2.5 rounded-xl border border-slate-700 transition font-medium active:scale-95"
+                    >
+                      Add to Cart
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 bg-slate-900/50 rounded-2xl border border-slate-800">
+              <p className="text-slate-400 text-sm">No products found matching "{searchQuery}"</p>
+              <button
+                onClick={() => { setSearchQuery(""); setSelectedCategory("All"); }}
+                className="mt-3 text-xs text-amber-400 hover:underline"
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <AdminDashboard products={products} setProducts={setProducts} orders={orders} />
+        <AdminDashboard products={products} setProducts={setProducts} />
       )}
     </div>
   );
