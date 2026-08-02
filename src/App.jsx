@@ -13,17 +13,30 @@ import {
 // Each product mirrors the shape the Admin Dashboard form produces,
 // so items created in Admin drop straight into this same structure.
 
+export const CATEGORIES = [
+  "Mobile Back Case",
+  "Hybrid Solar Inverter",
+  "Accessories"
+];
+
 export const DEVICES = [
   "iPhone 16 Pro Max",
   "iPhone 16 Pro",
-  "iPhone 15 Pro Max",
-  "iPhone 15",
   "Galaxy S25 Ultra",
   "Galaxy S24 Ultra",
   "Galaxy S23 Ultra",
+  "Hybrid Solar Inverter 5KW",
+  "Hybrid Solar Inverter 10KW"
 ];
 
-export const MATERIALS = ["Leather", "Titanium Frame", "MagSafe Clear"];
+export const MATERIALS = [
+  "Leather",
+  "Titanium frame",
+  "MagSafe Clear",
+  "Pure Sine Wave Solar",
+  "Hybrid Inverter Specs"
+];
+
 
 export const initialProducts = [
   {
