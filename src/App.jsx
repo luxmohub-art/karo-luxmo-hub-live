@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   ShoppingCart, Search, Trash2, Plus, Minus, X, 
   LayoutDashboard, ShoppingBag, Package, TrendingUp, 
-  Sun
+  Zap
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { 
@@ -28,7 +28,7 @@ export const DEVICES = [
   "Galaxy Z Fold 2",
   "Galaxy Fold",
 
-  // --- iPhone Series (11 through 17) ---
+  // --- iPhone Series ---
   "iPhone 17 Pro Max",
   "iPhone 17 Pro",
   "iPhone 17 Plus",
@@ -57,7 +57,7 @@ export const DEVICES = [
   "iPhone 11 Pro",
   "iPhone 11",
 
-  // --- Samsung Galaxy S Series (S22 through S26) ---
+  // --- Samsung Galaxy S Series ---
   "Galaxy S26 Ultra",
   "Galaxy S26 Plus",
   "Galaxy S26 FE",
@@ -284,7 +284,7 @@ export default function App() {
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Sun className="h-7 w-7 text-amber-500" />
+            <Zap className="h-7 w-7 text-amber-500 fill-amber-500" />
             <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-amber-600 bg-clip-text text-transparent">
               ElectroSolar Hub
             </span>
@@ -515,4 +515,4 @@ export default function App() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
-                          se
+                          setEditingProduct(p);
