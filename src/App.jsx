@@ -148,7 +148,7 @@ export const initialProducts = [
     rating: 4.9,
     reviews: 120,
     description: "Precision titanium camera border with ultra-strong magnetic lock for S25 Ultra.",
-    image: "https://images.unsplash.com/photo-1580910051074-3eb694886505?q=80&w=800&auto=format&fit=crop"
+    image: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=800&auto=format&fit=crop"
   },
   {
     id: "P-1004",
@@ -163,7 +163,7 @@ export const initialProducts = [
     rating: 5.0,
     reviews: 45,
     description: "High efficiency 5.5KW 48V MPPT Hybrid Solar Inverter with dual AC outputs and WiFi monitoring.",
-    image: "https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=800&auto=format&fit=crop"
+    image: "https://images.unsplash.com/photo-1613665813446-82a78c468a1d?q=80&w=800&auto=format&fit=crop"
   }
 ];
 
@@ -550,4 +550,4 @@ export default function App() {
       )}
     </div>
   );
-                }
+          }
