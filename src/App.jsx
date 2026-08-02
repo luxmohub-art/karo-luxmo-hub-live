@@ -121,7 +121,6 @@ export const DEVICES = [
 ];
 
 /* ===== 2. Firebase Config ===== */
-// अपना असली Firebase Config यहाँ डालें
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_AUTH_DOMAIN",
@@ -160,7 +159,7 @@ export default function App() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
     title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10,
-    images: ["", "", "", "", "", ""]
+    images: ["", "", "", "", "", "", "", "", "", ""]
   });
 
   // Realtime Firebase Listener
@@ -260,7 +259,8 @@ export default function App() {
         await addDoc(collection(db, "products"), data);
       }
       setEditingProduct(null);
-      setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", ""] });
+      setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", "", "", "", "", ""] });
+      alert("Product saved successfully!");
     } catch (err) {
       alert("Error saving product: " + err.message);
     }
@@ -280,34 +280,34 @@ export default function App() {
   const pendingOrders = orders.filter((o) => o.status === "Pending").length;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
       {/* Header Bar */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+      <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Sun className="h-7 w-7 text-amber-500" />
-            <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-amber-600 bg-clip-text text-transparent">
-              ElectroSolar Hub
+            <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-amber-500 bg-clip-text text-transparent">
+              LUXMO HUB
             </span>
           </div>
 
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setActiveTab(activeTab === "store" ? "admin" : "store")}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 hover:bg-slate-100 flex items-center gap-1 transition"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 flex items-center gap-1.5 transition text-amber-400"
             >
               <LayoutDashboard className="w-4 h-4" />
-              {activeTab === "store" ? "Admin Panel" : "Store Front"}
+              {activeTab === "store" ? "Admin Panel" : "Storefront"}
             </button>
 
             {activeTab === "store" && (
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+                className="relative p-2 bg-amber-500 text-slate-950 rounded-lg hover:bg-amber-400 transition font-bold"
               >
                 <ShoppingCart className="w-5 h-5" />
                 {cartItemCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-slate-950 font-extrabold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white font-extrabold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-900">
                     {cartItemCount}
                   </span>
                 )}
@@ -320,7 +320,9 @@ export default function App() {
       {/* Main Content Area */}
       {activeTab === "store" ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
-          {/* Search & Dynamic Category Filter */}
+          <h1 className="text-2xl font-extrabold mb-4 text-white">Featured Collection</h1>
+          
+          {/* Search & Category Filter */}
           <div className="flex flex-col md:flex-row gap-4 mb-6 items-center justify-between">
             <div className="relative w-full md:w-96">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -329,7 +331,7 @@ export default function App() {
                 placeholder="Search case, inverter, solar panel..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
 
@@ -340,8 +342,8 @@ export default function App() {
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                     selectedCategory === cat
-                      ? "bg-slate-900 text-white shadow"
-                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                      ? "bg-amber-500 text-slate-950 font-bold shadow"
+                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-700"
                   }`}
                 >
                   {cat}
@@ -351,32 +353,33 @@ export default function App() {
           </div>
 
           {/* Product Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {filteredProducts.map((p) => (
-              <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition">
+              <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-3 flex flex-col justify-between hover:border-slate-700 transition">
                 <div 
                   className="cursor-pointer" 
                   onClick={() => { setPreviewProduct(p); setActiveImageIdx(0); }}
                 >
-                  <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden mb-2 relative">
+                  <div className="aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3 relative">
                     <img
-                      src={p.images?.[0] || "https://via.placeholder.com/300"}
+                      src={p.images?.[0] || "https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"}
                       alt={p.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      className="w-full h-full object-cover hover:scale-105 transition duration-300"
+                      onError={(e)=>{e.target.src="https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"}}
                     />
-                    <span className="absolute top-2 left-2 bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded-full font-medium backdrop-blur-sm">
+                    <span className="absolute top-2 left-2 bg-slate-950/80 text-amber-400 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-slate-800 backdrop-blur-sm">
                       {p.category}
                     </span>
                   </div>
-                  <h3 className="text-sm font-semibold text-slate-800 line-clamp-1">{p.title}</h3>
-                  {p.device && <p className="text-xs text-slate-500 mb-1">{p.device}</p>}
+                  <h3 className="text-sm font-semibold text-slate-100 line-clamp-1">{p.title}</h3>
+                  {p.device && <p className="text-xs text-slate-400 mt-0.5">{p.device}</p>}
                 </div>
 
-                <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-100">
-                  <span className="text-sm font-bold text-slate-900">₹{p.price}</span>
+                <div className="mt-3 flex items-center justify-between pt-3 border-t border-slate-800">
+                  <span className="text-base font-extrabold text-white">₹{p.price}</span>
                   <button
                     onClick={() => addToCart(p)}
-                    className="p-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-md transition text-xs flex items-center gap-1"
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition text-xs flex items-center gap-1 shadow"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add
                   </button>
@@ -388,11 +391,11 @@ export default function App() {
       ) : (
         /* ===== Admin Panel ===== */
         <main className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex border-b border-slate-200 mb-6 gap-6">
+          <div className="flex border-b border-slate-800 mb-6 gap-6">
             <button
               onClick={() => setAdminTab("analytics")}
               className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
-                adminTab === "analytics" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500"
+                adminTab === "analytics" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
               }`}
             >
               <TrendingUp className="w-4 h-4" /> Analytics
@@ -400,7 +403,7 @@ export default function App() {
             <button
               onClick={() => setAdminTab("products")}
               className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
-                adminTab === "products" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500"
+                adminTab === "products" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
               }`}
             >
               <Package className="w-4 h-4" /> Products Manager
@@ -408,7 +411,7 @@ export default function App() {
             <button
               onClick={() => setAdminTab("orders")}
               className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition relative ${
-                adminTab === "orders" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500"
+                adminTab === "orders" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
               }`}
             >
               <ShoppingBag className="w-4 h-4" /> Orders
@@ -423,33 +426,33 @@ export default function App() {
           {/* Admin Analytics Tab */}
           {adminTab === "analytics" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-5 rounded-xl border border-slate-200">
-                <p className="text-xs font-medium text-slate-500">Total Revenue</p>
-                <h2 className="text-2xl font-bold text-slate-900 mt-1">₹{totalRevenue.toLocaleString()}</h2>
+              <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+                <p className="text-xs font-medium text-slate-400">Total Revenue</p>
+                <h2 className="text-2xl font-bold text-white mt-1">₹{totalRevenue.toLocaleString()}</h2>
               </div>
-              <div className="bg-white p-5 rounded-xl border border-slate-200">
-                <p className="text-xs font-medium text-slate-500">Total Orders</p>
-                <h2 className="text-2xl font-bold text-slate-900 mt-1">{orders.length}</h2>
+              <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+                <p className="text-xs font-medium text-slate-400">Total Orders</p>
+                <h2 className="text-2xl font-bold text-white mt-1">{orders.length}</h2>
               </div>
-              <div className="bg-white p-5 rounded-xl border border-slate-200">
-                <p className="text-xs font-medium text-slate-500">Active Products</p>
-                <h2 className="text-2xl font-bold text-slate-900 mt-1">{products.length}</h2>
+              <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+                <p className="text-xs font-medium text-slate-400">Active Products</p>
+                <h2 className="text-2xl font-bold text-white mt-1">{products.length}</h2>
               </div>
             </div>
           )}
 
-          {/* Admin Products CRUD */}
+          {/* Admin Products CRUD with Clear Edit/Delete Buttons */}
           {adminTab === "products" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <form onSubmit={handleSaveProduct} className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-                <h3 className="font-bold text-slate-800 text-sm">{editingProduct ? "Edit Product" : "Add New Product"}</h3>
+              <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                <h3 className="font-bold text-white text-sm">{editingProduct ? "Edit Product" : "Add New Product (Up to 10 Images)"}</h3>
                 <input
                   type="text"
                   placeholder="Title"
                   required
                   value={productForm.title}
                   onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
                 />
                 <input
                   type="number"
@@ -457,13 +460,13 @@ export default function App() {
                   required
                   value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
                 />
                 
                 <select
                   value={productForm.category}
                   onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
@@ -473,7 +476,7 @@ export default function App() {
                 <select
                   value={productForm.device}
                   onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded text-xs"
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
                 >
                   <option value="">-- Select Model/Spec --</option>
                   {DEVICES.map((d) => (
@@ -481,39 +484,29 @@ export default function App() {
                   ))}
                 </select>
 
-                <p className="text-[11px] font-semibold text-slate-500 mt-2">Up to 6 Image Links:</p>
+                <p className="text-[11px] font-semibold text-amber-400 mt-2">Product Image URLs (Add up to 10 photos):</p>
                 {productForm.images.map((img, idx) => (
                   <input
                     key={idx}
                     type="url"
-                    placeholder={`Image URL ${idx + 1}`}
+                    placeholder={`#${idx + 1} Image Direct URL`}
                     value={img}
                     onChange={(e) => {
                       const newImgs = [...productForm.images];
                       newImgs[idx] = e.target.value;
                       setProductForm({ ...productForm, images: newImgs });
                     }}
-                    className="w-full p-1.5 border border-slate-200 rounded text-[11px]"
+                    className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-[11px] text-white"
                   />
                 ))}
-                <button type="submit" className="w-full py-2 bg-amber-500 font-bold text-xs rounded hover:bg-amber-600 transition">
-                  {editingProduct ? "Update Product" : "Save Product"}
-                </button>
-              </form>
-
-              <div className="lg:col-span-2 space-y-2">
-                {products.map((p) => (
-                  <div key={p.id} className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <img src={p.images?.[0] || "https://via.placeholder.com/50"} alt="" className="w-10 h-10 object-cover rounded" />
-                      <div>
-                        <h4 className="text-xs font-semibold">{p.title}</h4>
-                        <p className="text-[10px] text-slate-500">₹{p.price} | {p.category} {p.device ? `(${p.device})` : ''}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setEditingProduct(p);
-                          setProductForm({
-  
+                
+                <div className="flex gap-2 pt-2">
+                  <button type="submit" className="flex-1 py-2.5 bg-amber-500 font-bold text-xs text-slate-950 rounded hover:bg-amber-400 transition">
+                    {editingProduct ? "Update Product" : "Save Product"}
+                  </button>
+                  {editingProduct && (
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setEditingProduct(null);
+         
