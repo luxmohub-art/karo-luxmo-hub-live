@@ -9,17 +9,16 @@ import {
   getFirestore, collection, onSnapshot, addDoc, 
   updateDoc, deleteDoc, doc, serverTimestamp 
 } from "firebase/firestore";
-import AddProduct from './AddProduct';
 
 /* ===== 1. Categories & Devices Data ===== */
-export const CATEGORIES = [
+const CATEGORIES = [
   "Mobile Back Case",
   "Hybrid Solar Inverter",
   "Solar Panel",
   "Accessories",
 ];
 
-export const DEVICES = [
+const DEVICES = [
   // --- Samsung Galaxy Z Fold Series ---
   "Galaxy Z Fold 7",
   "Galaxy Z Fold 6",
@@ -149,7 +148,19 @@ export default function App() {
   
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [previewProduct, setPreviewProduct] = useState(null);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
+
+  const [customer, setCustomer] = useState({
+    name: "", phone: "", address: "", city: "", pincode: "", paymentMethod: "UPI"
+  });
+
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productForm, setProductForm] = useState({
+    title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10,
+    images: ["", "", "", "", "", "", "", "", "", ""]
+  });
 
   // Realtime Firebase Listener
   useEffect(() => {
@@ -181,21 +192,88 @@ export default function App() {
     });
   };
 
+  const updateCartQty = (id, delta) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.id === id) {
+            const newQty = item.qty + delta;
+            return newQty > 0 ? { ...item, qty: newQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean)
+    );
+  };
+
   const cartTotal = cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0);
   const cartItemCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
   const filteredProducts = products.filter((p) => {
     const matchesCat = selectedCategory === "All" || p.category === selectedCategory;
     const matchesSearch =
-      p.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.device && p.device.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCat && matchesSearch;
   });
+
+  const handlePlaceOrder = async (e) => {
+    e.preventDefault();
+    if (cart.length === 0) return alert("Cart is empty!");
+
+    const orderData = {
+      customer,
+      items: cart,
+      totalAmount: cartTotal,
+      status: "Pending",
+      createdAt: serverTimestamp()
+    };
+
+    try {
+      await addDoc(collection(db, "orders"), orderData);
+      
+      if (customer.paymentMethod === "UPI") {
+        const upiUrl = `upi://pay?pa=${STORE_UPI_ID}&pn=Store&am=${cartTotal}&cu=INR`;
+        window.location.href = upiUrl;
+      } else {
+        alert("🎉 Order Placed Successfully! (Cash on Delivery)");
+      }
+
+      setCart([]);
+      setIsCheckoutOpen(false);
+      setIsCartOpen(false);
+    } catch (err) {
+      alert("Error placing order: " + err.message);
+    }
+  };
+
+  const handleSaveProduct = async (e) => {
+    e.preventDefault();
+    const cleanImages = productForm.images.filter((img) => img.trim() !== "");
+    const data = { ...productForm, images: cleanImages, price: Number(productForm.price) };
+
+    try {
+      if (editingProduct) {
+        await updateDoc(doc(db, "products", editingProduct.id), data);
+      } else {
+        await addDoc(collection(db, "products"), data);
+      }
+      setEditingProduct(null);
+      setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", "", "", "", "", ""] });
+      alert("Product saved successfully!");
+    } catch (err) {
+      alert("Error saving product: " + err.message);
+    }
+  };
 
   const handleDeleteProduct = async (id) => {
     if (window.confirm("Are you sure you want to delete this product?")) {
       await deleteDoc(doc(db, "products", id));
     }
+  };
+
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    await updateDoc(doc(db, "orders", orderId), { status: newStatus });
   };
 
   const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
@@ -278,12 +356,16 @@ export default function App() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {filteredProducts.map((p) => (
               <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-3 flex flex-col justify-between hover:border-slate-700 transition">
-                <div>
+                <div 
+                  className="cursor-pointer" 
+                  onClick={() => { setPreviewProduct(p); setActiveImageIdx(0); }}
+                >
                   <div className="aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3 relative">
                     <img
                       src={p.images?.[0] || "https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"}
                       alt={p.title}
                       className="w-full h-full object-cover hover:scale-105 transition duration-300"
+                      onError={(e)=>{e.target.src="https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"}}
                     />
                     <span className="absolute top-2 left-2 bg-slate-950/80 text-amber-400 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-slate-800 backdrop-blur-sm">
                       {p.category}
@@ -319,24 +401,29 @@ export default function App() {
               <TrendingUp className="w-4 h-4" /> Analytics
             </button>
             <button
-              onClick={() => setAdminTab("add_product")}
-              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
-                adminTab === "add_product" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
-              }`}
-            >
-              <Plus className="w-4 h-4" /> Add Product Form
-            </button>
-            <button
               onClick={() => setAdminTab("products")}
               className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
                 adminTab === "products" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
               }`}
             >
-              <Package className="w-4 h-4" /> Products List
+              <Package className="w-4 h-4" /> Products Manager
+            </button>
+            <button
+              onClick={() => setAdminTab("orders")}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition relative ${
+                adminTab === "orders" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" /> Orders
+              {pendingOrders > 0 && (
+                <span className="bg-amber-500 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {pendingOrders}
+                </span>
+              )}
             </button>
           </div>
 
-          {/* Admin Analytics */}
+          {/* Admin Analytics Tab */}
           {adminTab === "analytics" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
@@ -354,37 +441,72 @@ export default function App() {
             </div>
           )}
 
-          {/* New Add Product Component */}
-          {adminTab === "add_product" && (
-            <div className="max-w-lg mx-auto">
-              <AddProduct />
-            </div>
-          )}
-
-          {/* Products List & Delete */}
+          {/* Admin Products Manager */}
           {adminTab === "products" && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <h3 className="text-lg font-bold text-white mb-4">All Products ({products.length})</h3>
-              <div className="space-y-3">
-                {products.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between p-3 bg-slate-950 rounded-lg border border-slate-800">
-                    <div>
-                      <h4 className="font-semibold text-white text-sm">{p.title}</h4>
-                      <p className="text-xs text-slate-400">₹{p.price} | {p.category} | {p.device}</p>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteProduct(p.id)}
-                      className="p-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                <h3 className="font-bold text-white text-sm">{editingProduct ? "Edit Product" : "Add New Product (Up to 10 Images)"}</h3>
+                <input
+                  type="text"
+                  placeholder="Title"
+                  required
+                  value={productForm.title}
+                  onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                />
+                <input
+                  type="number"
+                  placeholder="Price (INR)"
+                  required
+                  value={productForm.price}
+                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                />
+                
+                <select
+                  value={productForm.category}
+                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={productForm.device}
+                  onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                >
+                  <option value="">-- Select Model/Spec --</option>
+                  {DEVICES.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+
+                <p className="text-[11px] font-semibold text-amber-400 mt-2">Product Image URLs (Add up to 10 photos):</p>
+                {productForm.images.map((img, idx) => (
+                  <input
+                    key={idx}
+                    type="url"
+                    placeholder={`#${idx + 1} Image Direct URL`}
+                    value={img}
+                    onChange={(e) => {
+                      const newImgs = [...productForm.images];
+                      newImgs[idx] = e.target.value;
+                      setProductForm({ ...productForm, images: newImgs });
+                    }}
+                    className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-[11px] text-white"
+                  />
                 ))}
-              </div>
-            </div>
-          )}
-        </main>
-      )}
-    </div>
-  );
-}
+                
+                <div className="flex gap-2 pt-2">
+                  <button type="submit" className="flex-1 py-2.5 bg-amber-500 font-bold text-xs text-slate-950 rounded hover:bg-amber-400 transition">
+                    {editingProduct ? "Update Product" : "Save Product"}
+                  </button>
+                  {editingProduct && (
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setEditingProduct(null);
+                        setProductForm({ title: "",
