@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { 
   ShoppingCart, Search, Trash2, Plus, Minus, X, 
   LayoutDashboard, ShoppingBag, Package, TrendingUp, 
@@ -11,14 +11,14 @@ import {
 } from "firebase/firestore";
 
 /* ===== 1. Categories & Devices Data ===== */
-const CATEGORIES = [
+export const CATEGORIES = [
   "Mobile Back Case",
   "Hybrid Solar Inverter",
   "Solar Panel",
   "Accessories",
 ];
 
-const DEVICES = [
+export const DEVICES = [
   // --- Samsung Galaxy Z Fold Series ---
   "Galaxy Z Fold 7",
   "Galaxy Z Fold 6",
@@ -28,7 +28,7 @@ const DEVICES = [
   "Galaxy Z Fold 2",
   "Galaxy Fold",
 
-  // --- iPhone Series (11 through 17) ---
+  // --- iPhone Series ---
   "iPhone 17 Pro Max",
   "iPhone 17 Pro",
   "iPhone 17 Plus",
@@ -57,7 +57,7 @@ const DEVICES = [
   "iPhone 11 Pro",
   "iPhone 11",
 
-  // --- Samsung Galaxy S Series (S22 through S26) ---
+  // --- Samsung Galaxy S Series ---
   "Galaxy S26 Ultra",
   "Galaxy S26 Plus",
   "Galaxy S26 FE",
@@ -106,7 +106,7 @@ const DEVICES = [
   "TOPCon Solar Panel 580,590W",
   "TOPCon Solar Panel 600w,615w,630w,700w,715W",
 
-  // --- Solar & Mobile Accessories ---
+  // --- Accessories ---
   "MC4 Solar Connectors (Pair)",
   "4 Sq mm DC Solar Cable (10m)",
   "6 Sq mm DC Solar Cable (10m)",
@@ -117,7 +117,7 @@ const DEVICES = [
   "MagSafe Wireless Charger",
   "MagSafe Ring Sticker",
   "Camera Lens Protector Glass",
-  "UV Tempered Glass Guard",
+  "UV Tempered Glass Guard"
 ];
 
 /* ===== 2. Firebase Config ===== */
@@ -133,7 +133,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const STORE_UPI_ID = "yourstore@upi"; 
+const STORE_UPI_ID = "yourstore@upi";
 
 /* ===== 3. Main App Component ===== */
 export default function App() {
@@ -162,7 +162,6 @@ export default function App() {
     images: ["", "", "", "", "", "", "", "", "", ""]
   });
 
-  // Realtime Firebase Listener
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -212,7 +211,7 @@ export default function App() {
   const filteredProducts = products.filter((p) => {
     const matchesCat = selectedCategory === "All" || p.category === selectedCategory;
     const matchesSearch =
-      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.title && p.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.device && p.device.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCat && matchesSearch;
   });
@@ -236,7 +235,7 @@ export default function App() {
         const upiUrl = `upi://pay?pa=${STORE_UPI_ID}&pn=Store&am=${cartTotal}&cu=INR`;
         window.location.href = upiUrl;
       } else {
-        alert("🎉 Order Placed Successfully! (Cash on Delivery)");
+        alert("Order Placed Successfully!");
       }
 
       setCart([]);
@@ -267,7 +266,7 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
+    if (window.confirm("Delete this product?")) {
       await deleteDoc(doc(db, "products", id));
     }
   };
@@ -317,18 +316,17 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Store View */}
       {activeTab === "store" ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-extrabold mb-4 text-white">Featured Collection</h1>
           
-          {/* Search & Category Filter */}
           <div className="flex flex-col md:flex-row gap-4 mb-6 items-center justify-between">
             <div className="relative w-full md:w-96">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search case, inverter, solar panel..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -352,7 +350,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Product Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {filteredProducts.map((p) => (
               <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-3 flex flex-col justify-between hover:border-slate-700 transition">
@@ -363,9 +360,9 @@ export default function App() {
                   <div className="aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3 relative">
                     <img
                       src={p.images?.[0] || "https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"}
-                      alt={p.title}
+                      alt={p.title || "Product"}
                       className="w-full h-full object-cover hover:scale-105 transition duration-300"
-                      onError={(e)=>{e.target.src="https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"}}
+                      onError={(e)=>{ e.currentTarget.src = "https://images.unsplash.com/photo-1603313040372-a076624979e2?w=600&auto=format&fit=crop&q=60"; }}
                     />
                     <span className="absolute top-2 left-2 bg-slate-950/80 text-amber-400 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-slate-800 backdrop-blur-sm">
                       {p.category}
@@ -389,7 +386,7 @@ export default function App() {
           </div>
         </main>
       ) : (
-        /* ===== Admin Panel ===== */
+        /* Admin View */
         <main className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex border-b border-slate-800 mb-6 gap-6">
             <button
@@ -423,7 +420,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Admin Analytics Tab */}
           {adminTab === "analytics" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
@@ -441,11 +437,10 @@ export default function App() {
             </div>
           )}
 
-          {/* Admin Products Manager */}
           {adminTab === "products" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="font-bold text-white text-sm">{editingProduct ? "Edit Product" : "Add New Product (Up to 10 Images)"}</h3>
+                <h3 className="font-bold text-white text-sm">{editingProduct ? "Edit Product" : "Add Product"}</h3>
                 <input
                   type="text"
                   placeholder="Title"
@@ -484,12 +479,12 @@ export default function App() {
                   ))}
                 </select>
 
-                <p className="text-[11px] font-semibold text-amber-400 mt-2">Product Image URLs (Add up to 10 photos):</p>
+                <p className="text-[11px] font-semibold text-amber-400 mt-2">Image URLs:</p>
                 {productForm.images.map((img, idx) => (
                   <input
                     key={idx}
                     type="url"
-                    placeholder={`#${idx + 1} Image Direct URL`}
+                    placeholder={`Image #${idx + 1} URL`}
                     value={img}
                     onChange={(e) => {
                       const newImgs = [...productForm.images];
@@ -502,11 +497,17 @@ export default function App() {
                 
                 <div className="flex gap-2 pt-2">
                   <button type="submit" className="flex-1 py-2.5 bg-amber-500 font-bold text-xs text-slate-950 rounded hover:bg-amber-400 transition">
-                    {editingProduct ? "Update Product" : "Save Product"}
+                    {editingProduct ? "Update" : "Save"}
                   </button>
                   {editingProduct && (
                     <button 
                       type="button" 
                       onClick={() => {
                         setEditingProduct(null);
-                        setProductForm({ title: "",
+                        setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", "", "", "", "", ""] });
+                      }}
+                      className="px-3 py-2.5 bg-slate-800 text-slate-300 font-bold text-xs rounded hover:bg-slate-700 transition"
+                    >
+                      Cancel
+                    </button>
+    
