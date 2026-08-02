@@ -15,13 +15,65 @@ export const CATEGORIES = [
 ];
 
 export const DEVICES = [
+  // --- iPhone Series ---
+  "iPhone 17 Pro Max",
+  "iPhone 17 Pro",
+  "iPhone 17 Plus",
+  "iPhone 17",
   "iPhone 16 Pro Max",
   "iPhone 16 Pro",
+  "iPhone 16 Plus",
+  "iPhone 16",
+  "iPhone 15 Pro Max",
+  "iPhone 15 Pro",
+  "iPhone 15 Plus",
+  "iPhone 15",
+  "iPhone 14 Pro Max",
+  "iPhone 14 Pro",
+  "iPhone 14 Plus",
+  "iPhone 14",
+  "iPhone 13 Pro Max",
+  "iPhone 13 Pro",
+  "iPhone 13 Mini",
+  "iPhone 13",
+  "iPhone 12 Pro Max",
+  "iPhone 12 Pro",
+  "iPhone 12 Mini",
+  "iPhone 12",
+  "iPhone 11 Pro Max",
+  "iPhone 11 Pro",
+  "iPhone 11",
+
+  // --- Samsung Galaxy Ultra, FE & Plus Series ---
+  "Galaxy S26 Ultra",
+  "Galaxy S26 Plus",
+  "Galaxy S26 FE",
+  "Galaxy S26",
   "Galaxy S25 Ultra",
+  "Galaxy S25 Plus",
+  "Galaxy S25 FE",
+  "Galaxy S25",
   "Galaxy S24 Ultra",
+  "Galaxy S24 Plus",
+  "Galaxy S24 FE",
+  "Galaxy S24",
   "Galaxy S23 Ultra",
-  "Hybrid Solar Inverter 5KW",
-  "Hybrid Solar Inverter 10KW"
+  "Galaxy S23 Plus",
+  "Galaxy S23 FE",
+  "Galaxy S23",
+  "Galaxy S22 Ultra",
+  "Galaxy S22 Plus",
+  "Galaxy S22 FE",
+  "Galaxy S22",
+
+  // --- Hybrid Solar Inverters ---
+  "Hybrid Solar Inverter 3.5KW 24V",
+  "Hybrid Solar Inverter 5.5KW 24V",
+  "Hybrid Solar Inverter 5.5KW 48V",
+  "Hybrid Solar Inverter 6.2KW 48V",
+  "Hybrid Solar Inverter 8KW 48V",
+  "Hybrid Solar Inverter 10KW 48V",
+  "Hybrid Solar Inverter 12KW 48V"
 ];
 
 export const MATERIALS = [
@@ -164,7 +216,7 @@ export function AdminDashboard({ products, setProducts, orders }) {
             <label className="block text-xs text-slate-400 mb-1">Product Title</label>
             <input
               type="text"
-              placeholder="e.g. Aurum Leather Wrap or 5KW Hybrid Inverter"
+              placeholder="e.g. Aurum Leather Wrap or 5.5KW Hybrid Inverter"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full p-2.5 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-amber-500 text-sm"
@@ -325,4 +377,4 @@ export default function App() {
       )}
     </div>
   );
-      }
+}
