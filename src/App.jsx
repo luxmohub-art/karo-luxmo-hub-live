@@ -249,7 +249,7 @@ export default function App() {
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    const cleanImages = productForm.images.filter((img) => img.trim() !== "");
+    const cleanImages = productForm.images.filter((img) => img && img.trim() !== "");
     const data = { ...productForm, images: cleanImages, price: Number(productForm.price) };
 
     try {
@@ -361,7 +361,7 @@ export default function App() {
                     <img
                       src={p.images?.[0] || "https://via.placeholder.com/300"}
                       alt={p.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      className="w-full h-full object-cover hover:scale-105 transition duration-300"
                     />
                     <span className="absolute top-2 left-2 bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded-full font-medium backdrop-blur-sm">
                       {p.category}
@@ -515,4 +515,4 @@ export default function App() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
-                          setEditingProduct(p);
+                          setEditingProduct(p)
