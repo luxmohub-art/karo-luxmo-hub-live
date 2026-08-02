@@ -134,6 +134,36 @@ export const initialProducts = [
     reviews: 88,
     description: "Dual-layer magnetic hinge coverage case designed for smooth folding and MagSafe support.",
     image: "https://images.unsplash.com/photo-1601593346740-925612772716?q=80&w=800&auto=format&fit=crop"
+  },
+  {
+    id: "P-1003",
+    title: "Galaxy S25 Ultra MagSafe Case",
+    category: "Mobile Back Case",
+    device: "Galaxy S25 Ultra",
+    material: "Titanium frame",
+    price: 2499,
+    stock: 30,
+    inStock: true,
+    magsafe: true,
+    rating: 4.9,
+    reviews: 120,
+    description: "Precision titanium camera border with ultra-strong magnetic lock for S25 Ultra.",
+    image: "https://images.unsplash.com/photo-1580910051074-3eb694886505?q=80&w=800&auto=format&fit=crop"
+  },
+  {
+    id: "P-1004",
+    title: "Luxmo 5.5KW Hybrid Solar Inverter",
+    category: "Hybrid Solar Inverter",
+    device: "Hybrid Solar Inverter 5.5KW 48V",
+    material: "Pure Sine Wave Solar",
+    price: 48500,
+    stock: 10,
+    inStock: true,
+    magsafe: false,
+    rating: 5.0,
+    reviews: 45,
+    description: "High efficiency 5.5KW 48V MPPT Hybrid Solar Inverter with dual AC outputs and WiFi monitoring.",
+    image: "https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=800&auto=format&fit=crop"
   }
 ];
 
@@ -236,7 +266,7 @@ export function AdminDashboard({ products, setProducts }) {
             <label className="block text-xs text-slate-400 mb-1">Product Title</label>
             <input
               type="text"
-              placeholder="e.g. Galaxy Z Fold 6 Magnetic Armor Case"
+              placeholder="e.g. Galaxy S25 Ultra Titanium Case"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full p-2.5 bg-slate-800 text-white rounded-lg border border-slate-700 focus:outline-none focus:border-amber-500 text-sm"
@@ -290,7 +320,7 @@ export function AdminDashboard({ products, setProducts }) {
               <label className="block text-xs text-slate-400 mb-1">Price (₹)</label>
               <input
                 type="number"
-                placeholder="2799"
+                placeholder="2499"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                 className="w-full p-2.5 bg-slate-800 text-white rounded-lg border border-slate-700 text-sm"
@@ -366,7 +396,7 @@ export default function App() {
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  // Filtered Products Logic
+  // Smart Filtering Logic (Search + Category Filter combined)
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const matchesCategory =
@@ -391,43 +421,43 @@ export default function App() {
 
       {view === "store" ? (
         <div className="max-w-7xl mx-auto px-4 py-8">
-          {/* Header & Title */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-3xl font-bold text-white">Featured Collection</h2>
-              <p className="text-xs text-slate-400 mt-1">Explore our high-end phone cases & hybrid solar inverters</p>
-            </div>
-
-            {/* Search Input */}
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search Z Fold 6, iPhone, 5.5KW..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900 text-white placeholder-slate-500 text-sm pl-9 pr-8 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-amber-500 transition"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+          {/* Section Header */}
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold text-white">Featured Collection</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Explore our high-end phone cases & hybrid solar inverters
+            </p>
           </div>
 
-          {/* Category Tabs Filter */}
+          {/* Search Bar Input */}
+          <div className="relative w-full mb-6">
+            <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search S25 Ultra, Z Fold 6, 5.5KW Inverter..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900/90 text-white placeholder-slate-500 text-sm pl-11 pr-10 py-3 rounded-xl border border-slate-800 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition shadow-inner"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Dynamic Category Filter Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
             {["All", ...CATEGORIES].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`text-xs px-4 py-2 rounded-xl transition whitespace-nowrap font-medium border ${
+                className={`text-xs px-4 py-2.5 rounded-xl transition whitespace-nowrap font-medium border ${
                   selectedCategory === cat
-                    ? "bg-amber-500 text-slate-950 border-amber-500 font-semibold"
+                    ? "bg-amber-500 text-slate-950 border-amber-500 font-semibold shadow-lg shadow-amber-500/10"
                     : "bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700"
                 }`}
               >
@@ -436,21 +466,54 @@ export default function App() {
             ))}
           </div>
 
+          {/* Active Search/Filter Info Pill */}
+          {(searchQuery || selectedCategory !== "All") && (
+            <div className="flex items-center justify-between bg-slate-900/60 px-4 py-2 rounded-lg border border-slate-800 mb-6 text-xs text-slate-400">
+              <span>
+                Showing results for:{" "}
+                <strong className="text-amber-400">
+                  {selectedCategory !== "All" ? selectedCategory : "All Categories"}
+                  {searchQuery ? ` matching "${searchQuery}"` : ""}
+                </strong>
+              </span>
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("All");
+                }}
+                className="text-slate-400 hover:text-amber-400 underline"
+              >
+                Reset Filters
+              </button>
+            </div>
+          )}
+
           {/* Product Grid */}
           {filteredProducts.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProducts.map((p) => (
-                <div key={p.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden p-4 flex flex-col justify-between hover:border-slate-700 transition">
+                <div
+                  key={p.id}
+                  className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden p-4 flex flex-col justify-between hover:border-slate-700 transition"
+                >
                   <div>
-                    <img src={p.image} alt={p.title} className="w-full h-48 object-cover rounded-xl mb-4" />
+                    <img
+                      src={p.image}
+                      alt={p.title}
+                      className="w-full h-48 object-cover rounded-xl mb-4"
+                    />
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-full border border-amber-500/20 font-medium">
                         {p.category || "Accessories"}
                       </span>
                     </div>
                     <h3 className="text-lg font-bold text-white">{p.title}</h3>
-                    <p className="text-xs text-slate-400 mt-1">{p.device} • {p.material}</p>
-                    <p className="text-xs text-slate-500 mt-2 line-clamp-2">{p.description}</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {p.device} • {p.material}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-2 line-clamp-2">
+                      {p.description}
+                    </p>
                   </div>
 
                   <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-800">
@@ -467,9 +530,14 @@ export default function App() {
             </div>
           ) : (
             <div className="text-center py-16 bg-slate-900/50 rounded-2xl border border-slate-800">
-              <p className="text-slate-400 text-sm">No products found matching "{searchQuery}"</p>
+              <p className="text-slate-400 text-sm">
+                No products found matching "{searchQuery}"
+              </p>
               <button
-                onClick={() => { setSearchQuery(""); setSelectedCategory("All"); }}
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("All");
+                }}
                 className="mt-3 text-xs text-amber-400 hover:underline"
               >
                 Clear all filters
@@ -482,4 +550,4 @@ export default function App() {
       )}
     </div>
   );
-}
+                }
