@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   ShoppingCart, Search, Trash2, Plus, Minus, X, 
   LayoutDashboard, ShoppingBag, Package, TrendingUp, 
-  Sun
+  Sun, Edit3 
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { 
@@ -138,7 +138,7 @@ const STORE_UPI_ID = "yourstore@upi";
 /* ===== 3. Main App Component ===== */
 export default function App() {
   const [activeTab, setActiveTab] = useState("store");
-  const [adminTab, setAdminTab] = useState("analytics");
+  const [adminTab, setAdminTab] = useState("products");
   
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -156,6 +156,7 @@ export default function App() {
     name: "", phone: "", address: "", city: "", pincode: "", paymentMethod: "UPI"
   });
 
+  // Edit Feature States
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
     title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10,
@@ -246,27 +247,55 @@ export default function App() {
     }
   };
 
+  // Add & Update Product Handler
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    const cleanImages = productForm.images.filter((img) => img.trim() !== "");
-    const data = { ...productForm, images: cleanImages, price: Number(productForm.price) };
+    const cleanImages = productForm.images.filter((img) => img && img.trim() !== "");
+    const data = { 
+      ...productForm, 
+      images: cleanImages, 
+      price: Number(productForm.price),
+      stock: Number(productForm.stock)
+    };
 
     try {
       if (editingProduct) {
         await updateDoc(doc(db, "products", editingProduct.id), data);
+        alert("Product Updated Successfully!");
       } else {
         await addDoc(collection(db, "products"), data);
+        alert("New Product Added Successfully!");
       }
-      setEditingProduct(null);
-      setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", "", "", "", "", ""] });
-      alert("Product saved successfully!");
+      resetForm();
     } catch (err) {
       alert("Error saving product: " + err.message);
     }
   };
 
+  const resetForm = () => {
+    setEditingProduct(null);
+    setProductForm({ 
+      title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, 
+      images: ["", "", "", "", "", "", "", "", "", ""] 
+    });
+  };
+
+  const handleStartEdit = (p) => {
+    setEditingProduct(p);
+    const filledImgs = [...(p.images || [])];
+    while (filledImgs.length < 10) filledImgs.push("");
+    setProductForm({
+      title: p.title || "",
+      price: p.price || "",
+      category: p.category || CATEGORIES[0],
+      device: p.device || DEVICES[0],
+      stock: p.stock || 10,
+      images: filledImgs
+    });
+  };
+
   const handleDeleteProduct = async (id) => {
-    if (window.confirm("Delete this product?")) {
+    if (window.confirm("Are you sure you want to delete this product?")) {
       await deleteDoc(doc(db, "products", id));
     }
   };
@@ -326,7 +355,7 @@ export default function App() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search..."
+                placeholder="Search case, inverter..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -386,24 +415,16 @@ export default function App() {
           </div>
         </main>
       ) : (
-        /* Admin View */
+        /* ===== Admin Panel View ===== */
         <main className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex border-b border-slate-800 mb-6 gap-6">
-            <button
-              onClick={() => setAdminTab("analytics")}
-              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
-                adminTab === "analytics" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
-              }`}
-            >
-              <TrendingUp className="w-4 h-4" /> Analytics
-            </button>
             <button
               onClick={() => setAdminTab("products")}
               className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
                 adminTab === "products" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
               }`}
             >
-              <Package className="w-4 h-4" /> Products Manager
+              <Package className="w-4 h-4" /> Products & Edit Manager
             </button>
             <button
               onClick={() => setAdminTab("orders")}
@@ -413,101 +434,101 @@ export default function App() {
             >
               <ShoppingBag className="w-4 h-4" /> Orders
               {pendingOrders > 0 && (
-                <span className="bg-amber-500 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                <span className="bg-amber-500 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-1">
                   {pendingOrders}
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setAdminTab("analytics")}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
+                adminTab === "analytics" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400"
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" /> Analytics
+            </button>
           </div>
 
-          {adminTab === "analytics" && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
-                <p className="text-xs font-medium text-slate-400">Total Revenue</p>
-                <h2 className="text-2xl font-bold text-white mt-1">₹{totalRevenue.toLocaleString()}</h2>
-              </div>
-              <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
-                <p className="text-xs font-medium text-slate-400">Total Orders</p>
-                <h2 className="text-2xl font-bold text-white mt-1">{orders.length}</h2>
-              </div>
-              <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
-                <p className="text-xs font-medium text-slate-400">Active Products</p>
-                <h2 className="text-2xl font-bold text-white mt-1">{products.length}</h2>
-              </div>
-            </div>
-          )}
-
+          {/* Product Form + Edit Table Section */}
           {adminTab === "products" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="font-bold text-white text-sm">{editingProduct ? "Edit Product" : "Add Product"}</h3>
-                <input
-                  type="text"
-                  placeholder="Title"
-                  required
-                  value={productForm.title}
-                  onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-                />
-                <input
-                  type="number"
-                  placeholder="Price (INR)"
-                  required
-                  value={productForm.price}
-                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-                />
-                
-                <select
-                  value={productForm.category}
-                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={productForm.device}
-                  onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-                >
-                  <option value="">-- Select Model/Spec --</option>
-                  {DEVICES.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-
-                <p className="text-[11px] font-semibold text-amber-400 mt-2">Image URLs:</p>
-                {productForm.images.map((img, idx) => (
-                  <input
-                    key={idx}
-                    type="url"
-                    placeholder={`Image #${idx + 1} URL`}
-                    value={img}
-                    onChange={(e) => {
-                      const newImgs = [...productForm.images];
-                      newImgs[idx] = e.target.value;
-                      setProductForm({ ...productForm, images: newImgs });
-                    }}
-                    className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-[11px] text-white"
-                  />
-                ))}
-                
-                <div className="flex gap-2 pt-2">
-                  <button type="submit" className="flex-1 py-2.5 bg-amber-500 font-bold text-xs text-slate-950 rounded hover:bg-amber-400 transition">
-                    {editingProduct ? "Update" : "Save"}
-                  </button>
+              
+              {/* Product Form */}
+              <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3 h-fit">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <h3 className="font-bold text-white text-sm">
+                    {editingProduct ? "✏️ Edit Product Details" : "➕ Add New Product"}
+                  </h3>
                   {editingProduct && (
                     <button 
                       type="button" 
-                      onClick={() => {
-                        setEditingProduct(null);
-                        setProductForm({ title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10, images: ["", "", "", "", "", "", "", "", "", ""] });
-                      }}
-                      className="px-3 py-2.5 bg-slate-800 text-slate-300 font-bold text-xs rounded hover:bg-slate-700 transition"
+                      onClick={resetForm} 
+                      className="text-[10px] text-slate-400 hover:text-white underline"
                     >
-                      Cancel
+                      Cancel Edit
                     </button>
-    
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Product Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Galaxy S25 Ultra Titanium Case"
+                    required
+                    value={productForm.title}
+                    onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
+                    className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Category</label>
+                    <select
+                      value={productForm.category}
+                      onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Device Model</label>
+                    <select
+                      value={productForm.device}
+                      onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                    >
+                      {DEVICES.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Price (₹)</label>
+                    <input
+                      type="number"
+                      placeholder="2499"
+                      required
+                      value={productForm.price}
+                      onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Stock Qty</label>
+                    <input
+                      type="number"
+                      placeholder="10"
+                      required
+                      value={productForm.stock}
+                      onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+       
