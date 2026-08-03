@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { 
-  ShoppingCart, Search, Trash2, Plus, X, 
-  LayoutDashboard, ShoppingBag, Package, TrendingUp, 
-  Sun, Edit3 
+  Trash2, Plus, LayoutDashboard, Package, Edit3 
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { 
@@ -19,19 +17,17 @@ export const CATEGORIES = [
 ];
 
 export const DEVICES = [
-  "Galaxy Z Fold 7", "Galaxy Z Fold 6", "Galaxy Z Fold 5", "Galaxy Z Fold 4",
+  "Galaxy Z Fold 7", "Galaxy Z Fold 6", "Galaxy Z Fold 5",
   "iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17 Plus", "iPhone 17",
   "iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16",
-  "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15",
   "Galaxy S26 Ultra", "Galaxy S26 Plus", "Galaxy S26",
   "Galaxy S25 Ultra", "Galaxy S25 Plus", "Galaxy S25",
-  "Galaxy S24 Ultra", "Galaxy S24 Plus", "Galaxy S24",
   "Hybrid Solar Inverter 3KW 24V", "Hybrid Solar Inverter 5KW 48V",
   "Mono PERC Solar Panel 330W", "Bifacial Solar Panel 550W",
   "MagSafe Wireless Charger", "UV Tempered Glass Guard"
 ];
 
-/* ===== Firebase Config ===== */
+/* ===== Firebase Setup ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyDummyKeyForVercelBuildToPass",
   authDomain: "luxmo-hub.firebaseapp.com",
@@ -49,22 +45,21 @@ export default function App() {
   const [adminSubTab, setAdminSubTab] = useState("inventory");
   
   const [products, setProducts] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
-  
   const [editingProduct, setEditingProduct] = useState(null);
+  
   const [productForm, setProductForm] = useState({
     title: "", price: "", category: CATEGORIES[0], device: DEVICES[0], stock: 10,
     images: ["", "", "", "", "", "", "", "", "", ""]
   });
 
+  // Fetch real-time products from Firebase
   useEffect(() => {
-    const unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => {
+    const unsub = onSnapshot(collection(db, "products"), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProducts(items);
     }, (err) => console.log(err));
 
-    return () => unsubProducts();
+    return () => unsub();
   }, []);
 
   const handleSaveProduct = async (e) => {
@@ -72,7 +67,7 @@ export default function App() {
     const cleanImages = productForm.images.filter((img) => img && img.trim() !== "");
     const data = { 
       ...productForm, 
-      images: cleanImages, 
+      images: cleanImages.length > 0 ? cleanImages : ["https://via.placeholder.com/300"], 
       price: Number(productForm.price),
       stock: Number(productForm.stock)
     };
@@ -80,15 +75,15 @@ export default function App() {
     try {
       if (editingProduct) {
         await updateDoc(doc(db, "products", editingProduct.id), data);
-        alert("Product Updated!");
+        alert("Product Updated Successfully!");
       } else {
         await addDoc(collection(db, "products"), data);
-        alert("Product Added!");
+        alert("New Product Added Successfully!");
       }
       resetForm();
       setAdminSubTab("inventory");
     } catch (err) {
-      alert("Error: " + err.message);
+      alert("Error saving: " + err.message);
     }
   };
 
@@ -116,25 +111,36 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (window.confirm("Delete this product?")) {
-      await deleteDoc(doc(db, "products", id));
+    if (window.confirm("Are you sure you want to delete this product?")) {
+      try {
+        await deleteDoc(doc(db, "products", id));
+      } catch (err) {
+        alert("Error deleting: " + err.message);
+      }
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
-      <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800">
+      {/* Header with Matching Blue Shield Logo */}
+      <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Sun className="h-7 w-7 text-amber-500" />
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-amber-500 bg-clip-text text-transparent">
-              LUXMO HUB
-            </span>
+          <div className="flex items-center space-x-3">
+            {/* Custom Matching Shield Logo */}
+            <div className="relative w-10 h-10 bg-slate-950 border-2 border-sky-400 rounded-xl flex items-center justify-center shadow-inner">
+              <div className="w-6 h-6 rounded-full border-2 border-dashed border-amber-400 flex items-center justify-center">
+                <span className="text-white font-extrabold text-xs">L</span>
+              </div>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-wide">LUXMO HUB</h1>
+              <p className="text-[9px] font-bold text-amber-500 tracking-wider">PREMIUM STORE & SOLAR</p>
+            </div>
           </div>
 
           <button
             onClick={() => setActiveTab(activeTab === "store" ? "admin" : "store")}
-            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 flex items-center gap-1.5"
+            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 flex items-center gap-1.5 transition hover:bg-amber-400"
           >
             <LayoutDashboard className="w-4 h-4" />
             {activeTab === "store" ? "Admin Panel" : "Storefront"}
@@ -142,23 +148,27 @@ export default function App() {
         </div>
       </header>
 
+      {/* Main Content */}
       {activeTab === "store" ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-extrabold mb-4 text-white">Featured Collection</h1>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {products.map((p) => (
-              <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-3">
-                <div className="aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3">
-                  <img
-                    src={p.images?.[0] || "https://via.placeholder.com/300"}
-                    alt={p.title}
-                    className="w-full h-full object-cover"
-                  />
+              <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-3 flex flex-col justify-between">
+                <div>
+                  <div className="aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3">
+                    <img
+                      src={p.images?.[0] || "https://via.placeholder.com/300"}
+                      alt={p.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-100">{p.title}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{p.device}</p>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-100">{p.title}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{p.device}</p>
                 <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-800">
                   <span className="text-base font-extrabold text-white">₹{p.price}</span>
+                  <button className="px-3 py-1 bg-amber-500 text-slate-950 font-bold rounded text-xs">View Details</button>
                 </div>
               </div>
             ))}
@@ -169,74 +179,151 @@ export default function App() {
           <div className="flex gap-2 mb-6 bg-slate-900 p-2 rounded-xl border border-slate-800">
             <button
               onClick={() => setAdminSubTab("inventory")}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg ${
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
                 adminSubTab === "inventory" ? "bg-amber-500 text-slate-950" : "bg-slate-950 text-slate-300"
               }`}
             >
-              Inventory ({products.length})
+              <Package className="w-4 h-4" /> Manage Products ({products.length})
             </button>
             <button
               onClick={() => { resetForm(); setAdminSubTab("add"); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg ${
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
                 adminSubTab === "add" ? "bg-amber-500 text-slate-950" : "bg-slate-950 text-slate-300"
               }`}
             >
-              {editingProduct ? "Edit Product" : "Add Product"}
+              <Plus className="w-4 h-4" /> {editingProduct ? "Edit Product" : "Add Product"}
             </button>
           </div>
 
+          {/* 1. Inventory View with Edit & Delete */}
           {adminSubTab === "inventory" && (
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              {products.map((p) => (
-                <div key={p.id} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img src={p.images?.[0] || "https://via.placeholder.com/50"} alt="" className="w-10 h-10 rounded object-cover" />
-                    <div>
-                      <h4 className="text-sm font-bold text-white">{p.title}</h4>
-                      <p className="text-xs text-amber-500">₹{p.price}</p>
+              <h3 className="font-bold text-white text-base mb-2">All Active Products</h3>
+              {products.length === 0 ? (
+                <p className="text-xs text-slate-400">No products found. Click "Add Product" to create one.</p>
+              ) : (
+                products.map((p) => (
+                  <div key={p.id} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img src={p.images?.[0] || "https://via.placeholder.com/50"} alt="" className="w-12 h-12 rounded object-cover border border-slate-800" />
+                      <div>
+                        <h4 className="text-sm font-bold text-white line-clamp-1">{p.title}</h4>
+                        <p className="text-xs text-amber-500 font-semibold">₹{p.price} | Stock: {p.stock}</p>
+                        <p className="text-[10px] text-slate-400">{p.category} ({p.device})</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleStartEdit(p)}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-blue-500"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProduct(p.id)}
+                        className="p-1.5 bg-red-600 text-white rounded-lg text-xs hover:bg-red-500"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleStartEdit(p)}
-                      className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-bold flex items-center gap-1"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" /> Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProduct(p.id)}
-                      className="p-1.5 bg-red-600 text-white rounded text-xs"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 
+          {/* 2. Add / Edit Form */}
           {adminSubTab === "add" && (
-            <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+            <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3 max-w-2xl mx-auto">
               <h3 className="font-bold text-white text-base">
-                {editingProduct ? "Edit Product" : "Add Product"}
+                {editingProduct ? "✏️ Edit Product Details" : "➕ Add New Product"}
               </h3>
-              <input
-                type="text"
-                placeholder="Product Title"
-                required
-                value={productForm.title}
-                onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
-                className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-              />
-              <input
-                type="number"
-                placeholder="Price"
-                required
-                value={productForm.price}
-                onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-              />
-              <button type="submit" className="w-full py-2 bg-amber-500 text-slate-950 font-bold rounded text-xs">
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Product Title</label>
+                <input
+                  type="text"
+                  placeholder="Product Title"
+                  required
+                  value={productForm.title}
+                  onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Category</label>
+                  <select
+                    value={productForm.category}
+                    onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                  >
+                    {CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Device Model</label>
+                  <select
+                    value={productForm.device}
+                    onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                  >
+                    {DEVICES.map((d) => (<option key={d} value={d}>{d}</option>))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Price (₹)</label>
+                  <input
+                    type="number"
+                    placeholder="2499"
+                    required
+                    value={productForm.price}
+                    onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Stock Qty</label>
+                  <input
+                    type="number"
+                    placeholder="10"
+                    required
+                    value={productForm.stock}
+                    onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Image URLs (Up to 10)</label>
+                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                  {productForm.images.map((img, idx) => (
+                    <input
+                      key={idx}
+                      type="url"
+                      placeholder={`Image URL ${idx + 1}`}
+                      value={img}
+                      onChange={(e) => {
+                        const updated = [...productForm.images];
+                        updated[idx] = e.target.value;
+                        setProductForm({ ...productForm, images: updated });
+                      }}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-amber-500 text-slate-950 font-bold rounded-lg text-xs hover:bg-amber-400 transition"
+              >
                 {editingProduct ? "Update Product" : "Save Product"}
               </button>
             </form>
@@ -245,5 +332,4 @@ export default function App() {
       )}
     </div>
   );
-                }
-
+}
