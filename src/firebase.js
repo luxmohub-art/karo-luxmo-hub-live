@@ -4,13 +4,13 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "PASTE_YOUR_REAL_API_KEY",
+  apiKey: "AIzaSyD366V9fIGJnHwfpgf9KYW3e0J2Xhxm1Bc",
   authDomain: "luxmo-hub.firebaseapp.com",
   projectId: "luxmo-hub",
   storageBucket: "luxmo-hub.firebasestorage.app",
-  messagingSenderId: "PASTE_YOUR_REAL_MESSAGING_SENDER_ID",
-  appId: "PASTE_YOUR_REAL_APP_ID",
-  measurementId: "PASTE_YOUR_REAL_MEASUREMENT_ID",
+  messagingSenderId: "1054383037062",
+  appId: "1:1054383037062:web:12898cc7c85be687424f07",
+  measurementId: "G-NNT3KBE925"
 };
 
 const app = initializeApp(firebaseConfig);
