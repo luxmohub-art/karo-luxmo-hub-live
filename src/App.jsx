@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import Header from "./components/Header";
 import {
   ShoppingCart,
   Heart,
