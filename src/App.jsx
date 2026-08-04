@@ -376,7 +376,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* GST Invoice Modal */}
+      {/* Official GST Tax Invoice Modal */}
       {selectedInvoiceOrder && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white text-slate-900 w-full max-w-2xl rounded-2xl p-6 shadow-2xl relative my-8">
@@ -389,13 +389,14 @@ export default function App() {
 
             <div className="flex justify-between items-start border-b pb-4 mb-4">
               <div>
-                <h2 className="text-xl font-black text-slate-900">LUXMO HUB ENTERPRISE</h2>
-                <p className="text-xs text-slate-500">GSTIN: 07AABCL1234K1ZU</p>
-                <p className="text-xs text-slate-500">New Delhi, India - 110001</p>
+                <h2 className="text-xl font-black text-slate-900">LUXMO HUB (Proprietor: Sarita Devi)</h2>
+                <p className="text-xs text-slate-500 font-semibold">GSTIN: 09CNCPD1174RIZN</p>
+                <p className="text-xs text-slate-500">Building No. 147, Vill-Kotwa, Mathura Chhapar,</p>
+                <p className="text-xs text-slate-500">Deoria, Uttar Pradesh - Pin: 274001</p>
               </div>
               <div className="text-right">
                 <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-full uppercase">
-                  Tax Invoice
+                  GST Tax Invoice
                 </span>
                 <p className="text-xs font-bold mt-2">Invoice #: {selectedInvoiceOrder.id}</p>
                 <p className="text-xs text-slate-500">Date: {selectedInvoiceOrder.date}</p>
@@ -439,7 +440,11 @@ export default function App() {
               </tbody>
             </table>
 
-            <div className="flex justify-end mb-6">
+            <div className="flex justify-between items-center border-t pt-4 mb-6">
+              <div className="text-[10px] text-slate-500">
+                <p>Authorized Signatory for LUXMO HUB</p>
+                <p className="font-semibold text-slate-700 mt-1">Proprietor: Sarita Devi</p>
+              </div>
               <div className="w-48 space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Subtotal:</span>
@@ -455,10 +460,10 @@ export default function App() {
             <div className="flex space-x-3 pt-4 border-t">
               <button
                 onClick={() => window.print()}
-                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-2 text-xs"
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-2 text-xs shadow"
               >
                 <Printer size={15} />
-                <span>Print / Download PDF</span>
+                <span>Print / Download Tax Invoice PDF</span>
               </button>
             </div>
           </div>
@@ -536,11 +541,4 @@ export default function App() {
                     required
                     rows={2}
                     value={shippingDetails.address}
-                    onChange={(e) => setShippingDetails({ ...shippingDetails, address: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <button type="submit" className="w-full py-3 bg-amber-500 text-slate-950 font-black rounded-xl mt-4">
-                  Proceed to Payment
-                </button>
-              
+       
