@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { 
   Trash2, Plus, LayoutDashboard, Package, Edit3, MessageSquare, 
   CreditCard, Search, ShoppingBag, AlertTriangle, TrendingUp, 
-  Upload, CheckCircle, Clock, Truck, XCircle, DollarSign
+  Upload, CheckCircle, Clock, Truck, XCircle, DollarSign,
+  ShoppingCart, X, Lock, Download, Eye, MapPin, Phone, User
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { 
@@ -10,15 +11,20 @@ import {
   updateDoc, deleteDoc, doc, serverTimestamp 
 } from "firebase/firestore";
 
-/* ===== SET YOUR WHATSAPP NUMBER HERE ===== */
+/* ===== SET YOUR WHATSAPP NUMBER & ADMIN PIN HERE ===== */
 const WHATSAPP_NUMBER = "919876543210"; 
+const ADMIN_PIN = "1234"; 
 
-/* ===== 1. Categories & Devices Data ===== */
+/* ===== Categories & Devices Data ===== */
 export const CATEGORIES = [
   "Mobile Back Case",
   "Hybrid Solar Inverter",
   "Solar Panel",
   "Accessories",
+];
+
+export const COLOR_OPTIONS = [
+  "Titanium", "Matte Black", "White", "Light Gray", "Golden", "Clear/Transparent"
 ];
 
 export const DEVICES = [
@@ -107,7 +113,7 @@ export const DEVICES = [
   "Half-Cut Mono PERC 540W",
   "Bifacial Solar Panel 550W",
   "TOPCon Solar Panel 580,590W",
-  "TOPCon Solar Panel 600w,615w,630w,700w,715, 720W, 730w",
+  "TOPCon Solar Panel 600w,615w,630w,700w,715W",
 
   // --- Accessories ---
   "MC4 Solar Connectors (Pair)",
@@ -123,9 +129,9 @@ export const DEVICES = [
   "UV Tempered Glass Guard"
 ];
 
-/* ===== 2. Firebase Setup ===== */
+/* ===== Firebase Setup ===== */
 const firebaseConfig = {
-  apiKey: "AIzaSyDummyKeyForVercelBuildToPass",
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyDummyKeyForVercelBuildToPass",
   authDomain: "luxmo-hub.firebaseapp.com",
   projectId: "luxmo-hub",
   storageBucket: "luxmo-hub.appspot.com",
@@ -140,14 +146,36 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("store");
   const [adminSubTab, setAdminSubTab] = useState("analytics");
   
+  // Auth & Admin Protection State
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState(false);
+
+  // Store & Admin Data States
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
+
+  // Cart & Modal States
+  const [cart, setCart] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [activeGalleryImages, setActiveGalleryImages] = useState(null);
 
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
 
+  // Shipping Form State
+  const [shippingDetails, setShippingDetails] = useState({
+    fullName: "",
+    phone: "",
+    address: "",
+    city: "",
+    pincode: ""
+  });
+
+  // Product Form State
   const initialFormState = {
     title: "", 
     description: "", 
@@ -155,11 +183,15 @@ export default function App() {
     price: "", 
     category: CATEGORIES[0], 
     device: DEVICES[0], 
+    selectedColor: COLOR_OPTIONS[0],
     stock: 10,
-    images: ["", "", "", "", "", "", "", "", "", ""]
+    images: ["", "", "", ""]
   };
 
   const [productForm, setProductForm] = useState(initialFormState);
+
+  // Selected colors state for storefront items
+  const [selectedProductColors, setSelectedProductColors] = useState({});
 
   // Load Razorpay Script
   useEffect(() => {
@@ -169,111 +201,130 @@ export default function App() {
     document.body.appendChild(script);
   }, []);
 
-  // Fetch Firestore Products Data Real-time
+  // Fetch Firestore Products Real-time
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "products"), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProducts(items);
     }, (err) => console.log(err));
-
     return () => unsub();
   }, []);
 
-  // Fetch Firestore Orders Data Real-time
+  // Fetch Firestore Orders Real-time
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "orders"), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setOrders(items);
     }, (err) => console.log(err));
-
     return () => unsub();
   }, []);
 
-  // WhatsApp Order
-  const handleWhatsAppOrder = (product) => {
-    const message = `Hello LUXMO HUB! 👋\nI want to order:\n\n*Product:* ${product.title}\n*Device/Model:* ${product.device}\n*Price:* ₹${product.price}\n\nPlease process my order.`;
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
+  /* ===== Admin Authentication Handler ===== */
+  const handleAdminAuth = (e) => {
+    e.preventDefault();
+    if (pinInput === ADMIN_PIN) {
+      setIsAdminAuthenticated(true);
+      setPinError(false);
+      setActiveTab("admin");
+    } else {
+      setPinError(true);
+    }
   };
 
-  // Razorpay Payment & Order Creation
-  const handleRazorpayPayment = (product) => {
+  /* ===== Cart Operations ===== */
+  const addToCart = (product, customColor) => {
+    const chosenColor = customColor || product.selectedColor || COLOR_OPTIONS[0];
+    const existing = cart.find(item => item.id === product.id && item.selectedColor === chosenColor);
+    if (existing) {
+      setCart(cart.map(item => 
+        item.id === product.id && item.selectedColor === chosenColor 
+          ? { ...item, qty: item.qty + 1 } : item
+      ));
+    } else {
+      setCart([...cart, { ...product, qty: 1, selectedColor: chosenColor }]);
+    }
+    setIsCartOpen(true);
+  };
+
+  const updateCartQty = (id, delta, color) => {
+    setCart(cart.map(item => {
+      if (item.id === id && item.selectedColor === color) {
+        const newQty = item.qty + delta;
+        return newQty > 0 ? { ...item, qty: newQty } : null;
+      }
+      return item;
+    }).filter(Boolean));
+  };
+
+  const cartTotal = cart.reduce((sum, item) => sum + (Number(item.price) * item.qty), 0);
+
+  /* ===== WhatsApp Checkout Handler ===== */
+  const handleWhatsAppCheckout = () => {
+    if (!shippingDetails.fullName || !shippingDetails.phone || !shippingDetails.address) {
+      alert("Please fill in your Shipping Address details!");
+      return;
+    }
+
+    let itemsList = cart.map(item => `- ${item.title} (${item.device} / ${item.selectedColor}) x ${item.qty} = ₹${item.price * item.qty}`).join("\n");
+    const message = `Hello LUXMO HUB! 👋\n\n*NEW ORDER RECEIVED*\n\n*Items Ordered:*\n${itemsList}\n\n*Total Amount:* ₹${cartTotal}\n\n*Shipping Details:*\nName: ${shippingDetails.fullName}\nPhone: ${shippingDetails.phone}\nAddress: ${shippingDetails.address}, ${shippingDetails.city} - ${shippingDetails.pincode}`;
+    
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
+  };
+
+  /* ===== Razorpay Checkout Handler ===== */
+  const handleRazorpayPayment = () => {
     if (!window.Razorpay) {
       alert("Razorpay gateway loading... Try again in a few seconds.");
       return;
     }
 
+    if (!shippingDetails.fullName || !shippingDetails.phone || !shippingDetails.address) {
+      alert("Please fill in your complete Shipping Address details!");
+      return;
+    }
+
     const options = {
-      key: "rzp_test_YOUR_KEY_HERE",
-      amount: Number(product.price) * 100,
+      key: process.env.REACT_APP_RAZORPAY_KEY || "rzp_test_YOUR_KEY_HERE",
+      amount: cartTotal * 100,
       currency: "INR",
       name: "LUXMO HUB",
-      description: `Payment for ${product.title}`,
+      description: "E-Commerce Purchase Payment",
       handler: async function (response) {
         try {
-          // Save Order in Firestore
           await addDoc(collection(db, "orders"), {
             paymentId: response.razorpay_payment_id,
-            productTitle: product.title,
-            productId: product.id,
-            price: Number(product.price),
-            device: product.device,
-            customerName: "Customer",
-            customerContact: "9999999999",
+            items: cart,
+            totalPrice: cartTotal,
+            customerDetails: shippingDetails,
             status: "Pending",
+            courierName: "",
+            trackingId: "",
             createdAt: new Date().toISOString()
           });
 
-          // Deduct Stock
-          if (product.stock > 0) {
-            await updateDoc(doc(db, "products", product.id), {
-              stock: product.stock - 1
-            });
-          }
-
-          alert(`Payment Successful & Order Placed! Payment ID: ${response.razorpay_payment_id}`);
+          setCart([]);
+          setIsCheckoutOpen(false);
+          setIsCartOpen(false);
+          alert(`Payment Successful! Order Placed. Payment ID: ${response.razorpay_payment_id}`);
         } catch (err) {
-          alert("Error creating order: " + err.message);
+          alert("Error placing order: " + err.message);
         }
       },
       prefill: {
-        name: "Customer Name",
-        email: "customer@luxmohub.com",
-        contact: "9999999999"
+        name: shippingDetails.fullName,
+        contact: shippingDetails.phone
       },
       theme: { color: "#f59e0b" }
     };
 
-    try {
-      const paymentObject = new window.Razorpay(options);
-      paymentObject.open();
-    } catch (err) {
-      alert("Payment Error: " + err.message);
-    }
+    const paymentObject = new window.Razorpay(options);
+    paymentObject.open();
   };
 
-  // Handle Direct Image File Upload (Converts to Base64)
-  const handleFileUpload = (e, index) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 1024 * 1024 * 2) {
-        alert("Image size should be less than 2MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const updatedImages = [...productForm.images];
-        updatedImages[index] = reader.result;
-        setProductForm({ ...productForm, images: updatedImages });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Save Product (Add / Update)
+  /* ===== Product Management Functions ===== */
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    const cleanImages = productForm.images.filter((img) => img && img.trim() !== "");
+    const cleanImages = productForm.images.filter(img => img && img.trim() !== "");
     const data = { 
       ...productForm, 
       images: cleanImages.length > 0 ? cleanImages : ["https://via.placeholder.com/300"], 
@@ -289,69 +340,58 @@ export default function App() {
         await addDoc(collection(db, "products"), data);
         alert("New Product Added Successfully!");
       }
-      resetForm();
+      setEditingProduct(null);
+      setProductForm(initialFormState);
       setAdminSubTab("inventory");
     } catch (err) {
-      alert("Error saving: " + err.message);
+      alert("Error saving product: " + err.message);
     }
-  };
-
-  const resetForm = () => {
-    setEditingProduct(null);
-    setProductForm(initialFormState);
-  };
-
-  const handleStartEdit = (p) => {
-    setEditingProduct(p);
-    const filledImgs = [...(p.images || [])];
-    while (filledImgs.length < 10) filledImgs.push("");
-    setProductForm({
-      title: p.title || "",
-      description: p.description || "",
-      features: p.features || "",
-      price: p.price || "",
-      category: p.category || CATEGORIES[0],
-      device: p.device || DEVICES[0],
-      stock: p.stock !== undefined ? p.stock : 10,
-      images: filledImgs
-    });
-    setAdminSubTab("add");
   };
 
   const handleDeleteProduct = async (id) => {
     if (window.confirm("Are you sure you want to delete this product?")) {
-      try {
-        await deleteDoc(doc(db, "products", id));
-      } catch (err) {
-        alert("Error deleting: " + err.message);
-      }
+      await deleteDoc(doc(db, "products", id));
     }
   };
 
-  // Update Order Status
-  const handleOrderStatusUpdate = async (orderId, newStatus) => {
+  const handleUpdateLogistics = async (orderId, newStatus, trackingId, courierName) => {
     try {
-      await updateDoc(doc(db, "orders", orderId), { status: newStatus });
+      await updateDoc(doc(db, "orders", orderId), { 
+        status: newStatus,
+        trackingId: trackingId || "",
+        courierName: courierName || ""
+      });
+      alert("Order Shipping Status & AWB Updated!");
     } catch (err) {
-      alert("Error updating order status: " + err.message);
+      alert("Error updating logistics: " + err.message);
     }
   };
 
-  // Filtered Products List
+  /* ===== CSV Export Utility ===== */
+  const exportOrdersToCSV = () => {
+    let csvContent = "data:text/csv;charset=utf-8,Order ID,Customer Name,Phone,Total Amount,Status,Tracking AWB,Date\n";
+    orders.forEach(o => {
+      csvContent += `${o.id},"${o.customerDetails?.fullName || 'N/A'}",${o.customerDetails?.phone || 'N/A'},₹${o.totalPrice || o.price || 0},${o.status},${o.trackingId || 'N/A'},${o.createdAt}\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `LUXMO_Orders_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
+  // Metrics Calculations
+  const totalRevenue = orders.reduce((acc, curr) => acc + (Number(curr.totalPrice || curr.price) || 0), 0);
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.device?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.device?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
-  // Calculate Metrics
-  const totalRevenue = orders.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
-  const lowStockCount = products.filter(p => p.stock < 3).length;
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
-      {/* Header */}
+      {/* Navbar Header */}
       <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -360,22 +400,105 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white tracking-wide">LUXMO HUB</h1>
-              <p className="text-[9px] font-bold text-amber-500 tracking-wider">PREMIUM STORE & SOLAR</p>
+              <p className="text-[9px] font-bold text-amber-500 tracking-wider">PREMIUM STORE & ACCESSORIES</p>
             </div>
           </div>
 
-          <button
-            onClick={() => setActiveTab(activeTab === "store" ? "admin" : "store")}
-            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 flex items-center gap-1.5 transition hover:bg-amber-400"
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            {activeTab === "store" ? "Admin Panel" : "Storefront"}
-          </button>
+          <div className="flex items-center space-x-3">
+            {/* Cart Trigger Button */}
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 hover:text-white"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                  {cart.length}
+                </span>
+              )}
+            </button>
+
+            {/* Admin Toggle */}
+            <button
+              onClick={() => {
+                if (activeTab === "admin") {
+                  setActiveTab("store");
+                } else if (!isAdminAuthenticated) {
+                  setActiveTab("auth_modal");
+                } else {
+                  setActiveTab("admin");
+                }
+              }}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 flex items-center gap-1.5 transition hover:bg-amber-400"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              {activeTab === "admin" ? "Storefront" : "Admin Panel"}
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main Area */}
-      {activeTab === "store" ? (
+      {/* Admin Authentication Pin Modal */}
+      {activeTab === "auth_modal" && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full space-y-4">
+            <div className="flex items-center justify-center w-12 h-12 bg-amber-500/10 text-amber-500 rounded-full mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-bold text-center text-white">Admin Authentication</h2>
+            <p className="text-xs text-slate-400 text-center">Admin panel access karne ke liye 4-Digit Security PIN enter karein.</p>
+            <form onSubmit={handleAdminAuth} className="space-y-3">
+              <input
+                type="password"
+                maxLength={4}
+                placeholder="Enter 4-Digit PIN (Default: 1234)"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className="w-full text-center tracking-widest text-lg py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-amber-400 focus:outline-none focus:border-amber-500"
+              />
+              {pinError && <p className="text-xs text-red-500 text-center">Incorrect PIN. Try again!</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("store")}
+                  className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs"
+                >
+                  Login Admin
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Image Gallery Modal */}
+      {activeGalleryImages && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+          <div className="relative max-w-2xl w-full bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <button 
+              onClick={() => setActiveGalleryImages(null)}
+              className="absolute top-3 right-3 text-slate-400 hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <h3 className="text-sm font-bold text-slate-300 mb-3">Product Image Gallery</h3>
+            <div className="grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto">
+              {activeGalleryImages.map((img, idx) => (
+                <img key={idx} src={img} alt="" className="w-full h-48 object-cover rounded-lg border border-slate-800" />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Storefront View */}
+      {activeTab === "store" && (
         <main className="max-w-7xl mx-auto px-4 py-6">
           {/* Storefront Filters */}
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -386,151 +509,35 @@ export default function App() {
                 placeholder="Search products or device models..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+                className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
               />
             </div>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs text-white"
+              className="bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
             >
               <option value="All">All Categories</option>
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
-          <h1 className="text-2xl font-extrabold mb-4 text-white">Featured Collection</h1>
+          <h1 className="text-2xl font-extrabold mb-4 text-white">Featured Catalog</h1>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProducts.map((p) => (
-              <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex flex-col justify-between">
-                <div>
-                  <div className="relative aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3">
-                    <img
-                      src={p.images?.[0] || "https://via.placeholder.com/300"}
-                      alt={p.title}
-                      className="w-full h-full object-cover"
-                    />
-                    {p.stock === 0 ? (
-                      <span className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">
-                        Out of Stock
-                      </span>
-                    ) : p.stock < 3 ? (
-                      <span className="absolute top-2 right-2 bg-amber-500 text-slate-950 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Only {p.stock} left
-                      </span>
-                    ) : null}
-                  </div>
-                  <h3 className="text-base font-bold text-slate-100">{p.title}</h3>
-                  <p className="text-xs text-amber-500 font-semibold mt-0.5">{p.device}</p>
+            {filteredProducts.map((p) => {
+              const selectedColor = selectedProductColors[p.id] || p.selectedColor || COLOR_OPTIONS[0];
 
-                  {p.description && (
-                    <p className="text-xs text-slate-400 mt-2 line-clamp-2">{p.description}</p>
-                  )}
-
-                  {p.features && (
-                    <div className="mt-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                      <p className="text-[11px] font-bold text-slate-300 mb-1">Key Features:</p>
-                      <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-0.5">
-                        {p.features.split("\n").filter(f => f.trim() !== "").map((feature, idx) => (
-                          <li key={idx}>{feature}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="mt-4 pt-3 border-t border-slate-800">
-                  <span className="text-xl font-extrabold text-white block mb-3">₹{p.price}</span>
-                  <div className="flex flex-col gap-2">
-                    <button 
-                      onClick={() => handleWhatsAppOrder(p)}
-                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
-                    >
-                      <MessageSquare className="w-4 h-4" /> Order on WhatsApp
-                    </button>
-                    <button 
-                      disabled={p.stock === 0}
-                      onClick={() => handleRazorpayPayment(p)}
-                      className={`w-full py-2 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition ${
-                        p.stock === 0 
-                          ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
-                          : "bg-amber-500 hover:bg-amber-400 text-slate-950"
-                      }`}
-                    >
-                      <CreditCard className="w-4 h-4" /> {p.stock === 0 ? "Out of Stock" : "Pay Online (UPI/Card)"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-      ) : (
-        /* Admin Navigation Sub-Tabs */
-        <main className="max-w-7xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6 bg-slate-900 p-2 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setAdminSubTab("analytics")}
-              className={`py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
-                adminSubTab === "analytics" ? "bg-amber-500 text-slate-950" : "bg-slate-950 text-slate-300"
-              }`}
-            >
-              <TrendingUp className="w-4 h-4" /> Dashboard
-            </button>
-            <button
-              onClick={() => setAdminSubTab("orders")}
-              className={`py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
-                adminSubTab === "orders" ? "bg-amber-500 text-slate-950" : "bg-slate-950 text-slate-300"
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" /> Orders ({orders.length})
-            </button>
-            <button
-              onClick={() => setAdminSubTab("inventory")}
-              className={`py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
-                adminSubTab === "inventory" ? "bg-amber-500 text-slate-950" : "bg-slate-950 text-slate-300"
-              }`}
-            >
-              <Package className="w-4 h-4" /> Products ({products.length})
-            </button>
-            <button
-              onClick={() => { resetForm(); setAdminSubTab("add"); }}
-              className={`py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
-                adminSubTab === "add" ? "bg-amber-500 text-slate-950" : "bg-slate-950 text-slate-300"
-              }`}
-            >
-              <Plus className="w-4 h-4" /> {editingProduct ? "Edit Product" : "Add Product"}
-            </button>
-          </div>
-
-          {/* 1. Analytics & Sales Stats Dashboard View */}
-          {adminSubTab === "analytics" && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+              return (
+                <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex flex-col justify-between hover:border-slate-700 transition">
                   <div>
-                    <p className="text-xs text-slate-400">Total Revenue</p>
-                    <h3 className="text-xl font-bold text-emerald-400 mt-1">₹{totalRevenue.toLocaleString()}</h3>
-                  </div>
-                  <div className="p-3 bg-emerald-500/10 rounded-lg text-emerald-400">
-                    <DollarSign className="w-6 h-6" />
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-slate-400">Total Orders</p>
-                    <h3 className="text-xl font-bold text-sky-400 mt-1">{orders.length}</h3>
-                  </div>
-                  <div className="p-3 bg-sky-500/10 rounded-lg text-sky-400">
-                    <ShoppingBag className="w-6 h-6" />
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-slate-400">Total Products</p>
-                    <h3 className="text-xl font-bold text-amber-400 mt-1">{products.length}</h3>
-                  </div>
-                 
+                    <div className="relative aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3">
+                      <img
+                        src={p.images?.[0] || "https://via.placeholder.com/300"}
+                        alt={p.title}
+                        className="w-full h-full object-cover"
+                      />
+                      {p.images?.length > 1 && (
+                        <button
+                          onClick={() => setActiveGalleryImages(p.images)}
+                          className="absolute bo
