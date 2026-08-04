@@ -10,18 +10,14 @@ import {
   Edit3,
   Trash2,
   Users,
-  Settings,
   Search,
-  Database,
   FileText,
   Heart,
-  Star,
   ShoppingCart,
   CheckCircle,
   ArrowRight,
   X,
-  Printer,
-  Download
+  Printer
 } from "lucide-react";
 
 export const CATEGORIES = [
@@ -122,11 +118,10 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
 
-  // E-commerce states: Cart, Wishlist, Checkout
   const [cart, setCart] = useState([]);
   const [wishlist, setWishlist] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState("cart"); // cart, shipping, payment, success
+  const [checkoutStep, setCheckoutStep] = useState("cart"); 
   const [shippingDetails, setShippingDetails] = useState({
     fullName: "",
     phone: "",
@@ -135,7 +130,6 @@ export default function App() {
     pincode: ""
   });
 
-  // Invoice Modal State
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState(null);
 
   const [products, setProducts] = useState([
@@ -226,6 +220,12 @@ export default function App() {
   const cartTotal = useMemo(() => {
     return cart.reduce((acc, item) => acc + parseFloat(item.salePrice || item.price) * item.qty, 0);
   }, [cart]);
+
+  const toggleWishlist = (productId) => {
+    setWishlist((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
+  };
 
   const handleAdminLogin = (e) => {
     e.preventDefault();
@@ -376,7 +376,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* GST Invoice Modal (PDF / Print View) */}
+      {/* GST Invoice Modal */}
       {selectedInvoiceOrder && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white text-slate-900 w-full max-w-2xl rounded-2xl p-6 shadow-2xl relative my-8">
@@ -387,7 +387,6 @@ export default function App() {
               <X size={18} />
             </button>
 
-            {/* Invoice Header */}
             <div className="flex justify-between items-start border-b pb-4 mb-4">
               <div>
                 <h2 className="text-xl font-black text-slate-900">LUXMO HUB ENTERPRISE</h2>
@@ -403,7 +402,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Customer Details */}
             <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-xl mb-4 text-xs">
               <div>
                 <span className="font-bold text-slate-500 block mb-1">Billed To:</span>
@@ -418,7 +416,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Items Table */}
             <table className="w-full text-left border-collapse text-xs mb-6">
               <thead>
                 <tr className="border-b bg-slate-100 text-slate-700">
@@ -442,7 +439,6 @@ export default function App() {
               </tbody>
             </table>
 
-            {/* Total Calculation */}
             <div className="flex justify-end mb-6">
               <div className="w-48 space-y-1 text-xs">
                 <div className="flex justify-between">
@@ -456,7 +452,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex space-x-3 pt-4 border-t">
               <button
                 onClick={() => window.print()}
@@ -545,4 +540,7 @@ export default function App() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                   />
                 </div>
-                <button type
+                <button type="submit" className="w-full py-3 bg-amber-500 text-slate-950 font-black rounded-xl mt-4">
+                  Proceed to Payment
+                </button>
+              
