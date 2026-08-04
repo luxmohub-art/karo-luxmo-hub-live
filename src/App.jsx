@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Trash2, Plus, LayoutDashboard, Package, Edit3 
+  Trash2, Plus, LayoutDashboard, Package, Edit3, ShoppingBag, MessageSquare, CreditCard 
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { 
   getFirestore, collection, onSnapshot, addDoc, 
   updateDoc, deleteDoc, doc 
 } from "firebase/firestore";
+
+/* ===== SET YOUR WHATSAPP NUMBER HERE (With Country Code 91) ===== */
+const WHATSAPP_NUMBER = "919876543210"; // <-- YAHAN APNA NUMER BADLEIN
 
 /* ===== Categories & Devices Data ===== */
 export const CATEGORIES = [
@@ -52,6 +55,14 @@ export default function App() {
     images: ["", "", "", "", "", "", "", "", "", ""]
   });
 
+  // Load Razorpay Script Automatically
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
+
   // Fetch real-time products from Firebase
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "products"), (snapshot) => {
@@ -61,6 +72,41 @@ export default function App() {
 
     return () => unsub();
   }, []);
+
+  // 1. WHATSAPP CHECKOUT FUNCTION
+  const handleWhatsAppOrder = (product) => {
+    const message = `Hello LUXMO HUB! 👋\nI want to order this product:\n\n*Product:* ${product.title}\n*Device:* ${product.device}\n*Price:* ₹${product.price}\n\nPlease share payment & delivery details.`;
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+    window.open(url, "_blank");
+  };
+
+  // 2. RAZORPAY PAYMENT FUNCTION
+  const handleRazorpayPayment = (product) => {
+    if (!window.Razorpay) {
+      alert("Payment gateway loading... Please try again in 5 seconds.");
+      return;
+    }
+
+    const options = {
+      key: "rzp_test_YOUR_KEY_HERE", // Razorpay ID yahan aayegi
+      amount: product.price * 100, // Amount in Paise
+      currency: "INR",
+      name: "LUXMO HUB",
+      description: `Purchase: ${product.title}`,
+      handler: function (response) {
+        alert(`Payment Successful! Transaction ID: ${response.razorpay_payment_id}`);
+      },
+      prefill: {
+        name: "Customer Name",
+        email: "customer@example.com",
+        contact: "9999999999"
+      },
+      theme: { color: "#f59e0b" }
+    };
+
+    const paymentObject = new window.Razorpay(options);
+    paymentObject.open();
+  };
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
@@ -122,11 +168,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
-      {/* Header with Matching Blue Shield Logo */}
+      {/* Header */}
       <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {/* Custom Matching Shield Logo */}
             <div className="relative w-10 h-10 bg-slate-950 border-2 border-sky-400 rounded-xl flex items-center justify-center shadow-inner">
               <div className="w-6 h-6 rounded-full border-2 border-dashed border-amber-400 flex items-center justify-center">
                 <span className="text-white font-extrabold text-xs">L</span>
@@ -166,9 +211,26 @@ export default function App() {
                   <h3 className="text-sm font-semibold text-slate-100">{p.title}</h3>
                   <p className="text-xs text-slate-400 mt-0.5">{p.device}</p>
                 </div>
-                <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-800">
-                  <span className="text-base font-extrabold text-white">₹{p.price}</span>
-                  <button className="px-3 py-1 bg-amber-500 text-slate-950 font-bold rounded text-xs">View Details</button>
+                
+                <div className="mt-4 pt-3 border-t border-slate-800">
+                  <span className="text-lg font-extrabold text-white block mb-2">₹{p.price}</span>
+                  
+                  {/* BUY BUTTONS */}
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => handleWhatsAppOrder(p)}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
+                    >
+                      <MessageSquare className="w-4 h-4" /> Order on WhatsApp
+                    </button>
+                    
+                    <button 
+                      onClick={() => handleRazorpayPayment(p)}
+                      className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
+                    >
+                      <CreditCard className="w-4 h-4" /> Pay Online (UPI/Card)
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -195,45 +257,41 @@ export default function App() {
             </button>
           </div>
 
-          {/* 1. Inventory View with Edit & Delete */}
+          {/* Inventory View */}
           {adminSubTab === "inventory" && (
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
               <h3 className="font-bold text-white text-base mb-2">All Active Products</h3>
-              {products.length === 0 ? (
-                <p className="text-xs text-slate-400">No products found. Click "Add Product" to create one.</p>
-              ) : (
-                products.map((p) => (
-                  <div key={p.id} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <img src={p.images?.[0] || "https://via.placeholder.com/50"} alt="" className="w-12 h-12 rounded object-cover border border-slate-800" />
-                      <div>
-                        <h4 className="text-sm font-bold text-white line-clamp-1">{p.title}</h4>
-                        <p className="text-xs text-amber-500 font-semibold">₹{p.price} | Stock: {p.stock}</p>
-                        <p className="text-[10px] text-slate-400">{p.category} ({p.device})</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleStartEdit(p)}
-                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-blue-500"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" /> Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(p.id)}
-                        className="p-1.5 bg-red-600 text-white rounded-lg text-xs hover:bg-red-500"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+              {products.map((p) => (
+                <div key={p.id} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img src={p.images?.[0] || "https://via.placeholder.com/50"} alt="" className="w-12 h-12 rounded object-cover border border-slate-800" />
+                    <div>
+                      <h4 className="text-sm font-bold text-white line-clamp-1">{p.title}</h4>
+                      <p className="text-xs text-amber-500 font-semibold">₹{p.price} | Stock: {p.stock}</p>
+                      <p className="text-[10px] text-slate-400">{p.category} ({p.device})</p>
                     </div>
                   </div>
-                ))
-              )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleStartEdit(p)}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-blue-500"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProduct(p.id)}
+                      className="p-1.5 bg-red-600 text-white rounded-lg text-xs hover:bg-red-500"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* 2. Add / Edit Form */}
+          {/* Add / Edit Form */}
           {adminSubTab === "add" && (
             <form onSubmit={handleSaveProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3 max-w-2xl mx-auto">
               <h3 className="font-bold text-white text-base">
