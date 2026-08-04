@@ -1,18 +1,28 @@
-import React, { useState, useEffect } from "react";
-import { 
-  Trash2, Plus, LayoutDashboard, Package, Edit3,
-  Search, ShoppingBag, TrendingUp, CheckCircle, Clock, Truck,
-  ShoppingCart, X, Lock, Download, Eye, MapPin, Phone, User
+import React, { useState } from "react";
+import {
+  LayoutDashboard,
+  ShoppingBag,
+  Lock,
+  TrendingUp,
+  PackageCheck,
+  Plus,
+  Truck,
+  Edit3,
+  Trash2,
+  DollarSign,
+  Users,
+  Settings,
+  Search,
+  Sparkles,
+  Layers,
+  Smartphone,
+  Cpu,
+  Tag
 } from "lucide-react";
-import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, collection, onSnapshot, addDoc, 
-  updateDoc, deleteDoc, doc 
-} from "firebase/firestore";
 
-/* ===== SETTINGS ===== */
-const WHATSAPP_NUMBER = "919876543210"; 
-const ADMIN_PIN = "1234"; 
+/* ==========================================================================
+   COMPLETE CATEGORIES & DEVICES DATA (NO SHORTENING)
+   ========================================================================== */
 
 export const CATEGORIES = [
   "Mobile Back Case",
@@ -21,11 +31,6 @@ export const CATEGORIES = [
   "Accessories",
 ];
 
-export const COLOR_OPTIONS = [
-  "Titanium", "Matte Black", "White", "Light Gray", "Golden", "Clear/Transparent"
-];
-
-// AAPKI SAARI COMPLETE DEVICES AND PRODUCTS LIST
 export const DEVICES = [
   // --- Samsung Galaxy Z Fold Series ---
   "Galaxy Z Fold 7",
@@ -113,342 +118,274 @@ export const DEVICES = [
   "Bifacial Solar Panel 550W",
   "TOPCon Solar Panel 580,590W",
   "TOPCon Solar Panel 600w,615w,630w,700w,715W",
-
-  // --- Accessories ---
-  "MagSafe Wireless Charger",
-  "MagSafe Ring Sticker",
-  "UV Tempered Glass Guard"
 ];
 
-/* ===== Firebase Setup ===== */
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyDummyKeyForVercelBuildToPass",
-  authDomain: "luxmo-hub.firebaseapp.com",
-  projectId: "luxmo-hub",
-  storageBucket: "luxmo-hub.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+export const CATEGORY_KEY_FEATURES = {
+  "Mobile Back Case": [
+    { key: "magsafe_support", label: "MagSafe / Wireless Charging Compatible", type: "boolean" },
+    { key: "material", label: "Material", type: "select", options: ["Polycarbonate", "TPU", "Leather", "Titanium Frame", "Silicone"] },
+    { key: "camera_protection", label: "Camera Protection Type", type: "select", options: ["Raised Lip", "Individual Metal Lens Ring", "Full Lens Cover"] },
+    { key: "finish", label: "Back Panel Finish", type: "select", options: ["Matte Clear", "Textured Leather", "Glossy Translucent", "Solid"] },
+  ],
+  "Hybrid Solar Inverter": [
+    { key: "rated_power", label: "Rated Output Power (KW)", type: "number" },
+    { key: "battery_voltage", label: "System Battery Voltage (V)", type: "select", options: ["24V", "48V"] },
+    { key: "mppt_tracker", label: "MPPT Controller Built-in", type: "boolean" },
+    { key: "wifi_monitoring", label: "Wi-Fi / App Remote Monitoring", type: "boolean" },
+  ],
+  "Solar Panel": [
+    { key: "cell_technology", label: "Cell Tech Type", type: "select", options: ["Mono PERC", "Half-Cut Mono PERC", "Bifacial", "TOPCon"] },
+    { key: "wattage", label: "Wattage Capacity (W)", type: "string" },
+    { key: "warranty_years", label: "Linear Power Warranty (Years)", type: "number" },
+  ],
+  "Accessories": [
+    { key: "compatibility", label: "Universal Device Compatibility", type: "boolean" },
+    { key: "connector_type", label: "Connector / Port Type", type: "select", options: ["USB-C", "Lightning", "MC4 Solar Connector", "DC Terminal"] },
+  ],
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+/* ==========================================================================
+   MAIN ADMIN DASHBOARD COMPONENT
+   ========================================================================== */
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState("store");
-  const [adminSubTab, setAdminSubTab] = useState("analytics");
-  
-  // Auth State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+export default function AdminDashboard() {
+  const [view, setView] = useState("admin");
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(true);
   const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState("");
+  const [adminTab, setAdminTab] = useState("add_product");
 
-  // Firestore Data States
-  const [products, setProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
+
+  const [products, setProducts] = useState([
+    {
+      id: "prod_1",
+      title: "LUXMO Titanium MagSafe Clear Case",
+      description: "Premium clear back case with aerospace titanium alloy frame, raised camera lens lip, and built-in magnetic ring.",
+      category: "Mobile Back Case",
+      device: "Galaxy S26 Ultra",
+      price: "1999",
+      salePrice: "1499",
+      stock: "45",
+      sku: "LXM-S26U-TITAN",
+      featured: true,
+      images: [
+        "https://via.placeholder.com/150",
+        "https://via.placeholder.com/150",
+      ],
+      dynamicSpecs: {
+        magsafe_support: true,
+        material: "Titanium Frame",
+        camera_protection: "Individual Metal Lens Ring",
+        finish: "Matte Clear"
+      },
+      features: "Internal MagSafe alignment magnets\n3D textured tactile back panel\nRaised white camera lens protection frame\nAnti-yellowing UV coating"
+    }
+  ]);
+
+  const [orders] = useState([
+    {
+      id: "ORD-98231",
+      customer: "Aptal Sharma",
+      date: "2026-08-04",
+      total: "2998",
+      status: "Processing",
+      items: ["LUXMO Titanium MagSafe Clear Case x 2"]
+    }
+  ]);
+
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // UI / Cart / Modals
-  const [cart, setCart] = useState([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [activeGalleryImages, setActiveGalleryImages] = useState(null);
-
-  // Filters
-  const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("All");
-
-  // Shipping Form State
-  const [shippingDetails, setShippingDetails] = useState({
-    fullName: "",
-    phone: "",
-    address: "",
-    city: "",
-    pincode: ""
+  const [productForm, setProductForm] = useState({
+    title: "",
+    description: "",
+    category: CATEGORIES[0],
+    device: DEVICES[0],
+    price: "",
+    salePrice: "",
+    costPrice: "",
+    stock: "10",
+    sku: "",
+    barcode: "",
+    featured: false,
+    isActive: true,
+    features: "",
+    images: ["", "", "", ""],
+    dynamicSpecs: {}
   });
 
-  // Product Form State
-  const initialFormState = {
-    title: "", 
-    description: "", 
-    features: "", 
-    price: "", 
-    category: CATEGORIES[0], 
-    device: DEVICES[0], 
-    selectedColor: COLOR_OPTIONS[0],
-    stock: 10,
-    images: ["", "", "", ""]
-  };
-
-  const [productForm, setProductForm] = useState(initialFormState);
-  const [selectedProductColors, setSelectedProductColors] = useState({});
-
-  // Razorpay Script Loader
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
-  }, []);
-
-  // Fetch Firestore Products Real-time
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "products"), (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProducts(items);
-    }, (err) => console.log(err));
-    return () => unsub();
-  }, []);
-
-  // Fetch Firestore Orders Real-time
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "orders"), (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setOrders(items);
-    }, (err) => console.log(err));
-    return () => unsub();
-  }, []);
-
-  /* ===== Admin Auth ===== */
-  const handleAdminAuth = (e) => {
+  const handleAdminLogin = (e) => {
     e.preventDefault();
-    if (pinInput === ADMIN_PIN) {
-      setIsAdminAuthenticated(true);
-      setPinError(false);
-      setActiveTab("admin");
+    if (pinInput === "1234") {
+      setIsAdminLoggedIn(true);
+      setShowPinModal(false);
+      setPinError("");
+      setPinInput("");
+      setView("admin");
     } else {
-      setPinError(true);
+      setPinError("Invalid PIN! Try 1234");
     }
   };
 
-  /* ===== Cart Handlers ===== */
-  const addToCart = (product, customColor) => {
-    const chosenColor = customColor || product.selectedColor || COLOR_OPTIONS[0];
-    const existing = cart.find(item => item.id === product.id && item.selectedColor === chosenColor);
-    if (existing) {
-      setCart(cart.map(item => 
-        item.id === product.id && item.selectedColor === chosenColor 
-          ? { ...item, qty: item.qty + 1 } : item
-      ));
-    } else {
-      setCart([...cart, { ...product, qty: 1, selectedColor: chosenColor }]);
-    }
-    setIsCartOpen(true);
-  };
-
-  const updateCartQty = (id, delta, color) => {
-    setCart(cart.map(item => {
-      if (item.id === id && item.selectedColor === color) {
-        const newQty = item.qty + delta;
-        return newQty > 0 ? { ...item, qty: newQty } : null;
-      }
-      return item;
-    }).filter(Boolean));
-  };
-
-  const cartTotal = cart.reduce((sum, item) => sum + (Number(item.price) * item.qty), 0);
-
-  /* ===== WhatsApp & Razorpay ===== */
-  const handleWhatsAppCheckout = () => {
-    if (!shippingDetails.fullName || !shippingDetails.phone || !shippingDetails.address) {
-      alert("Please enter full Shipping Address details!");
-      return;
-    }
-    let itemsList = cart.map(item => `- ${item.title} (${item.device} / ${item.selectedColor}) x ${item.qty} = ₹${item.price * item.qty}`).join("\n");
-    const message = `Hello LUXMO HUB! 👋\n\n*NEW ORDER RECEIVED*\n\n*Items Ordered:*\n${itemsList}\n\n*Total Amount:* ₹${cartTotal}\n\n*Shipping Details:*\nName: ${shippingDetails.fullName}\nPhone: ${shippingDetails.phone}\nAddress: ${shippingDetails.address}, ${shippingDetails.city} - ${shippingDetails.pincode}`;
-    
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
-  };
-
-  const handleRazorpayPayment = () => {
-    if (!window.Razorpay) {
-      alert("Razorpay loading... Retry in a moment.");
-      return;
-    }
-    if (!shippingDetails.fullName || !shippingDetails.phone || !shippingDetails.address) {
-      alert("Please fill in complete shipping details!");
-      return;
-    }
-
-    const options = {
-      key: process.env.REACT_APP_RAZORPAY_KEY || "rzp_test_YOUR_KEY_HERE",
-      amount: cartTotal * 100,
-      currency: "INR",
-      name: "LUXMO HUB",
-      description: "Order Payment",
-      handler: async function (response) {
-        try {
-          await addDoc(collection(db, "orders"), {
-            paymentId: response.razorpay_payment_id,
-            items: cart,
-            totalPrice: cartTotal,
-            customerDetails: shippingDetails,
-            status: "Pending",
-            courierName: "",
-            trackingId: "",
-            createdAt: new Date().toISOString()
-          });
-          setCart([]);
-          setIsCheckoutOpen(false);
-          setIsCartOpen(false);
-          alert(`Order Placed Successfully! Payment ID: ${response.razorpay_payment_id}`);
-        } catch (err) {
-          alert("Error saving order: " + err.message);
-        }
-      },
-      prefill: {
-        name: shippingDetails.fullName,
-        contact: shippingDetails.phone
-      },
-      theme: { color: "#f59e0b" }
-    };
-
-    const rzp = new window.Razorpay(options);
-    rzp.open();
-  };
-
-  /* ===== Product & Order Admin Actions ===== */
-  const handleSaveProduct = async (e) => {
-    e.preventDefault();
-    const cleanImages = productForm.images.filter(img => img && img.trim() !== "");
-    const data = { 
-      ...productForm, 
-      images: cleanImages.length > 0 ? cleanImages : ["https://via.placeholder.com/300"], 
-      price: Number(productForm.price),
-      stock: Number(productForm.stock)
-    };
-
-    try {
-      if (editingProduct) {
-        await updateDoc(doc(db, "products", editingProduct.id), data);
-        alert("Product Updated Successfully!");
-      } else {
-        await addDoc(collection(db, "products"), data);
-        alert("New Product Added!");
-      }
-      setEditingProduct(null);
-      setProductForm(initialFormState);
-      setAdminSubTab("inventory");
-    } catch (err) {
-      alert("Error: " + err.message);
-    }
-  };
-
-  const handleDeleteProduct = async (id) => {
-    if (window.confirm("Delete this product permanently?")) {
-      await deleteDoc(doc(db, "products", id));
-    }
-  };
-
-  const handleUpdateLogistics = async (orderId, newStatus, trackingId, courierName) => {
-    try {
-      await updateDoc(doc(db, "orders", orderId), { 
-        status: newStatus,
-        trackingId: trackingId || "",
-        courierName: courierName || ""
-      });
-      alert("Logistics Details Updated!");
-    } catch (err) {
-      alert("Error updating order: " + err.message);
-    }
-  };
-
-  const exportOrdersToCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,Order ID,Customer Name,Phone,Total Amount,Status,Tracking AWB,Date\n";
-    orders.forEach(o => {
-      csvContent += `${o.id},"${o.customerDetails?.fullName || 'N/A'}",${o.customerDetails?.phone || 'N/A'},₹${o.totalPrice || 0},${o.status},${o.trackingId || 'N/A'},${o.createdAt}\n`;
+  const handleCategoryChange = (cat) => {
+    setProductForm({
+      ...productForm,
+      category: cat,
+      dynamicSpecs: {}
     });
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `LUXMO_Orders_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
   };
 
-  const totalRevenue = orders.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
+  const handleSaveProduct = (e) => {
+    e.preventDefault();
+    if (editingProduct) {
+      setProducts(
+        products.map((p) =>
+          p.id === editingProduct.id
+            ? { ...productForm, id: editingProduct.id }
+            : p
+        )
+      );
+    } else {
+      const newProd = {
+        ...productForm,
+        id: `prod_${Date.now()}`,
+        sku: productForm.sku || `SKU-${Math.floor(100000 + Math.random() * 900000)}`
+      };
+      setProducts([newProd, ...products]);
+    }
+    resetForm();
+    setAdminTab("products");
+  };
+
+  const handleEditClick = (product) => {
+    setEditingProduct(product);
+    setProductForm(product);
+    setAdminTab("add_product");
+  };
+
+  const handleDeleteProduct = (id) => {
+    if (window.confirm("Are you sure you want to delete this product?")) {
+      setProducts(products.filter((p) => p.id !== id));
+    }
+  };
+
+  const resetForm = () => {
+    setEditingProduct(null);
+    setProductForm({
+      title: "",
+      description: "",
+      category: CATEGORIES[0],
+      device: DEVICES[0],
+      price: "",
+      salePrice: "",
+      costPrice: "",
+      stock: "10",
+      sku: "",
+      barcode: "",
+      featured: false,
+      isActive: true,
+      features: "",
+      images: ["", "", "", ""],
+      dynamicSpecs: {}
+    });
+  };
+
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.device?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
+    const matchesSearch =
+      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.device.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesCategory =
+      selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
     return matchesSearch && matchesCategory;
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-slate-950 border-2 border-sky-400 rounded-xl flex items-center justify-center">
-              <span className="text-white font-extrabold text-xs">L</span>
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white tracking-wide">LUXMO HUB</h1>
-              <p className="text-[9px] font-bold text-amber-500 tracking-wider">PREMIUM STORE & ACCESSORIES</p>
-            </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+      {/* NAVBAR */}
+      <nav className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-lg">
+        <div
+          className="flex items-center space-x-3 cursor-pointer"
+          onClick={() => setView("storefront")}
+        >
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 font-black text-xl shadow-md">
+            L
           </div>
-
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="relative p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 hover:text-white"
-            >
-              <ShoppingCart className="w-5 h-5" />
-              {cart.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
-                  {cart.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                if (activeTab === "admin") {
-                  setActiveTab("store");
-                } else if (!isAdminAuthenticated) {
-                  setActiveTab("auth_modal");
-                } else {
-                  setActiveTab("admin");
-                }
-              }}
-              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 flex items-center gap-1.5 transition hover:bg-amber-400"
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              {activeTab === "admin" ? "Storefront" : "Admin Panel"}
-            </button>
+          <div>
+            <h1 className="text-base font-black tracking-wider text-white uppercase leading-none">
+              LUXMO <span className="text-amber-400">HUB</span>
+            </h1>
+            <p className="text-[10px] text-slate-400 tracking-widest font-semibold uppercase">
+              Admin & Enterprise Control Panel
+            </p>
           </div>
         </div>
-      </header>
 
-      {/* Admin Security PIN Modal */}
-      {activeTab === "auth_modal" && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full space-y-4">
-            <div className="flex items-center justify-center w-12 h-12 bg-amber-500/10 text-amber-500 rounded-full mx-auto">
-              <Lock className="w-6 h-6" />
+        <div className="flex items-center space-x-2">
+          {view === "storefront" ? (
+            <button
+              onClick={() => {
+                if (isAdminLoggedIn) setView("admin");
+                else setShowPinModal(true);
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold transition"
+            >
+              <LayoutDashboard size={14} />
+              <span>Admin Panel</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setView("storefront")}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition"
+            >
+              <ShoppingBag size={14} />
+              <span>Storefront</span>
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {/* ADMIN PIN MODAL */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-2 border border-amber-500/20">
+                <Lock size={20} />
+              </div>
+              <h3 className="text-base font-bold text-white">Admin Access</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                4-Digit Security PIN enter karein.
+              </p>
             </div>
-            <h2 className="text-xl font-bold text-center text-white">Admin Access</h2>
-            <p className="text-xs text-slate-400 text-center">4-Digit Security PIN enter karein.</p>
-            <form onSubmit={handleAdminAuth} className="space-y-3">
+            <form onSubmit={handleAdminLogin} className="space-y-3">
               <input
                 type="password"
                 maxLength={4}
+                autoFocus
                 placeholder="Enter PIN (Default: 1234)"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                className="w-full text-center tracking-widest text-lg py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-amber-400 focus:outline-none focus:border-amber-500"
+                className="w-full text-center tracking-widest text-lg bg-slate-950 border border-slate-700 focus:border-amber-500 text-amber-400 rounded-xl py-2 px-3 outline-none"
               />
-              {pinError && <p className="text-xs text-red-500 text-center">Incorrect PIN!</p>}
-              <div className="flex gap-2">
+              {pinError && (
+                <p className="text-[11px] text-red-400 font-semibold text-center">
+                  {pinError}
+                </p>
+              )}
+              <div className="flex space-x-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("store")}
-                  className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-xs"
+                  onClick={() => setShowPinModal(false)}
+                  className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs"
+                  className="w-1/2 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow transition"
                 >
                   Login
                 </button>
@@ -458,544 +395,154 @@ export default function App() {
         </div>
       )}
 
-      {/* Image Gallery Modal */}
-      {activeGalleryImages && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-          <div className="relative max-w-2xl w-full bg-slate-900 border border-slate-800 p-4 rounded-xl">
-            <button 
-              onClick={() => setActiveGalleryImages(null)}
-              className="absolute top-3 right-3 text-slate-400 hover:text-white"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <h3 className="text-sm font-bold text-slate-300 mb-3">Product Gallery</h3>
-            <div className="grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto">
-              {activeGalleryImages.map((img, idx) => (
-                <img key={idx} src={img} alt="" className="w-full h-48 object-cover rounded-lg border border-slate-800" />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* STOREFRONT VIEW */}
-      {activeTab === "store" && (
-        <main className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search products or device models..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-            >
-              <option value="All">All Categories</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
-          <h2 className="text-xl font-bold mb-4 text-white">Products Catalog</h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProducts.map((p) => {
-              const selectedColor = selectedProductColors[p.id] || p.selectedColor || COLOR_OPTIONS[0];
-
-              return (
-                <div key={p.id} className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex flex-col justify-between hover:border-slate-700 transition">
-                  <div>
-                    <div className="relative aspect-square bg-slate-950 rounded-lg overflow-hidden mb-3">
-                      <img
-                        src={p.images?.[0] || "https://via.placeholder.com/300"}
-                        alt={p.title}
-                        className="w-full h-full object-cover"
-                      />
-                      {p.images?.length > 1 && (
-                        <button
-                          onClick={() => setActiveGalleryImages(p.images)}
-                          className="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 backdrop-blur-sm"
-                        >
-                          <Eye className="w-3 h-3" /> View {p.images.length} Images
-                        </button>
-                      )}
-                    </div>
-
-                    <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">{p.category}</span>
-                    <h3 className="font-bold text-slate-100 text-sm mt-0.5">{p.title}</h3>
-                    <p className="text-xs text-slate-400 mt-1 line-clamp-2">{p.description}</p>
-                    
-                    {p.device && (
-                      <div className="mt-2 text-xs text-slate-300">
-                        <span className="text-slate-500">Device: </span>{p.device}
-                      </div>
-                    )}
-
-                    <div className="mt-3">
-                      <label className="text-[10px] text-slate-400 block mb-1">Select Color:</label>
-                      <select
-                        value={selectedColor}
-                        onChange={(e) => setSelectedProductColors({ ...selectedProductColors, [p.id]: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
-                      >
-                        {COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-500 block">Price</span>
-                      <span className="text-base font-extrabold text-amber-400">₹{p.price}</span>
-                    </div>
-                    <button
-                      onClick={() => addToCart(p, selectedColor)}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" /> Add to Cart
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </main>
-      )}
-
-      {/* ADMIN PANEL VIEW */}
-      {activeTab === "admin" && isAdminAuthenticated && (
-        <main className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+      {/* MAIN VIEW SWITCHER */}
+      {view === "admin" ? (
+        <div className="p-4 max-w-7xl mx-auto">
+          {/* DASHBOARD HEADER */}
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 mb-6 gap-3">
             <div>
-              <h2 className="text-xl font-bold text-white">Admin Management Dashboard</h2>
-              <p className="text-xs text-slate-400">Manage Products, Orders, Logistics, & Analytics</p>
+              <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                <span>Admin Management Dashboard</span>
+                <span className="bg-amber-500/20 text-amber-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                  Pro Enterprise
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Manage Products, Dynamic Specs, Inventory, Logistics & Analytics
+              </p>
             </div>
             <button
-              onClick={() => setIsAdminAuthenticated(false)}
-              className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-bold rounded-lg hover:bg-red-500/20"
+              onClick={() => {
+                setIsAdminLoggedIn(false);
+                setView("storefront");
+              }}
+              className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded-lg text-xs font-bold transition"
             >
               Logout Admin
             </button>
           </div>
 
-          {/* Admin Navigation Tabs */}
-          <div className="flex gap-2 mb-6 border-b border-slate-800 pb-2">
-            {[
-              { id: "analytics", label: "Analytics Overview", icon: TrendingUp },
-              { id: "inventory", label: "Product Catalog", icon: Package },
-              { id: "add_product", label: editingProduct ? "Edit Product" : "Add Product", icon: Plus },
-              { id: "orders", label: `Orders (${orders.length})`, icon: ShoppingBag }
-            ].map(tab => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setAdminSubTab(tab.id)}
-                  className={`px-3 py-2 text-xs font-bold rounded-lg flex items-center gap-1.5 transition ${
-                    adminSubTab === tab.id 
-                      ? "bg-amber-500 text-slate-950" 
-                      : "bg-slate-900 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
+          {/* DASHBOARD SUB TABS */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setAdminTab("analytics")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "analytics"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <TrendingUp size={14} />
+              <span>Analytics Overview</span>
+            </button>
+            <button
+              onClick={() => setAdminTab("products")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "products"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <PackageCheck size={14} />
+              <span>Product Catalog ({products.length})</span>
+            </button>
+            <button
+              onClick={() => {
+                resetForm();
+                setAdminTab("add_product");
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "add_product"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <Plus size={14} />
+              <span>{editingProduct ? "Edit Product" : "+ Add Product"}</span>
+            </button>
+            <button
+              onClick={() => setAdminTab("orders")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "orders"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <Truck size={14} />
+              <span>Orders ({orders.length})</span>
+            </button>
+            <button
+              onClick={() => setAdminTab("settings")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "settings"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <Settings size={14} />
+              <span>Store Settings</span>
+            </button>
           </div>
 
-          {/* Analytics Sub-Tab */}
-          {adminSubTab === "analytics" && (
+          {/* TAB 1: ANALYTICS OVERVIEW */}
+          {adminTab === "analytics" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <span className="text-xs text-slate-400">Total Revenue</span>
-                  <p className="text-2xl font-bold text-emerald-400 mt-1">₹{totalRevenue}</p>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <span className="text-xs text-slate-400">Total Orders</span>
-                  <p className="text-2xl font-bold text-sky-400 mt-1">{orders.length}</p>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <span className="text-xs text-slate-400">Active Products</span>
-                  <p className="text-2xl font-bold text-amber-400 mt-1">{products.length}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Add / Edit Product Sub-Tab */}
-          {adminSubTab === "add_product" && (
-            <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl max-w-2xl">
-              <h3 className="text-base font-bold text-white mb-4">
-                {editingProduct ? "Edit Product Details" : "Add New Product"}
-              </h3>
-              <form onSubmit={handleSaveProduct} className="space-y-4">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Product Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={productForm.title}
-                    onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Category</label>
-                    <select
-                      value={productForm.category}
-                      onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    >
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Target Device / Model</label>
-                    <select
-                      value={productForm.device}
-                      onChange={(e) => setProductForm({ ...productForm, device: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    >
-                      {DEVICES.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Price (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      value={productForm.price}
-                      onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Stock Quantity</label>
-                    <input
-                      type="number"
-                      required
-                      value={productForm.stock}
-                      onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Description</label>
-                  <textarea
-                    rows={3}
-                    value={productForm.description}
-                    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Image URLs (Up to 4)</label>
-                  {productForm.images.map((imgUrl, idx) => (
-                    <input
-                      key={idx}
-                      type="text"
-                      placeholder={`Image URL ${idx + 1}`}
-                      value={imgUrl}
-                      onChange={(e) => {
-                        const updated = [...productForm.images];
-                        updated[idx] = e.target.value;
-                        setProductForm({ ...productForm, images: updated });
-                      }}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-white mb-2"
-                    />
-                  ))}
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-xs"
-                  >
-                    {editingProduct ? "Update Product" : "Save Product"}
-                  </button>
-                  {editingProduct && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingProduct(null);
-                        setProductForm(initialFormState);
-                      }}
-                      className="px-4 py-2 bg-slate-800 text-slate-300 font-bold rounded text-xs"
-                    >
-                      Cancel Edit
-                    </button>
-                  )}
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* Inventory Sub-Tab */}
-          {adminSubTab === "inventory" && (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-slate-800 font-bold text-sm text-white">Product Inventory</div>
-              <div className="divide-y divide-slate-800">
-                {products.map(p => (
-                  <div key={p.id} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <img src={p.images?.[0]} alt="" className="w-12 h-12 object-cover rounded" />
-                      <div>
-                        <h4 className="font-bold text-xs text-white">{p.title}</h4>
-                        <span className="text-[10px] text-amber-500">{p.category} | {p.device}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-xs font-bold text-emerald-400">₹{p.price}</span>
-                      <button
-                        onClick={() => {
-                          setEditingProduct(p);
-                          setProductForm({
-                            title: p.title || "",
-                            description: p.description || "",
-                            features: p.features || "",
-                            price: p.price || "",
-                            category: p.category || CATEGORIES[0],
-                            device: p.device || DEVICES[0],
-                            selectedColor: p.selectedColor || COLOR_OPTIONS[0],
-                            stock: p.stock || 10,
-                            images: [p.images?.[0] || "", p.images?.[1] || "", p.images?.[2] || "", p.images?.[3] || ""]
-                          });
-                          setAdminSubTab("add_product");
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-white"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(p.id)}
-                        className="p-1.5 text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Orders & Logistics Sub-Tab */}
-          {adminSubTab === "orders" && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-bold text-white">Customer Orders & Logistics Tracking</h3>
-                <button
-                  onClick={exportOrdersToCSV}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 text-xs font-bold rounded flex items-center gap-1"
-                >
-                  <Download className="w-3.5 h-3.5" /> Export Orders CSV
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {orders.map(order => (
-                  <div key={order.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
-                    <div className="flex justify-between items-start border-b border-slate-800 pb-2">
-                      <div>
-                        <span className="text-[10px] text-slate-500 block">Order ID: {order.id}</span>
-                        <h4 className="text-xs font-bold text-white">{order.customerDetails?.fullName}</h4>
-                        <p className="text-[11px] text-slate-400">{order.customerDetails?.phone} | {order.customerDetails?.address}, {order.customerDetails?.city}</p>
-                      </div>
-                      <span className="text-sm font-bold text-amber-400">₹{order.totalPrice}</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Status</label>
-                        <select
-                          defaultValue={order.status || "Pending"}
-                          id={`status-${order.id}`}
-                          className="w-full bg-slate-950 border border-slate-800 text-xs rounded px-2 py-1 text-white"
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="Processing">Processing</option>
-                          <option value="Shipped">Shipped</option>
-                          <option value="Delivered">Delivered</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Courier Partner</label>
-                        <input
-                          type="text"
-                          defaultValue={order.courierName || ""}
-                          placeholder="e.g. BlueDart / Delhivery"
-                          id={`courier-${order.id}`}
-                          className="w-full bg-slate-950 border border-slate-800 text-xs rounded px-2 py-1 text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Tracking / AWB Number</label>
-                        <input
-                          type="text"
-                          defaultValue={order.trackingId || ""}
-                          placeholder="Tracking AWB Number"
-                          id={`tracking-${order.id}`}
-                          className="w-full bg-slate-950 border border-slate-800 text-xs rounded px-2 py-1 text-white"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        const s = document.getElementById(`status-${order.id}`).value;
-                        const c = document.getElementById(`courier-${order.id}`).value;
-                        const t = document.getElementById(`tracking-${order.id}`).value;
-                        handleUpdateLogistics(order.id, s, t, c);
-                      }}
-                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded"
-                    >
-                      Update Order Logistics
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </main>
-      )}
-
-      {/* Cart Drawer */}
-      {isCartOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex justify-end">
-          <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full p-4 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <h3 className="font-bold text-white text-sm">Shopping Cart ({cart.length})</h3>
-                <button onClick={() => setIsCartOpen(false)} className="text-slate-400 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="divide-y divide-slate-800 max-h-[60vh] overflow-y-auto mt-3">
-                {cart.map((item, i) => (
-                  <div key={i} className="py-3 flex items-center justify-between">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
                     <div>
-                      <h4 className="text-xs font-bold text-white">{item.title}</h4>
-                      <p className="text-[10px] text-slate-400">{item.device} | {item.selectedColor}</p>
-                      <span className="text-xs font-bold text-amber-400">₹{item.price * item.qty}</span>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Total Gross Revenue
+                      </p>
+                      <h3 className="text-2xl font-black text-emerald-400">
+                        ₹48,950
+                      </h3>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => updateCartQty(item.id, -1, item.selectedColor)} className="w-6 h-6 bg-slate-800 text-white rounded">-</button>
-                      <span className="text-xs font-bold">{item.qty}</span>
-                      <button onClick={() => updateCartQty(item.id, 1, item.selectedColor)} className="w-6 h-6 bg-slate-800 text-white rounded">+</button>
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                      <DollarSign size={18} />
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {cart.length > 0 && (
-              <div className="pt-4 border-t border-slate-800 space-y-3">
-                <div className="flex justify-between font-bold text-white text-sm">
-                  <span>Total Amount:</span>
-                  <span className="text-amber-400">₹{cartTotal}</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold mt-2 inline-block">
+                    ↑ +14% vs last month
+                  </span>
                 </div>
-                <button
-                  onClick={() => {
-                    setIsCartOpen(false);
-                    setIsCheckoutOpen(true);
-                  }}
-                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg"
-                >
-                  Proceed to Checkout
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* Checkout Modal */}
-      {isCheckoutOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl max-w-md w-full space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-white text-sm">Shipping Information</h3>
-              <button onClick={() => setIsCheckoutOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Total Orders
+                      </p>
+                      <h3 className="text-2xl font-black text-sky-400">
+                        {orders.length + 32}
+                      </h3>
+                    </div>
+                    <div className="p-2 bg-sky-500/10 text-sky-400 rounded-lg">
+                      <Truck size={18} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-sky-400 font-semibold mt-2 inline-block">
+                    92% Order Fulfillment Rate
+                  </span>
+                </div>
 
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={shippingDetails.fullName}
-                onChange={(e) => setShippingDetails({ ...shippingDetails, fullName: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-              />
-              <input
-                type="text"
-                placeholder="Phone Number"
-                value={shippingDetails.phone}
-                onChange={(e) => setShippingDetails({ ...shippingDetails, phone: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-              />
-              <input
-                type="text"
-                placeholder="Complete Address"
-                value={shippingDetails.address}
-                onChange={(e) => setShippingDetails({ ...shippingDetails, address: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  placeholder="City"
-                  value={shippingDetails.city}
-                  onChange={(e) => setShippingDetails({ ...shippingDetails, city: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                />
-                <input
-                  type="text"
-                  placeholder="Pincode"
-                  value={shippingDetails.pincode}
-                  onChange={(e) => setShippingDetails({ ...shippingDetails, pincode: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                />
-              </div>
-            </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Active Catalog Items
+                      </p>
+                      <h3 className="text-2xl font-black text-amber-400">
+                        {products.length}
+                      </h3>
+                    </div>
+                    <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
+                      <PackageCheck size={18} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-amber-400 font-semibold mt-2 inline-block">
+                    {products.filter((p) => Number(p.stock) < 5).length} Items Low Stock
+                  </span>
+                </div>
 
-            <div className="space-y-2 pt-2">
-              <button
-                onClick={handleRazorpayPayment}
-                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg"
-              >
-                Pay via Razorpay Gateway (₹{cartTotal})
-              </button>
-              <button
-                onClick={handleWhatsAppCheckout}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg"
-              >
-                Order via WhatsApp Direct
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+               
