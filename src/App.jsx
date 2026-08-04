@@ -284,4 +284,257 @@ export default function AdminDashboard() {
       selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
     return matchesSearch && matchesCategory;
   });
-                                  
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+      <nav className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-lg">
+        <div
+          className="flex items-center space-x-3 cursor-pointer"
+          onClick={() => setView("storefront")}
+        >
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 font-black text-xl shadow-md">
+            L
+          </div>
+          <div>
+            <h1 className="text-base font-black tracking-wider text-white uppercase leading-none">
+              LUXMO <span className="text-amber-400">HUB</span>
+            </h1>
+            <p className="text-[10px] text-slate-400 tracking-widest font-semibold uppercase">
+              Admin & Enterprise Control Panel
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {view === "storefront" ? (
+            <button
+              onClick={() => {
+                if (isAdminLoggedIn) setView("admin");
+                else setShowPinModal(true);
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold transition"
+            >
+              <LayoutDashboard size={14} />
+              <span>Admin Panel</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setView("storefront")}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition"
+            >
+              <ShoppingBag size={14} />
+              <span>Storefront</span>
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-2 border border-amber-500/20">
+                <Lock size={20} />
+              </div>
+              <h3 className="text-base font-bold text-white">Admin Access</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                4-Digit Security PIN enter karein.
+              </p>
+            </div>
+            <form onSubmit={handleAdminLogin} className="space-y-3">
+              <input
+                type="password"
+                maxLength={4}
+                autoFocus
+                placeholder="Enter PIN (Default: 1234)"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className="w-full text-center tracking-widest text-lg bg-slate-950 border border-slate-700 focus:border-amber-500 text-amber-400 rounded-xl py-2 px-3 outline-none"
+              />
+              {pinError && (
+                <p className="text-[11px] text-red-400 font-semibold text-center">
+                  {pinError}
+                </p>
+              )}
+              <div className="flex space-x-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowPinModal(false)}
+                  className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow transition"
+                >
+                  Login
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {view === "admin" ? (
+        <div className="p-4 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 mb-6 gap-3">
+            <div>
+              <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                <span>Admin Management Dashboard</span>
+                <span className="bg-amber-500/20 text-amber-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                  Pro Enterprise
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Manage Products, Dynamic Specs, Inventory, Logistics & Analytics
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setIsAdminLoggedIn(false);
+                setView("storefront");
+              }}
+              className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded-lg text-xs font-bold transition"
+            >
+              Logout Admin
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setAdminTab("analytics")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "analytics"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <TrendingUp size={14} />
+              <span>Analytics Overview</span>
+            </button>
+            <button
+              onClick={() => setAdminTab("products")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "products"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <PackageCheck size={14} />
+              <span>Product Catalog ({products.length})</span>
+            </button>
+            <button
+              onClick={() => {
+                resetForm();
+                setAdminTab("add_product");
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "add_product"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <Plus size={14} />
+              <span>{editingProduct ? "Edit Product" : "+ Add Product"}</span>
+            </button>
+            <button
+              onClick={() => setAdminTab("orders")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "orders"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <Truck size={14} />
+              <span>Orders ({orders.length})</span>
+            </button>
+            <button
+              onClick={() => setAdminTab("settings")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
+                adminTab === "settings"
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <Settings size={14} />
+              <span>Store Settings</span>
+            </button>
+          </div>
+
+          {adminTab === "analytics" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Total Gross Revenue
+                      </p>
+                      <h3 className="text-2xl font-black text-emerald-400">
+                        ₹48,950
+                      </h3>
+                    </div>
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                      <DollarSign size={18} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-semibold mt-2 inline-block">
+                    ↑ +14% vs last month
+                  </span>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Total Orders
+                      </p>
+                      <h3 className="text-2xl font-black text-sky-400">
+                        {orders.length + 32}
+                      </h3>
+                    </div>
+                    <div className="p-2 bg-sky-500/10 text-sky-400 rounded-lg">
+                      <Truck size={18} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-sky-400 font-semibold mt-2 inline-block">
+                    92% Order Fulfillment Rate
+                  </span>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Active Catalog Items
+                      </p>
+                      <h3 className="text-2xl font-black text-amber-400">
+                        {products.length}
+                      </h3>
+                    </div>
+                    <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
+                      <PackageCheck size={18} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-amber-400 font-semibold mt-2 inline-block">
+                    {products.filter((p) => Number(p.stock) < 5).length} Items Low Stock
+                  </span>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-slate-400 font-semibold mb-1">
+                        Total Customers
+                      </p>
+                      <h3 className="text-2xl font-black text-purple-400">
+                        128
+                      </h3>
+                    </div>
+                    <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
+                      <Users size={18} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-purple-400 font-semibold mt-2 inline-block">
+       
