@@ -6,17 +6,18 @@ export default defineConfig({
 
   server: {
     host: true,
-    port: 5173
+    port: 5173,
+    open: true,
   },
 
   preview: {
     host: true,
-    port: 4173
+    port: 4173,
   },
 
   build: {
     outDir: "dist",
     sourcemap: false,
-    chunkSizeWarningLimit: 1000
-  }
+    chunkSizeWarningLimit: 1000,
+  },
 });
