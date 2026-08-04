@@ -17,7 +17,17 @@ import {
   Layers,
   Smartphone,
   Cpu,
-  Tag
+  Tag,
+  FileText,
+  BarChart2,
+  ShieldCheck,
+  Database,
+  ArrowUpRight,
+  CheckCircle2,
+  AlertTriangle,
+  FileSpreadsheet,
+  Globe,
+  Percent
 } from "lucide-react";
 
 export const CATEGORIES = [
@@ -28,82 +38,12 @@ export const CATEGORIES = [
 ];
 
 export const DEVICES = [
-  "Galaxy Z Fold 7",
-  "Galaxy Z Fold 6",
-  "Galaxy Z Fold 5",
-  "Galaxy Z Fold 4",
-  "Galaxy Z Fold 3",
-  "Galaxy Z Fold 2",
-  "Galaxy Fold",
+  "Galaxy S26 Ultra",
   "iPhone 17 Pro Max",
   "iPhone 17 Pro",
-  "iPhone 17 Plus",
-  "iPhone 17",
-  "iPhone 16 Pro Max",
-  "iPhone 16 Pro",
-  "iPhone 16 Plus",
-  "iPhone 16",
-  "iPhone 15 Pro Max",
-  "iPhone 15 Pro",
-  "iPhone 15 Plus",
-  "iPhone 15",
-  "iPhone 14 Pro Max",
-  "iPhone 14 Pro",
-  "iPhone 14 Plus",
-  "iPhone 14",
-  "iPhone 13 Pro Max",
-  "iPhone 13 Pro",
-  "iPhone 13 Mini",
-  "iPhone 13",
-  "iPhone 12 Pro Max",
-  "iPhone 12 Pro",
-  "iPhone 12 Mini",
-  "iPhone 12",
-  "iPhone 11 Pro Max",
-  "iPhone 11 Pro",
-  "iPhone 11",
-  "Galaxy S26 Ultra",
-  "Galaxy S26 Plus",
-  "Galaxy S26 FE",
-  "Galaxy S26",
-  "Galaxy S25 Ultra",
-  "Galaxy S25 Plus",
-  "Galaxy S25 FE",
-  "Galaxy S25",
-  "Galaxy S24 Ultra",
-  "Galaxy S24 Plus",
-  "Galaxy S24 FE",
-  "Galaxy S24",
-  "Galaxy S23 Ultra",
-  "Galaxy S23 Plus",
-  "Galaxy S23 FE",
-  "Galaxy S23",
-  "Galaxy S22 Ultra",
-  "Galaxy S22 Plus",
-  "Galaxy S22 FE",
-  "Galaxy S22",
-  "Hybrid Solar Inverter 3KW 24V",
-  "Hybrid Solar Inverter 3.5KW 24V",
-  "Hybrid Solar Inverter 5KW 24V",
+  "Galaxy Z Fold 7",
   "Hybrid Solar Inverter 5KW 48V",
-  "Hybrid Solar Inverter 5.5KW 24V",
-  "Hybrid Solar Inverter 5.5KW 48V",
-  "Hybrid Solar Inverter 6KW 48V",
-  "Hybrid Solar Inverter 6.2KW 48V",
-  "Hybrid Solar Inverter 6.5KW 48V",
-  "Hybrid Solar Inverter 8KW 48V",
-  "Hybrid Solar Inverter 8.5KW 48V",
-  "Hybrid Solar Inverter 10KW 48V",
-  "Hybrid Solar Inverter 10.5KW 48V",
-  "Hybrid Solar Inverter 11KW 48V",
-  "Hybrid Solar Inverter 11.5KW 48V",
-  "Hybrid Solar Inverter 12KW 48V",
-  "Hybrid Solar Inverter 12.5KW 48V",
   "Mono PERC Solar Panel 330W",
-  "Mono PERC Solar Panel 440W",
-  "Half-Cut Mono PERC 540W",
-  "Bifacial Solar Panel 550W",
-  "TOPCon Solar Panel 580,590W",
   "TOPCon Solar Panel 600w,615w,630w,700w,715W",
 ];
 
@@ -132,55 +72,92 @@ export const CATEGORY_KEY_FEATURES = {
 };
 
 export default function AdminDashboard() {
-  const [view, setView] = useState("admin");
+  const [view, setView] = useState("admin"); // 'admin' or 'storefront'
   const [showPinModal, setShowPinModal] = useState(false);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(true);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
-  const [adminTab, setAdminTab] = useState("add_product");
+  
+  // Admin Tabs mapping to Enterprise Modules
+  const [adminTab, setAdminTab] = useState("analytics");
 
+  // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
 
+  // Enterprise State: Products Catalog
   const [products, setProducts] = useState([
     {
       id: "prod_1",
       title: "LUXMO Titanium MagSafe Clear Case",
-      description: "Premium clear back case with aerospace titanium alloy frame, raised camera lens lip, and built-in magnetic ring.",
+      description: "Premium clear back case with aerospace titanium alloy frame, white camera lens protection ring, and built-in magnetic ring.",
       category: "Mobile Back Case",
       device: "Galaxy S26 Ultra",
       price: "1999",
       salePrice: "1499",
+      costPrice: "800",
       stock: "45",
       sku: "LXM-S26U-TITAN",
+      status: "Published",
       featured: true,
-      images: [
-        "https://via.placeholder.com/150",
-        "https://via.placeholder.com/150",
-      ],
+      hsnCode: "392690",
+      gstRate: "18",
+      images: ["https://via.placeholder.com/150"],
       dynamicSpecs: {
         magsafe_support: true,
         material: "Titanium Frame",
         camera_protection: "Individual Metal Lens Ring",
         finish: "Matte Clear"
       },
-      features: "Internal MagSafe alignment magnets\n3D textured tactile back panel\nRaised white camera lens protection frame\nAnti-yellowing UV coating"
+      features: "Internal MagSafe alignment magnets\n3D textured tactile back panel\nRaised white camera lens protection frame"
+    },
+    {
+      id: "prod_2",
+      title: "LUXMO Hybrid Solar Inverter 5KW 48V MPPT",
+      description: "High-efficiency pure sine wave solar inverter with built-in Wi-Fi monitoring and dual MPPT tracker.",
+      category: "Hybrid Solar Inverter",
+      device: "Hybrid Solar Inverter 5KW 48V",
+      price: "65000",
+      salePrice: "58000",
+      costPrice: "45000",
+      stock: "3", // Low stock trigger
+      sku: "LXM-INV-5KW",
+      status: "Published",
+      featured: true,
+      hsnCode: "850440",
+      gstRate: "12",
+      images: ["https://via.placeholder.com/150"],
+      dynamicSpecs: {
+        rated_power: 5,
+        battery_voltage: "48V",
+        mppt_tracker: true,
+        wifi_monitoring: true
+      },
+      features: "Pure Sine Wave Output\nBuilt-in Wi-Fi App tracking\nOverload & Short Circuit protection"
     }
   ]);
 
-  const [orders] = useState([
+  // Enterprise State: Orders & Logistics
+  const [orders, setOrders] = useState([
     {
       id: "ORD-98231",
       customer: "Aptal Sharma",
       date: "2026-08-04",
-      total: "2998",
-      status: "Processing",
-      items: ["LUXMO Titanium MagSafe Clear Case x 2"]
+      total: "59498",
+      paymentStatus: "Paid (Razorpay)",
+      shippingStatus: "Dispatched",
+      items: ["LUXMO Hybrid Solar Inverter 5KW 48V x 1"]
     }
   ]);
 
-  const [editingProduct, setEditingProduct] = useState(null);
+  // Enterprise State: Customers
+  const [customers] = useState([
+    { id: "CUST-1", name: "Aptal Sharma", email: "aptal@example.com", phone: "+91 9876543210", orders: 3, totalSpent: "124,500" },
+    { id: "CUST-2", name: "Rahul Verma", email: "rahul@example.com", phone: "+91 9123456789", orders: 1, totalSpent: "1,499" }
+  ]);
 
+  // Product Form State
+  const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
     title: "",
     description: "",
@@ -189,13 +166,14 @@ export default function AdminDashboard() {
     price: "",
     salePrice: "",
     costPrice: "",
-    stock: "10",
+    stock: "15",
     sku: "",
-    barcode: "",
+    hsnCode: "392690",
+    gstRate: "18",
+    status: "Published",
     featured: false,
-    isActive: true,
     features: "",
-    images: ["", "", "", ""],
+    images: [""],
     dynamicSpecs: {}
   });
 
@@ -212,22 +190,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCategoryChange = (cat) => {
-    setProductForm({
-      ...productForm,
-      category: cat,
-      dynamicSpecs: {}
-    });
-  };
-
   const handleSaveProduct = (e) => {
     e.preventDefault();
     if (editingProduct) {
       setProducts(
         products.map((p) =>
-          p.id === editingProduct.id
-            ? { ...productForm, id: editingProduct.id }
-            : p
+          p.id === editingProduct.id ? { ...productForm, id: editingProduct.id } : p
         )
       );
     } else {
@@ -242,18 +210,6 @@ export default function AdminDashboard() {
     setAdminTab("products");
   };
 
-  const handleEditClick = (product) => {
-    setEditingProduct(product);
-    setProductForm(product);
-    setAdminTab("add_product");
-  };
-
-  const handleDeleteProduct = (id) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
-      setProducts(products.filter((p) => p.id !== id));
-    }
-  };
-
   const resetForm = () => {
     setEditingProduct(null);
     setProductForm({
@@ -264,13 +220,14 @@ export default function AdminDashboard() {
       price: "",
       salePrice: "",
       costPrice: "",
-      stock: "10",
+      stock: "15",
       sku: "",
-      barcode: "",
+      hsnCode: "392690",
+      gstRate: "18",
+      status: "Published",
       featured: false,
-      isActive: true,
       features: "",
-      images: ["", "", "", ""],
+      images: [""],
       dynamicSpecs: {}
     });
   };
@@ -287,6 +244,8 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+      
+      {/* Top Navigation Bar */}
       <nav className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-lg">
         <div
           className="flex items-center space-x-3 cursor-pointer"
@@ -297,38 +256,39 @@ export default function AdminDashboard() {
           </div>
           <div>
             <h1 className="text-base font-black tracking-wider text-white uppercase leading-none">
-              LUXMO <span className="text-amber-400">HUB</span>
+              LUXMO <span className="text-amber-400">HUB ENTERPRISE</span>
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest font-semibold uppercase">
-              Admin & Enterprise Control Panel
+              Production Grade Management Suite
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           {view === "storefront" ? (
             <button
               onClick={() => {
                 if (isAdminLoggedIn) setView("admin");
                 else setShowPinModal(true);
               }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold transition"
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition shadow-sm"
             >
-              <LayoutDashboard size={14} />
-              <span>Admin Panel</span>
+              <LayoutDashboard size={15} />
+              <span>Admin Dashboard</span>
             </button>
           ) : (
             <button
               onClick={() => setView("storefront")}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition"
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm"
             >
-              <ShoppingBag size={14} />
-              <span>Storefront</span>
+              <ShoppingBag size={15} />
+              <span>View Storefront</span>
             </button>
           )}
         </div>
       </nav>
 
+      {/* Security PIN Modal */}
       {showPinModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
@@ -336,9 +296,9 @@ export default function AdminDashboard() {
               <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-2 border border-amber-500/20">
                 <Lock size={20} />
               </div>
-              <h3 className="text-base font-bold text-white">Admin Access</h3>
+              <h3 className="text-base font-bold text-white">Enterprise Admin Authentication</h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                4-Digit Security PIN enter karein.
+                Enter 4-digit security PIN (Default: 1234)
               </p>
             </div>
             <form onSubmit={handleAdminLogin} className="space-y-3">
@@ -346,10 +306,10 @@ export default function AdminDashboard() {
                 type="password"
                 maxLength={4}
                 autoFocus
-                placeholder="Enter PIN (Default: 1234)"
+                placeholder="••••"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                className="w-full text-center tracking-widest text-lg bg-slate-950 border border-slate-700 focus:border-amber-500 text-amber-400 rounded-xl py-2 px-3 outline-none"
+                className="w-full text-center tracking-widest text-xl bg-slate-950 border border-slate-700 focus:border-amber-500 text-amber-400 rounded-xl py-2.5 px-3 outline-none"
               />
               {pinError && (
                 <p className="text-[11px] text-red-400 font-semibold text-center">
@@ -368,7 +328,7 @@ export default function AdminDashboard() {
                   type="submit"
                   className="w-1/2 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow transition"
                 >
-                  Login
+                  Authenticate
                 </button>
               </div>
             </form>
@@ -376,18 +336,21 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Main View Switcher */}
       {view === "admin" ? (
-        <div className="p-4 max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 mb-6 gap-3">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+          
+          {/* Header Bar */}
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
-                <span>Admin Management Dashboard</span>
-                <span className="bg-amber-500/20 text-amber-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
-                  Pro Enterprise
+                <span>Enterprise Control Center</span>
+                <span className="bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                  Secure Live Node
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Manage Products, Dynamic Specs, Inventory, Logistics & Analytics
+                Full module management: Catalog, Inventory, GST, Orders & Analytics
               </p>
             </div>
             <button
@@ -397,144 +360,126 @@ export default function AdminDashboard() {
               }}
               className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded-lg text-xs font-bold transition"
             >
-              Logout Admin
+              Secure Logout
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2 mb-6">
-            <button
-              onClick={() => setAdminTab("analytics")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
-                adminTab === "analytics"
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
-              }`}
-            >
-              <TrendingUp size={14} />
-              <span>Analytics Overview</span>
-            </button>
-            <button
-              onClick={() => setAdminTab("products")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
-                adminTab === "products"
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
-              }`}
-            >
-              <PackageCheck size={14} />
-              <span>Product Catalog ({products.length})</span>
-            </button>
-            <button
-              onClick={() => {
-                resetForm();
-                setAdminTab("add_product");
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
-                adminTab === "add_product"
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
-              }`}
-            >
-              <Plus size={14} />
-              <span>{editingProduct ? "Edit Product" : "+ Add Product"}</span>
-            </button>
-            <button
-              onClick={() => setAdminTab("orders")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
-                adminTab === "orders"
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
-              }`}
-            >
-              <Truck size={14} />
-              <span>Orders ({orders.length})</span>
-            </button>
-            <button
-              onClick={() => setAdminTab("settings")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition ${
-                adminTab === "settings"
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
-              }`}
-            >
-              <Settings size={14} />
-              <span>Store Settings</span>
-            </button>
+          {/* Module Navigation Tabs */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "analytics", label: "Analytics & KPI", icon: TrendingUp },
+              { id: "products", label: `Catalog (${products.length})`, icon: PackageCheck },
+              { id: "add_product", label: editingProduct ? "Edit Item" : "+ Add Product", icon: Plus },
+              { id: "inventory", label: "Inventory & Stock", icon: Database },
+              { id: "orders", label: `Orders (${orders.length})`, icon: Truck },
+              { id: "customers", label: `Customers (${customers.length})`, icon: Users },
+              { id: "finance", label: "GST & Finance", icon: FileText },
+              { id: "settings", label: "Store Settings", icon: Settings },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    if (tab.id === "add_product" && !editingProduct) resetForm();
+                    setAdminTab(tab.id);
+                  }}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition ${
+                    adminTab === tab.id
+                      ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black"
+                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+                  }`}
+                >
+                  <Icon size={15} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
 
+          {/* MODULE 1: Analytics & KPIs */}
           {adminTab === "analytics" && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fadeIn">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-xs text-slate-400 font-semibold mb-1">
-                        Total Gross Revenue
-                      </p>
-                      <h3 className="text-2xl font-black text-emerald-400">
-                        ₹48,950
-                      </h3>
-                    </div>
-                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
-                      <DollarSign size={18} />
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-emerald-400 font-semibold mt-2 inline-block">
-                    ↑ +14% vs last month
-                  </span>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <p className="text-xs text-slate-400 font-semibold mb-1">Gross Revenue (YTD)</p>
+                  <h3 className="text-2xl font-black text-emerald-400">₹1,24,950</h3>
+                  <span className="text-[10px] text-emerald-400 font-semibold mt-2 inline-block">↑ +18.4% vs last month</span>
                 </div>
-
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-xs text-slate-400 font-semibold mb-1">
-                        Total Orders
-                      </p>
-                      <h3 className="text-2xl font-black text-sky-400">
-                        {orders.length + 32}
-                      </h3>
-                    </div>
-                    <div className="p-2 bg-sky-500/10 text-sky-400 rounded-lg">
-                      <Truck size={18} />
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-sky-400 font-semibold mt-2 inline-block">
-                    92% Order Fulfillment Rate
-                  </span>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <p className="text-xs text-slate-400 font-semibold mb-1">Total Orders Processed</p>
+                  <h3 className="text-2xl font-black text-sky-400">{orders.length + 42}</h3>
+                  <span className="text-[10px] text-sky-400 font-semibold mt-2 inline-block">98.2% Fulfillment Success</span>
                 </div>
-
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-xs text-slate-400 font-semibold mb-1">
-                        Active Catalog Items
-                      </p>
-                      <h3 className="text-2xl font-black text-amber-400">
-                        {products.length}
-                      </h3>
-                    </div>
-                    <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
-                      <PackageCheck size={18} />
-                    </div>
-                  </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <p className="text-xs text-slate-400 font-semibold mb-1">Active Catalog SKUs</p>
+                  <h3 className="text-2xl font-black text-amber-400">{products.length}</h3>
                   <span className="text-[10px] text-amber-400 font-semibold mt-2 inline-block">
-                    {products.filter((p) => Number(p.stock) < 5).length} Items Low Stock
+                    {products.filter((p) => Number(p.stock) < 5).length} items require re-stocking
                   </span>
                 </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <p className="text-xs text-slate-400 font-semibold mb-1">Registered Customers</p>
+                  <h3 className="text-2xl font-black text-purple-400">{customers.length + 124}</h3>
+                  <span className="text-[10px] text-purple-400 font-semibold mt-2 inline-block">High retention rate</span>
+                </div>
+              </div>
 
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-xs text-slate-400 font-semibold mb-1">
-                        Total Customers
-                      </p>
-                      <h3 className="text-2xl font-black text-purple-400">
-                        128
-                      </h3>
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
+                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                  <TrendingUp size={16} className="text-amber-400" />
+                  <span>Real-time Category Sales Distribution</span>
+                </h3>
+                <div className="space-y-3">
+                  {CATEGORIES.map((cat, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span className="text-slate-300">{cat}</span>
+                        <span className="text-amber-400">{idx === 0 ? "64%" : idx === 1 ? "22%" : "14%"}</span>
+                      </div>
+                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                        <div 
+                          className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full"
+                          style={{ width: idx === 0 ? "64%" : idx === 1 ? "22%" : "14%" }}
+                        ></div>
+                      </div>
                     </div>
-                    <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
-                      <Users size={18} />
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-purple-400 font-semibold mt-2 inline-block">
-       
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODULE 2: Product Catalog & Management */}
+          {adminTab === "products" && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="flex flex-col sm:flex-row justify-between gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-3 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search by title, device model, or SKU..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none"
+                  />
+                </div>
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 outline-none"
+                >
+                  <option value="All">All Categories</option>
+                  {CATEGORIES.map((c, i) => (
+                    <option key={i} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[11px] text-slate-400 uppercase bg-slate-950/50">
+                        <th className="p-3.5">Product Details</th>
+                        <th
