@@ -98,80 +98,12 @@ export default function App() {
 
       {/* Header */}
 
-      <header className="sticky top-0 z-50 bg-slate-900 border-b border-slate-800">
-
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-5 py-4">
-
-          <div className="flex items-center gap-3">
-
-            <div className="w-12 h-12 rounded-xl bg-amber-500 text-black font-black flex items-center justify-center text-2xl">
-              L
-            </div>
-
-            <div>
-              <h1 className="font-black text-xl">
-                LUXMO HUB
-              </h1>
-
-              <p className="text-xs text-slate-400">
-                Enterprise Store
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="hidden md:flex items-center gap-6">
-
-            <a href="#" className="hover:text-amber-400">
-              Home
-            </a>
-
-            <a href="#" className="hover:text-amber-400">
-              Products
-            </a>
-
-            <a href="#" className="hover:text-amber-400">
-              Categories
-            </a>
-
-            <a href="#" className="hover:text-amber-400">
-              Contact
-            </a>
-
-          </div>
-
-          <div className="flex items-center gap-3">
-
-            <button>
-
-              <Heart />
-
-            </button>
-
-            <button className="relative">
-
-              <ShoppingCart />
-
-              <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-amber-500 text-black text-xs flex items-center justify-center">
-
-                {cart.length}
-
-              </span>
-
-            </button>
-
-            <button className="md:hidden">
-
-              <Menu />
-
-            </button>
-
-          </div>
-
-        </div>
-
-      </header>
+      <Header
+  cartCount={cart.length}
+  search={search}
+  setSearch={setSearch}
+  onMenuClick={() => setMobileMenu(!mobileMenu)}
+/>
 
       {/* Hero */}
 
