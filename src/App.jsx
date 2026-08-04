@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -9,25 +9,11 @@ import {
   Truck,
   Edit3,
   Trash2,
-  DollarSign,
   Users,
   Settings,
   Search,
-  Sparkles,
-  Layers,
-  Smartphone,
-  Cpu,
-  Tag,
-  FileText,
-  BarChart2,
-  ShieldCheck,
   Database,
-  ArrowUpRight,
-  CheckCircle2,
-  AlertTriangle,
-  FileSpreadsheet,
-  Globe,
-  Percent
+  FileText
 } from "lucide-react";
 
 export const CATEGORIES = [
@@ -38,54 +24,96 @@ export const CATEGORIES = [
 ];
 
 export const DEVICES = [
-  "Galaxy S26 Ultra",
+  "Galaxy Z Fold 7",
+  "Galaxy Z Fold 6",
+  "Galaxy Z Fold 5",
+  "Galaxy Z Fold 4",
+  "Galaxy Z Fold 3",
+  "Galaxy Z Fold 2",
+  "Galaxy Fold",
   "iPhone 17 Pro Max",
   "iPhone 17 Pro",
-  "Galaxy Z Fold 7",
+  "iPhone 17 Plus",
+  "iPhone 17",
+  "iPhone 16 Pro Max",
+  "iPhone 16 Pro",
+  "iPhone 16 Plus",
+  "iPhone 16",
+  "iPhone 15 Pro Max",
+  "iPhone 15 Pro",
+  "iPhone 15 Plus",
+  "iPhone 15",
+  "iPhone 14 Pro Max",
+  "iPhone 14 Pro",
+  "iPhone 14 Plus",
+  "iPhone 14",
+  "iPhone 13 Pro Max",
+  "iPhone 13 Pro",
+  "iPhone 13 Mini",
+  "iPhone 13",
+  "iPhone 12 Pro Max",
+  "iPhone 12 Pro",
+  "iPhone 12 Mini",
+  "iPhone 12",
+  "iPhone 11 Pro Max",
+  "iPhone 11 Pro",
+  "iPhone 11",
+  "Galaxy S26 Ultra",
+  "Galaxy S26 Plus",
+  "Galaxy S26 FE",
+  "Galaxy S26",
+  "Galaxy S25 Ultra",
+  "Galaxy S25 Plus",
+  "Galaxy S25 FE",
+  "Galaxy S25",
+  "Galaxy S24 Ultra",
+  "Galaxy S24 Plus",
+  "Galaxy S24 FE",
+  "Galaxy S24",
+  "Galaxy S23 Ultra",
+  "Galaxy S23 Plus",
+  "Galaxy S23 FE",
+  "Galaxy S23",
+  "Galaxy S22 Ultra",
+  "Galaxy S22 Plus",
+  "Galaxy S22 FE",
+  "Galaxy S22",
+  "Hybrid Solar Inverter 3KW 24V",
+  "Hybrid Solar Inverter 3.5KW 24V",
+  "Hybrid Solar Inverter 5KW 24V",
   "Hybrid Solar Inverter 5KW 48V",
+  "Hybrid Solar Inverter 5.5KW 24V",
+  "Hybrid Solar Inverter 5.5KW 48V",
+  "Hybrid Solar Inverter 6KW 48V",
+  "Hybrid Solar Inverter 6.2KW 48V",
+  "Hybrid Solar Inverter 6.5KW 48V",
+  "Hybrid Solar Inverter 8KW 48V",
+  "Hybrid Solar Inverter 8.5KW 48V",
+  "Hybrid Solar Inverter 10KW 48V",
+  "Hybrid Solar Inverter 10.5KW 48V",
+  "Hybrid Solar Inverter 11KW 48V",
+  "Hybrid Solar Inverter 11.5KW 48V",
+  "Hybrid Solar Inverter 12KW 48V",
+  "Hybrid Solar Inverter 12.5KW 48V",
   "Mono PERC Solar Panel 330W",
-  "TOPCon Solar Panel 600w,615w,630w,700w,715W",
+  "Mono PERC Solar Panel 440W",
+  "Half-Cut Mono PERC 540W",
+  "Bifacial Solar Panel 550W",
+  "TOPCon Solar Panel 580,590W",
+  "TOPCon Solar Panel 600w,615w,630w,700w,715W, 720W, 730W"
 ];
 
-export const CATEGORY_KEY_FEATURES = {
-  "Mobile Back Case": [
-    { key: "magsafe_support", label: "MagSafe / Wireless Charging Compatible", type: "boolean" },
-    { key: "material", label: "Material", type: "select", options: ["Polycarbonate", "TPU", "Leather", "Titanium Frame", "Silicone"] },
-    { key: "camera_protection", label: "Camera Protection Type", type: "select", options: ["Raised Lip", "Individual Metal Lens Ring", "Full Lens Cover"] },
-    { key: "finish", label: "Back Panel Finish", type: "select", options: ["Matte Clear", "Textured Leather", "Glossy Translucent", "Solid"] },
-  ],
-  "Hybrid Solar Inverter": [
-    { key: "rated_power", label: "Rated Output Power (KW)", type: "number" },
-    { key: "battery_voltage", label: "System Battery Voltage (V)", type: "select", options: ["24V", "48V"] },
-    { key: "mppt_tracker", label: "MPPT Controller Built-in", type: "boolean" },
-    { key: "wifi_monitoring", label: "Wi-Fi / App Remote Monitoring", type: "boolean" },
-  ],
-  "Solar Panel": [
-    { key: "cell_technology", label: "Cell Tech Type", type: "select", options: ["Mono PERC", "Half-Cut Mono PERC", "Bifacial", "TOPCon"] },
-    { key: "wattage", label: "Wattage Capacity (W)", type: "string" },
-    { key: "warranty_years", label: "Linear Power Warranty (Years)", type: "number" },
-  ],
-  "Accessories": [
-    { key: "compatibility", label: "Universal Device Compatibility", type: "boolean" },
-    { key: "connector_type", label: "Connector / Port Type", type: "select", options: ["USB-C", "Lightning", "MC4 Solar Connector", "DC Terminal"] },
-  ],
-};
-
-export default function AdminDashboard() {
-  const [view, setView] = useState("admin"); // 'admin' or 'storefront'
+export default function App() {
+  const [view, setView] = useState("admin");
   const [showPinModal, setShowPinModal] = useState(false);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(true);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   
-  // Admin Tabs mapping to Enterprise Modules
   const [adminTab, setAdminTab] = useState("analytics");
-
-  // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
 
-  // Enterprise State: Products Catalog
   const [products, setProducts] = useState([
     {
       id: "prod_1",
@@ -95,21 +123,11 @@ export default function AdminDashboard() {
       device: "Galaxy S26 Ultra",
       price: "1999",
       salePrice: "1499",
-      costPrice: "800",
       stock: "45",
       sku: "LXM-S26U-TITAN",
       status: "Published",
-      featured: true,
       hsnCode: "392690",
-      gstRate: "18",
-      images: ["https://via.placeholder.com/150"],
-      dynamicSpecs: {
-        magsafe_support: true,
-        material: "Titanium Frame",
-        camera_protection: "Individual Metal Lens Ring",
-        finish: "Matte Clear"
-      },
-      features: "Internal MagSafe alignment magnets\n3D textured tactile back panel\nRaised white camera lens protection frame"
+      gstRate: "18"
     },
     {
       id: "prod_2",
@@ -119,44 +137,31 @@ export default function AdminDashboard() {
       device: "Hybrid Solar Inverter 5KW 48V",
       price: "65000",
       salePrice: "58000",
-      costPrice: "45000",
-      stock: "3", // Low stock trigger
+      stock: "3",
       sku: "LXM-INV-5KW",
       status: "Published",
-      featured: true,
       hsnCode: "850440",
-      gstRate: "12",
-      images: ["https://via.placeholder.com/150"],
-      dynamicSpecs: {
-        rated_power: 5,
-        battery_voltage: "48V",
-        mppt_tracker: true,
-        wifi_monitoring: true
-      },
-      features: "Pure Sine Wave Output\nBuilt-in Wi-Fi App tracking\nOverload & Short Circuit protection"
+      gstRate: "12"
     }
   ]);
 
-  // Enterprise State: Orders & Logistics
   const [orders, setOrders] = useState([
     {
       id: "ORD-98231",
       customer: "Aptal Sharma",
       date: "2026-08-04",
-      total: "59498",
-      paymentStatus: "Paid (Razorpay)",
+      total: "58000",
+      paymentStatus: "Paid",
       shippingStatus: "Dispatched",
       items: ["LUXMO Hybrid Solar Inverter 5KW 48V x 1"]
     }
   ]);
 
-  // Enterprise State: Customers
   const [customers] = useState([
-    { id: "CUST-1", name: "Aptal Sharma", email: "aptal@example.com", phone: "+91 9876543210", orders: 3, totalSpent: "124,500" },
+    { id: "CUST-1", name: "Aptal Sharma", email: "aptal@example.com", phone: "+91 9876543210", orders: 3, totalSpent: "1,24,500" },
     { id: "CUST-2", name: "Rahul Verma", email: "rahul@example.com", phone: "+91 9123456789", orders: 1, totalSpent: "1,499" }
   ]);
 
-  // Product Form State
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
     title: "",
@@ -165,17 +170,30 @@ export default function AdminDashboard() {
     device: DEVICES[0],
     price: "",
     salePrice: "",
-    costPrice: "",
     stock: "15",
     sku: "",
     hsnCode: "392690",
     gstRate: "18",
-    status: "Published",
-    featured: false,
-    features: "",
-    images: [""],
-    dynamicSpecs: {}
+    status: "Published"
   });
+
+  // Dynamic Revenue Calculation from Orders
+  const totalRevenue = useMemo(() => {
+    return orders.reduce((acc, curr) => acc + parseFloat(curr.total || 0), 0);
+  }, [orders]);
+
+  // Optimized Filtering using useMemo
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      const matchesSearch =
+        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.device.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesCategory =
+        selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategoryFilter]);
 
   const handleAdminLogin = (e) => {
     e.preventDefault();
@@ -219,33 +237,25 @@ export default function AdminDashboard() {
       device: DEVICES[0],
       price: "",
       salePrice: "",
-      costPrice: "",
       stock: "15",
       sku: "",
       hsnCode: "392690",
       gstRate: "18",
-      status: "Published",
-      featured: false,
-      features: "",
-      images: [""],
-      dynamicSpecs: {}
+      status: "Published"
     });
   };
 
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch =
-      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.device.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory =
-      selectedCategoryFilter === "All" || p.category === selectedCategoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  // Order status update workflow
+  const updateOrderStatus = (orderId, newStatus) => {
+    setOrders(
+      orders.map((o) => (o.id === orderId ? { ...o, shippingStatus: newStatus } : o))
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
       
-      {/* Top Navigation Bar */}
+      {/* Top Navigation */}
       <nav className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-lg">
         <div
           className="flex items-center space-x-3 cursor-pointer"
@@ -288,7 +298,7 @@ export default function AdminDashboard() {
         </div>
       </nav>
 
-      {/* Security PIN Modal */}
+      {/* PIN Authentication Modal */}
       {showPinModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
@@ -336,11 +346,9 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Main View Switcher */}
       {view === "admin" ? (
         <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
           
-          {/* Header Bar */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
@@ -364,7 +372,7 @@ export default function AdminDashboard() {
             </button>
           </div>
 
-          {/* Module Navigation Tabs */}
+          {/* Admin Tabs */}
           <div className="flex flex-wrap gap-2">
             {[
               { id: "analytics", label: "Analytics & KPI", icon: TrendingUp },
@@ -397,62 +405,33 @@ export default function AdminDashboard() {
             })}
           </div>
 
-          {/* MODULE 1: Analytics & KPIs */}
+          {/* Analytics Tab (Dynamic Revenue) */}
           {adminTab === "analytics" && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <p className="text-xs text-slate-400 font-semibold mb-1">Gross Revenue (YTD)</p>
-                  <h3 className="text-2xl font-black text-emerald-400">₹1,24,950</h3>
-                  <span className="text-[10px] text-emerald-400 font-semibold mt-2 inline-block">↑ +18.4% vs last month</span>
+                  <p className="text-xs text-slate-400 font-semibold mb-1">Gross Revenue (Calculated)</p>
+                  <h3 className="text-2xl font-black text-emerald-400">₹{totalRevenue.toLocaleString()}</h3>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
                   <p className="text-xs text-slate-400 font-semibold mb-1">Total Orders Processed</p>
-                  <h3 className="text-2xl font-black text-sky-400">{orders.length + 42}</h3>
-                  <span className="text-[10px] text-sky-400 font-semibold mt-2 inline-block">98.2% Fulfillment Success</span>
+                  <h3 className="text-2xl font-black text-sky-400">{orders.length}</h3>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
                   <p className="text-xs text-slate-400 font-semibold mb-1">Active Catalog SKUs</p>
                   <h3 className="text-2xl font-black text-amber-400">{products.length}</h3>
-                  <span className="text-[10px] text-amber-400 font-semibold mt-2 inline-block">
-                    {products.filter((p) => Number(p.stock) < 5).length} items require re-stocking
-                  </span>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
                   <p className="text-xs text-slate-400 font-semibold mb-1">Registered Customers</p>
-                  <h3 className="text-2xl font-black text-purple-400">{customers.length + 124}</h3>
-                  <span className="text-[10px] text-purple-400 font-semibold mt-2 inline-block">High retention rate</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                  <TrendingUp size={16} className="text-amber-400" />
-                  <span>Real-time Category Sales Distribution</span>
-                </h3>
-                <div className="space-y-3">
-                  {CATEGORIES.map((cat, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between text-xs font-semibold">
-                        <span className="text-slate-300">{cat}</span>
-                        <span className="text-amber-400">{idx === 0 ? "64%" : idx === 1 ? "22%" : "14%"}</span>
-                      </div>
-                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
-                        <div 
-                          className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full"
-                          style={{ width: idx === 0 ? "64%" : idx === 1 ? "22%" : "14%" }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
+                  <h3 className="text-2xl font-black text-purple-400">{customers.length}</h3>
                 </div>
               </div>
             </div>
           )}
 
-          {/* MODULE 2: Product Catalog & Management */}
+          {/* Products Catalog Tab */}
           {adminTab === "products" && (
-            <div className="space-y-4 animate-fadeIn">
+            <div className="space-y-4">
               <div className="flex flex-col sm:flex-row justify-between gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <div className="relative flex-1">
                   <Search size={16} className="absolute left-3 top-3 text-slate-500" />
@@ -482,4 +461,49 @@ export default function AdminDashboard() {
                     <thead>
                       <tr className="border-b border-slate-800 text-[11px] text-slate-400 uppercase bg-slate-950/50">
                         <th className="p-3.5">Product Details</th>
-                        <th
+                        <th className="p-3.5">Category & Device</th>
+                        <th className="p-3.5">Pricing</th>
+                        <th className="p-3.5">Stock</th>
+                        <th className="p-3.5">SKU / GST</th>
+                        <th className="p-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-xs">
+                      {filteredProducts.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-800/40 transition">
+                          <td className="p-3.5">
+                            <div className="font-bold text-white">{p.title}</div>
+                            <div className="text-[10px] text-slate-400 truncate max-w-xs">{p.description}</div>
+                          </td>
+                          <td className="p-3.5">
+                            <span className="bg-slate-800 text-amber-400 font-semibold px-2 py-0.5 rounded text-[10px] border border-slate-700">
+                              {p.category}
+                            </span>
+                            <div className="text-[10px] text-slate-400 mt-1">{p.device}</div>
+                          </td>
+                          <td className="p-3.5">
+                            <div className="font-black text-emerald-400">₹{p.salePrice || p.price}</div>
+                          </td>
+                          <td className="p-3.5">
+                            <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${parseInt(p.stock) < 5 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                              {p.stock} units
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            <div className="text-slate-300 font-mono">{p.sku}</div>
+                            <div className="text-[10px] text-slate-500">GST: {p.gstRate}%</div>
+                          </td>
+                          <td className="p-3.5 text-right space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingProduct(p);
+                                setProductForm(p);
+                                setAdminTab("add_product");
+                              }}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-lg transition"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setProducts(products.filter(item => 
