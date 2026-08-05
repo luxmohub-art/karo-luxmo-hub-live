@@ -16,7 +16,8 @@ import {
   ChevronRight,
   ArrowRight
 } from "lucide-react";
-
+import { db } from "./firebase";
+import { collection, onSnapshot } from "firebase/firestore";
 const categories = [
   {
     id: 1,
