@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Header from "./components/Header";
 import {
   ShoppingCart,
@@ -45,36 +45,29 @@ const categories = [
   }
 ];
 
-const products = [
-  {
-    id: 1,
-    title: "Titanium MagSafe Case",
-    category: "Mobile Back Case",
-    price: 1499,
-    mrp: 1999,
-    rating: 4.9,
-    stock: 24,
-    image:
-      "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=800"
-  },
-  {
-    id: 2,
-    title: "Hybrid Solar Inverter 5KW",
-    category: "Hybrid Solar Inverter",
-    price: 58000,
-    mrp: 65000,
-    rating: 4.8,
-    stock: 5,
-    image:
-      "https://images.unsplash.com/photo-1509391366360-2e959784a276?w=800"
-  }
-];
 
 export default function App() {
   const [search, setSearch] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [cart, setCart] = useState([]);
   const [wishlist, setWishlist] = useState([]);
+  const [products, setProducts] = useState([]);
+
+  useEffect(() => {
+  const unsubscribe = onSnapshot(
+    collection(db, "products"),
+    (snapshot) => {
+      const items = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setProducts(items);
+    }
+  );
+
+  return () => unsubscribe();
+}, []);
+
 
   const filteredProducts = useMemo(() => {
     return products.filter((item) =>
