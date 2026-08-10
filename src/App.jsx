@@ -82,9 +82,9 @@ const INITIAL_PRODUCTS = [
   }
 ];
 
-// Helper Function: Image Compression
+// FIXED IMAGE COMPRESSION FUNCTION
 const compressImage = (file) => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
@@ -92,7 +92,7 @@ const compressImage = (file) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
+        const MAX_WIDTH = 600; // Optimal size for fast rendering
         let width = img.width;
         let height = img.height;
 
@@ -103,11 +103,20 @@ const compressImage = (file) => {
 
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('canvas');
+        
+        // FIXED CONTEXT BUG: Changed 'canvas' to '2d'
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target.result);
+          return;
+        }
+        
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to 70% quality
+        resolve(canvas.toDataURL('image/jpeg', 0.6)); // 60% quality compression
       };
+      img.onerror = (err) => reject(err);
     };
+    reader.onerror = (err) => reject(err);
   });
 };
 
@@ -121,7 +130,7 @@ export default function LuxmoHubApp() {
       return INITIAL_PRODUCTS;
     }
   });
-  
+
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedModelFilter, setSelectedModelFilter] = useState("All");
@@ -170,25 +179,32 @@ export default function LuxmoHubApp() {
     images: [], published: true
   });
   const [formError, setFormError] = useState('');
+  const [isCompressing, setIsCompressing] = useState(false);
 
-  // IMAGE UPLOAD WITH AUTOMATIC COMPRESSION
+  // FIXED IMAGE UPLOAD HANDLER
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
-    
+    if (!files || files.length === 0) return;
+
     if (files.length + formData.images.length > 5) {
       setFormError('Maximum 5 images allowed per product.');
       return;
     }
 
+    setIsCompressing(true);
+    setFormError('');
+
     try {
-      const compressedImages = await Promise.all(files.map(file => compressImage(file)));
+      const compressed = await Promise.all(files.map(file => compressImage(file)));
       setFormData(prev => ({
         ...prev,
-        images: [...prev.images, ...compressedImages].slice(0, 5)
+        images: [...prev.images, ...compressed].slice(0, 5)
       }));
-      setFormError('');
     } catch (err) {
-      setFormError('Failed to process images.');
+      console.error("Upload Error:", err);
+      setFormError('Failed to process image. Try a smaller image.');
+    } finally {
+      setIsCompressing(false);
     }
   };
 
@@ -199,13 +215,13 @@ export default function LuxmoHubApp() {
     }));
   };
 
-  // Safe Save to LocalStorage
+  // Safe Save to LocalStorage with fallback
   useEffect(() => {
     try {
       localStorage.setItem('luxmo_products', JSON.stringify(products));
     } catch (e) {
-      console.error("Storage Quota Exceeded!", e);
-      alert("Storage limit full! Try deleting old products or using fewer images.");
+      console.error("Storage Limit Reached!", e);
+      alert("Browser storage limit full! Delete some products or use fewer images.");
     }
   }, [products]);
 
@@ -448,7 +464,7 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* PRODUCT DETAILS */}
+        {/* PRODUCT DETAILS VIEW */}
         {activeTab === "product" && selectedProduct && (
           <div className="bg-white rounded-2xl border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
@@ -476,7 +492,7 @@ export default function LuxmoHubApp() {
               <h1 className="text-2xl font-bold">{selectedProduct.title}</h1>
               <p className="text-xs text-slate-500">Model: {selectedProduct.model}</p>
               <div className="text-2xl font-extrabold text-slate-900">₹{selectedProduct.salePrice || selectedProduct.price}</div>
-              <p className="text-sm text-slate-600">{selectedProduct.description}</p>
+              <p className="text-sm text-slate-600 whitespace-pre-line">{selectedProduct.description}</p>
               <button onClick={() => addToCart(selectedProduct)} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm">Add to Cart</button>
             </div>
           </div>
@@ -518,7 +534,7 @@ export default function LuxmoHubApp() {
 
             <div className="bg-white border rounded-xl p-6 shadow-sm">
               <h2 className="text-base font-bold mb-4">{editingProduct ? "Edit Product" : "Add Product"}</h2>
-              {formError && <p className="text-xs text-red-600 mb-4 bg-red-50 p-2 rounded">{formError}</p>}
+              {formError && <p className="text-xs text-red-600 mb-4 bg-red-50 p-2 rounded font-semibold">{formError}</p>}
               
               <form onSubmit={validateAndSaveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div className="md:col-span-2">
@@ -598,6 +614,7 @@ export default function LuxmoHubApp() {
                   />
                 </div>
 
+                {/* UPLOAD BOX WITH PREVIEW */}
                 <div className="md:col-span-2 border-2 border-dashed border-slate-300 p-4 rounded-lg bg-slate-50 text-center">
                   <label className="block font-bold mb-2 text-slate-700">Upload Product Images (Up to 5)</label>
                   
@@ -610,17 +627,23 @@ export default function LuxmoHubApp() {
                         onChange={handleImageUpload} 
                         className="hidden" 
                         id="multi-file-input" 
+                        disabled={isCompressing}
                       />
-                      <label htmlFor="multi-file-input" className="cursor-pointer inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md font-bold hover:bg-blue-500">
-                        <Upload className="w-4 h-4" /> Select Images ({formData.images.length}/5)
+                      <label 
+                        htmlFor="multi-file-input" 
+                        className={`cursor-pointer inline-flex items-center gap-2 text-white px-4 py-2 rounded-md font-bold transition ${isCompressing ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-500'}`}
+                      >
+                        <Upload className="w-4 h-4" /> 
+                        {isCompressing ? "Optimizing Images..." : `Select Images (${formData.images.length}/5)`}
                       </label>
                     </>
                   )}
 
+                  {/* PREVIEW THUMBNAILS */}
                   {formData.images.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-3 justify-center">
                       {formData.images.map((img, index) => (
-                        <div key={index} className="relative group border rounded-lg overflow-hidden bg-white">
+                        <div key={index} className="relative group border rounded-lg overflow-hidden bg-white shadow-sm">
                           <img src={img} alt={`Preview ${index}`} className="w-20 h-20 object-cover" />
                           <button
                             type="button"
