@@ -409,6 +409,8 @@ export default function LuxmoHubApp() {
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.salePrice || item.price) * item.qty, 0);
 
+  const currentFormTaxInfo = getTaxInfo(formData.category, formData.material);
+
   const handleRazorpayPayment = () => {
     if (!window.Razorpay) {
       alert("Payment gateway component loading. Please try again.");
@@ -662,16 +664,35 @@ export default function LuxmoHubApp() {
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">{selectedProduct.title}</h1>
               <p className="text-xs text-slate-500">Model: {selectedProduct.model}</p>
+              {selectedProduct.material && selectedProduct.material !== "Not Applicable" && (
+                <p className="text-xs text-slate-500">Material / Type: {selectedProduct.material}</p>
+              )}
               <div className="text-2xl font-extrabold text-slate-900">₹{selectedProduct.salePrice || selectedProduct.price}</div>
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                <h3 className="text-sm font-bold text-slate-900 mb-2">Tax Information</h3>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h3 className="text-sm font-bold text-slate-900">Tax Information</h3>
+                  {selectedProduct.hsn && selectedProduct.gstRate != null && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+                      Tax Details
+                    </span>
+                  )}
+                </div>
+
                 {selectedProduct.hsn && selectedProduct.gstRate != null ? (
                   <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div><span className="text-slate-500 block">HSN Code</span><strong className="text-slate-900">{selectedProduct.hsn}</strong></div>
-                    <div><span className="text-slate-500 block">GST Rate</span><strong className="text-slate-900">{selectedProduct.gstRate}%</strong></div>
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <span className="text-slate-500 block">HSN Code</span>
+                      <strong className="text-slate-900 text-sm">{selectedProduct.hsn}</strong>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <span className="text-slate-500 block">GST Rate</span>
+                      <strong className="text-slate-900 text-sm">{selectedProduct.gstRate}%</strong>
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">Tax classification will be displayed here when specified for this product.</p>
+                  <div className="text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3">
+                    <strong className="text-slate-800">Tax classification:</strong> HSN/GST details are not configured for this product category.
+                  </div>
                 )}
               </div>
               <p className="text-sm text-slate-600 whitespace-pre-line">{selectedProduct.description}</p>
@@ -769,26 +790,57 @@ export default function LuxmoHubApp() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block font-bold mb-1 text-slate-700">HSN Code</label>
-                  <input
-                    type="text"
-                    value={formData.hsn}
-                    readOnly
-                    className="w-full p-2.5 bg-slate-100 text-slate-900 border border-slate-300 rounded-md"
-                    placeholder="Auto-assigned from category/material"
-                  />
-                </div>
+                <div className="md:col-span-2">
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="font-extrabold text-slate-900">Tax Information</h3>
+                        <p className="text-[11px] text-slate-600 mt-0.5">
+                          HSN and GST are assigned automatically from the selected category/material.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-white border border-blue-200 text-blue-700">
+                        Auto Assigned
+                      </span>
+                    </div>
 
-                <div>
-                  <label className="block font-bold mb-1 text-slate-700">GST Rate</label>
-                  <input
-                    type="text"
-                    value={formData.gstRate === '' ? '' : `${formData.gstRate}%`}
-                    readOnly
-                    className="w-full p-2.5 bg-slate-100 text-slate-900 border border-slate-300 rounded-md"
-                    placeholder="Auto-assigned from category/material"
-                  />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-white rounded-lg border border-blue-100 p-3">
+                        <span className="block text-[10px] uppercase tracking-wide font-bold text-slate-500">Category</span>
+                        <strong className="block mt-1 text-sm text-slate-900">{formData.category}</strong>
+                      </div>
+
+                      <div className="bg-white rounded-lg border border-blue-100 p-3">
+                        <span className="block text-[10px] uppercase tracking-wide font-bold text-slate-500">HSN Code</span>
+                        <strong className="block mt-1 text-sm text-slate-900">
+                          {currentFormTaxInfo?.hsn || "Select applicable material"}
+                        </strong>
+                      </div>
+
+                      <div className="bg-white rounded-lg border border-blue-100 p-3">
+                        <span className="block text-[10px] uppercase tracking-wide font-bold text-slate-500">GST Rate</span>
+                        <strong className="block mt-1 text-sm text-slate-900">
+                          {currentFormTaxInfo ? `${currentFormTaxInfo.gstRate}%` : "Select applicable material"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-[11px]">
+                      {currentFormTaxInfo ? (
+                        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-emerald-800">
+                          <strong>Tax classification:</strong> {currentFormTaxInfo.label}
+                        </div>
+                      ) : formData.category === "Mobile Back Case" ? (
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800">
+                          Select Genuine Leather, PU Leather, or Plastic / Silicone / TPU / Rubber to display the correct HSN and GST.
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-slate-100 border border-slate-200 px-3 py-2 text-slate-600">
+                          HSN/GST classification has not been supplied for this category. Do not enter or invent a tax code.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
