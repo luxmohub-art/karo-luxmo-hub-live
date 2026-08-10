@@ -85,7 +85,7 @@ const INITIAL_PRODUCTS = [
     sku: "MBC-GS25U-01",
     hsn: "39269099",
     gstRate: 18,
-    image: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&q=80&w=600",
+    images: ["https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&q=80&w=600"],
     published: true,
     rating: null,
     reviewsCount: 0
@@ -102,7 +102,7 @@ const INITIAL_PRODUCTS = [
     sku: "HSI-5KW-48V",
     hsn: "85044080",
     gstRate: 12,
-    image: "https://images.unsplash.com/photo-1613665812672-6c3999e52119?auto=format&fit=crop&q=80&w=600",
+    images: ["https://images.unsplash.com/photo-1613665812672-6c3999e52119?auto=format&fit=crop&q=80&w=600"],
     published: true,
     rating: null,
     reviewsCount: 0
@@ -121,6 +121,7 @@ export default function LuxmoHubApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("home");
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   // Dynamic Razorpay Script Loader
   useEffect(() => {
@@ -157,30 +158,46 @@ export default function LuxmoHubApp() {
     setActiveTab("home");
   };
 
-  // Product Management & Image Upload State
+  // Product Management & Multiple Images State
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
     title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], description: '',
     price: '', salePrice: '', stock: '', sku: '', hsn: '39269099', gstRate: '18',
-    image: '', published: true
+    images: [], published: true
   });
   const [formError, setFormError] = useState('');
 
-  // Handle Image File Upload (Base64)
+  // MULTI-IMAGE UPLOAD (MAX 5 IMAGES)
   const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setFormError('Image size must be less than 2MB.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, image: reader.result }));
-        setFormError('');
-      };
-      reader.readAsDataURL(file);
+    const files = Array.from(e.target.files);
+    
+    if (files.length + formData.images.length > 5) {
+      setFormError('You can upload a maximum of 5 images per product.');
+      return;
     }
+
+    const readFiles = files.map(file => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(readFiles).then(newImageUrls => {
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, ...newImageUrls].slice(0, 5)
+      }));
+      setFormError('');
+    });
+  };
+
+  const handleRemoveImage = (indexToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, index) => index !== indexToRemove)
+    }));
   };
 
   useEffect(() => {
@@ -220,8 +237,8 @@ export default function LuxmoHubApp() {
       return;
     }
 
-    if (!formData.image) {
-      setFormError('Please upload an image.');
+    if (!formData.images || formData.images.length === 0) {
+      setFormError('Please upload at least 1 product image.');
       return;
     }
 
@@ -237,7 +254,7 @@ export default function LuxmoHubApp() {
       sku: formData.sku.trim(),
       hsn: formData.hsn.trim(),
       gstRate: Number(formData.gstRate),
-      image: formData.image,
+      images: formData.images,
       published: Boolean(formData.published),
       rating: editingProduct ? editingProduct.rating : null,
       reviewsCount: editingProduct ? editingProduct.reviewsCount : 0
@@ -257,14 +274,18 @@ export default function LuxmoHubApp() {
     setFormData({
       title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], description: '',
       price: '', salePrice: '', stock: '', sku: '', hsn: '39269099', gstRate: '18',
-      image: '', published: true
+      images: [], published: true
     });
     setFormError('');
   };
 
   const handleEditInit = (prod) => {
     setEditingProduct(prod);
-    setFormData({ ...prod, salePrice: prod.salePrice || '' });
+    setFormData({ 
+      ...prod, 
+      salePrice: prod.salePrice || '',
+      images: prod.images || (prod.image ? [prod.image] : []) 
+    });
     setActiveTab('admin');
   };
 
@@ -328,7 +349,7 @@ export default function LuxmoHubApp() {
         </div>
       </div>
 
-      {/* Navigation Header with UPDATED LOGO */}
+      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab("home")}>
@@ -416,15 +437,37 @@ export default function LuxmoHubApp() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {filteredProducts.map(prod => (
-                <ProductCard key={prod.id} product={prod} onSelect={(p) => { setSelectedProduct(p); setActiveTab("product"); }} onAddToCart={addToCart} />
+                <ProductCard key={prod.id} product={prod} onSelect={(p) => { setSelectedProduct(p); setActiveImageIndex(0); setActiveTab("product"); }} onAddToCart={addToCart} />
               ))}
             </div>
           </div>
         )}
 
+        {/* SINGLE PRODUCT DETAIL PAGE WITH MULTI-IMAGE GALLERY */}
         {activeTab === "product" && selectedProduct && (
           <div className="bg-white rounded-2xl border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <img src={selectedProduct.image} alt={selectedProduct.title} className="w-full aspect-square object-cover rounded-xl border" />
+            <div className="space-y-4">
+              <img 
+                src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image} 
+                alt={selectedProduct.title} 
+                className="w-full aspect-square object-cover rounded-xl border" 
+              />
+              {/* Thumbnail Gallery */}
+              {selectedProduct.images && selectedProduct.images.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {selectedProduct.images.map((img, idx) => (
+                    <img 
+                      key={idx} 
+                      src={img} 
+                      alt="" 
+                      onClick={() => setActiveImageIndex(idx)} 
+                      className={`w-16 h-16 object-cover rounded-lg border-2 cursor-pointer ${activeImageIndex === idx ? 'border-blue-600' : 'border-transparent'}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">{selectedProduct.title}</h1>
               <p className="text-xs text-slate-500">Model: {selectedProduct.model}</p>
@@ -461,7 +504,7 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* ADMIN MANAGEMENT PANEL WITH FIXED WHITE INPUT FIELDS */}
+        {/* ADMIN FORM WITH MULTI-IMAGE UPLOAD (MAX 5 IMAGES) */}
         {activeTab === "admin" && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -551,17 +594,41 @@ export default function LuxmoHubApp() {
                   />
                 </div>
 
-                {/* File Upload Component */}
+                {/* 5 IMAGES UPLOAD COMPONENT */}
                 <div className="md:col-span-2 border-2 border-dashed border-slate-300 p-4 rounded-lg bg-slate-50 text-center">
-                  <label className="block font-bold mb-2 text-slate-700">Upload Product Image File</label>
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="file-input" />
-                  <label htmlFor="file-input" className="cursor-pointer inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md font-bold hover:bg-blue-500">
-                    <Upload className="w-4 h-4" /> Choose File
-                  </label>
-                  {formData.image && (
-                    <div className="mt-3 flex justify-center items-center gap-2">
-                      <img src={formData.image} alt="Preview" className="w-16 h-16 object-cover rounded border" />
-                      <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Image Ready</span>
+                  <label className="block font-bold mb-2 text-slate-700">Upload Product Images (Up to 5)</label>
+                  
+                  {formData.images.length < 5 && (
+                    <>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        multiple 
+                        onChange={handleImageUpload} 
+                        className="hidden" 
+                        id="multi-file-input" 
+                      />
+                      <label htmlFor="multi-file-input" className="cursor-pointer inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md font-bold hover:bg-blue-500">
+                        <Upload className="w-4 h-4" /> Select Images ({formData.images.length}/5)
+                      </label>
+                    </>
+                  )}
+
+                  {/* Uploaded Images Preview Grid */}
+                  {formData.images.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-3 justify-center">
+                      {formData.images.map((img, index) => (
+                        <div key={index} className="relative group border rounded-lg overflow-hidden bg-white">
+                          <img src={img} alt={`Preview ${index}`} className="w-20 h-20 object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(index)}
+                            className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full text-xs shadow hover:bg-red-700"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -642,12 +709,13 @@ export default function LuxmoHubApp() {
   );
 }
 
-// FULLY FIXED PRODUCT CARD COMPONENT
 function ProductCard({ product, onSelect, onAddToCart }) {
+  const displayImage = (product.images && product.images[0]) || product.image;
+
   return (
     <div className="bg-white border rounded-xl overflow-hidden hover:shadow-md transition flex flex-col justify-between">
       <div className="cursor-pointer" onClick={() => onSelect(product)}>
-        <img src={product.image} alt={product.title} className="w-full aspect-square object-cover" />
+        <img src={displayImage} alt={product.title} className="w-full aspect-square object-cover" />
         <div className="p-4 space-y-1">
           <span className="text-[10px] font-bold text-blue-600 uppercase">{product.category}</span>
           <h3 className="font-semibold text-sm line-clamp-1">{product.title}</h3>
