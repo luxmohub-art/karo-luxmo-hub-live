@@ -4,9 +4,6 @@ import {
   AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail
 } from 'lucide-react';
 
-// ============================================================================
-// VERIFIED BUSINESS INFORMATION
-// ============================================================================
 const BUSINESS_INFO = {
   tradeName: "LUXMO HUB",
   legalName: "Sarita Devi",
@@ -20,17 +17,10 @@ const BUSINESS_INFO = {
   },
   emails: ["luxmohub@gmail.com"],
   phones: ["+91 7565012418", "+91 8299260182"],
-  paymentSecurityText: "Payments are processed securely through our authorized payment gateway. We do not store customers’ card details, banking credentials or payment passwords on our servers."
+  paymentSecurityText: "Payments are processed securely through our authorized payment gateway."
 };
 
-// ============================================================================
-// CATEGORIES & MODEL MAPPING
-// ============================================================================
-const CATEGORIES = [
-  "Mobile Back Case",
-  "Hybrid Solar Inverter",
-  "Solar Accessories"
-];
+const CATEGORIES = ["Mobile Back Case", "Hybrid Solar Inverter", "Solar Accessories"];
 
 const MOBILE_MODELS = [
   "Galaxy Z Fold 7", "Galaxy Z Fold 6", "Galaxy Z Fold 5", "Galaxy Z Fold 4", "Galaxy Z Fold 3", "Galaxy Z Fold 2", "Galaxy Fold",
@@ -89,30 +79,47 @@ const INITIAL_PRODUCTS = [
     published: true,
     rating: null,
     reviewsCount: 0
-  },
-  {
-    id: "prod-002",
-    title: "Hybrid Solar Inverter 5KW 48V Pure Sine Wave",
-    category: "Hybrid Solar Inverter",
-    model: "Hybrid Solar Inverter 5KW 48V",
-    description: "High efficiency smart hybrid inverter with integrated MPPT charge controller.",
-    price: 45000,
-    salePrice: 38500,
-    stock: 12,
-    sku: "HSI-5KW-48V",
-    hsn: "85044080",
-    gstRate: 12,
-    images: ["https://images.unsplash.com/photo-1613665812672-6c3999e52119?auto=format&fit=crop&q=80&w=600"],
-    published: true,
-    rating: null,
-    reviewsCount: 0
   }
 ];
 
+// Helper Function: Image Compression
+const compressImage = (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('canvas');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to 70% quality
+      };
+    };
+  });
+};
+
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(() => {
-    const saved = localStorage.getItem('luxmo_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    try {
+      const saved = localStorage.getItem('luxmo_products');
+      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    } catch (err) {
+      console.error("Storage load error:", err);
+      return INITIAL_PRODUCTS;
+    }
   });
   
   const [cart, setCart] = useState([]);
@@ -123,7 +130,6 @@ export default function LuxmoHubApp() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
-  // Dynamic Razorpay Script Loader
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
@@ -131,7 +137,6 @@ export default function LuxmoHubApp() {
     document.body.appendChild(script);
   }, []);
 
-  // Admin Session State
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
     return sessionStorage.getItem('luxmo_admin_session') === 'true';
   });
@@ -158,7 +163,6 @@ export default function LuxmoHubApp() {
     setActiveTab("home");
   };
 
-  // Product Management & Multiple Images State
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
     title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], description: '',
@@ -167,30 +171,25 @@ export default function LuxmoHubApp() {
   });
   const [formError, setFormError] = useState('');
 
-  // MULTI-IMAGE UPLOAD (MAX 5 IMAGES)
-  const handleImageUpload = (e) => {
+  // IMAGE UPLOAD WITH AUTOMATIC COMPRESSION
+  const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     
     if (files.length + formData.images.length > 5) {
-      setFormError('You can upload a maximum of 5 images per product.');
+      setFormError('Maximum 5 images allowed per product.');
       return;
     }
 
-    const readFiles = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(file);
-      });
-    });
-
-    Promise.all(readFiles).then(newImageUrls => {
+    try {
+      const compressedImages = await Promise.all(files.map(file => compressImage(file)));
       setFormData(prev => ({
         ...prev,
-        images: [...prev.images, ...newImageUrls].slice(0, 5)
+        images: [...prev.images, ...compressedImages].slice(0, 5)
       }));
       setFormError('');
-    });
+    } catch (err) {
+      setFormError('Failed to process images.');
+    }
   };
 
   const handleRemoveImage = (indexToRemove) => {
@@ -200,8 +199,14 @@ export default function LuxmoHubApp() {
     }));
   };
 
+  // Safe Save to LocalStorage
   useEffect(() => {
-    localStorage.setItem('luxmo_products', JSON.stringify(products));
+    try {
+      localStorage.setItem('luxmo_products', JSON.stringify(products));
+    } catch (e) {
+      console.error("Storage Quota Exceeded!", e);
+      alert("Storage limit full! Try deleting old products or using fewer images.");
+    }
   }, [products]);
 
   useEffect(() => {
@@ -443,7 +448,7 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* SINGLE PRODUCT DETAIL PAGE WITH MULTI-IMAGE GALLERY */}
+        {/* PRODUCT DETAILS */}
         {activeTab === "product" && selectedProduct && (
           <div className="bg-white rounded-2xl border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
@@ -452,7 +457,6 @@ export default function LuxmoHubApp() {
                 alt={selectedProduct.title} 
                 className="w-full aspect-square object-cover rounded-xl border" 
               />
-              {/* Thumbnail Gallery */}
               {selectedProduct.images && selectedProduct.images.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {selectedProduct.images.map((img, idx) => (
@@ -504,7 +508,7 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* ADMIN FORM WITH MULTI-IMAGE UPLOAD (MAX 5 IMAGES) */}
+        {/* ADMIN FORM */}
         {activeTab === "admin" && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -594,7 +598,6 @@ export default function LuxmoHubApp() {
                   />
                 </div>
 
-                {/* 5 IMAGES UPLOAD COMPONENT */}
                 <div className="md:col-span-2 border-2 border-dashed border-slate-300 p-4 rounded-lg bg-slate-50 text-center">
                   <label className="block font-bold mb-2 text-slate-700">Upload Product Images (Up to 5)</label>
                   
@@ -614,7 +617,6 @@ export default function LuxmoHubApp() {
                     </>
                   )}
 
-                  {/* Uploaded Images Preview Grid */}
                   {formData.images.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-3 justify-center">
                       {formData.images.map((img, index) => (
