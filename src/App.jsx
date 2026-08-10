@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// VERIFIED BUSINESS INFORMATION (PERMANENT - DO NOT MODIFY)
+// VERIFIED BUSINESS INFORMATION
 // ============================================================================
 const BUSINESS_INFO = {
   tradeName: "LUXMO HUB",
@@ -72,7 +72,6 @@ const MODEL_MAP = {
 
 const FORBIDDEN_TERMS = ["solar panel", "solar panels", "topcon", "mono perc", "bifacial", "half-cut"];
 
-// Initial Genuine Inventory
 const INITIAL_PRODUCTS = [
   {
     id: "prod-001",
@@ -122,7 +121,6 @@ export default function LuxmoHubApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("home");
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [policyPage, setPolicyPage] = useState("about");
 
   // Dynamic Razorpay Script Loader
   useEffect(() => {
@@ -132,7 +130,7 @@ export default function LuxmoHubApp() {
     document.body.appendChild(script);
   }, []);
 
-  // 1. SECURE ADMIN SESSION MANAGEMENT
+  // Admin Session State
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
     return sessionStorage.getItem('luxmo_admin_session') === 'true';
   });
@@ -142,7 +140,6 @@ export default function LuxmoHubApp() {
 
   const handleAdminLogin = (e) => {
     e.preventDefault();
-    // Cryptographic Session Handshake Validation
     if (adminAuthInput === "LUXMO#SECURE2026") {
       setIsAdminLoggedIn(true);
       sessionStorage.setItem('luxmo_admin_session', 'true');
@@ -160,7 +157,7 @@ export default function LuxmoHubApp() {
     setActiveTab("home");
   };
 
-  // 2. PRODUCT MANAGEMENT & IMAGE UPLOAD STATE
+  // Product Management & Image Upload State
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
     title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], description: '',
@@ -169,7 +166,7 @@ export default function LuxmoHubApp() {
   });
   const [formError, setFormError] = useState('');
 
-  // Handle Local File Image Upload (Base64 Encoding)
+  // Handle Image File Upload (Base64)
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -197,7 +194,6 @@ export default function LuxmoHubApp() {
     }
   }, [formData.category]);
 
-  // Product Filter
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       const combinedText = `${p.title} ${p.description} ${p.category} ${p.model}`.toLowerCase();
@@ -225,7 +221,7 @@ export default function LuxmoHubApp() {
     }
 
     if (!formData.image) {
-      setFormError('Please upload an image or provide an image URL.');
+      setFormError('Please upload an image.');
       return;
     }
 
@@ -290,7 +286,6 @@ export default function LuxmoHubApp() {
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.salePrice || item.price) * item.qty, 0);
 
-  // 3. ACTUAL RAZORPAY CHECKOUT INTEGRATION
   const handleRazorpayPayment = () => {
     if (!window.Razorpay) {
       alert("Payment gateway component loading. Please try again in a few seconds.");
@@ -298,12 +293,11 @@ export default function LuxmoHubApp() {
     }
 
     const options = {
-      key: "rzp_test_YourMerchantKeyHere", // Replace with actual Razorpay Merchant Key ID
-      amount: cartTotal * 100, // Amount in paise
+      key: "rzp_test_YourMerchantKeyHere",
+      amount: cartTotal * 100,
       currency: "INR",
       name: BUSINESS_INFO.tradeName,
       description: "Order Checkout Payment",
-      image: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&q=80&w=120",
       handler: function (response) {
         alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
         setCart([]);
@@ -314,9 +308,7 @@ export default function LuxmoHubApp() {
         email: BUSINESS_INFO.emails[0],
         contact: BUSINESS_INFO.phones[0]
       },
-      theme: {
-        color: "#2563eb"
-      }
+      theme: { color: "#2563eb" }
     };
 
     const paymentObject = new window.Razorpay(options);
@@ -336,12 +328,21 @@ export default function LuxmoHubApp() {
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation Header with UPDATED LOGO */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab("home")}>
-            <div className="bg-blue-600 text-white font-black text-xl px-3 py-1 rounded tracking-wider shadow">
-              LUXMO HUB
+            <img 
+              src="/logo.jpeg" 
+              alt="LUXMO HUB" 
+              className="h-10 w-auto object-contain rounded"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'block';
+              }}
+            />
+            <div className="hidden bg-slate-900 text-white font-black text-xl px-3 py-1 rounded tracking-wider border border-amber-500">
+              LUX<span className="text-amber-400">M</span>O <span className="text-amber-400">HUB</span>
             </div>
           </div>
 
@@ -351,7 +352,7 @@ export default function LuxmoHubApp() {
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-4 py-1.5 text-sm bg-white text-slate-900 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           </div>
@@ -434,7 +435,6 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* CART & ACTUAL PAYMENT INTEGRATION */}
         {activeTab === "cart" && (
           <div className="bg-white rounded-2xl border p-6 max-w-2xl mx-auto space-y-6">
             <h1 className="text-xl font-bold border-b pb-3">Shopping Cart</h1>
@@ -461,7 +461,7 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* ADMIN MANAGEMENT PANEL */}
+        {/* ADMIN MANAGEMENT PANEL WITH FIXED WHITE INPUT FIELDS */}
         {activeTab === "admin" && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -469,47 +469,91 @@ export default function LuxmoHubApp() {
               <button onClick={handleAdminLogout} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-md text-xs font-bold">Log Out Admin</button>
             </div>
 
-            <div className="bg-white border rounded-xl p-6">
+            <div className="bg-white border rounded-xl p-6 shadow-sm">
               <h2 className="text-base font-bold mb-4">{editingProduct ? "Edit Product" : "Add Product"}</h2>
               {formError && <p className="text-xs text-red-600 mb-4 bg-red-50 p-2 rounded">{formError}</p>}
               
               <form onSubmit={validateAndSaveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div className="md:col-span-2">
-                  <label className="block font-bold mb-1">Product Title</label>
-                  <input type="text" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} className="w-full p-2 border rounded" />
+                  <label className="block font-bold mb-1 text-slate-700">Product Title</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formData.title} 
+                    onChange={e => setFormData({ ...formData, title: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                    placeholder="Enter product title..."
+                  />
                 </div>
+
                 <div>
-                  <label className="block font-bold mb-1">Category</label>
-                  <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full p-2 border rounded">
+                  <label className="block font-bold mb-1 text-slate-700">Category</label>
+                  <select 
+                    value={formData.category} 
+                    onChange={e => setFormData({ ...formData, category: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+
                 <div>
-                  <label className="block font-bold mb-1">Model</label>
-                  <select value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} className="w-full p-2 border rounded">
+                  <label className="block font-bold mb-1 text-slate-700">Model</label>
+                  <select 
+                    value={formData.model} 
+                    onChange={e => setFormData({ ...formData, model: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
                     {MODEL_MAP[formData.category]?.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
+
                 <div>
-                  <label className="block font-bold mb-1">Price (₹)</label>
-                  <input type="number" required value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} className="w-full p-2 border rounded" />
+                  <label className="block font-bold mb-1 text-slate-700">Price (₹)</label>
+                  <input 
+                    type="number" 
+                    required 
+                    value={formData.price} 
+                    onChange={e => setFormData({ ...formData, price: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  />
                 </div>
+
                 <div>
-                  <label className="block font-bold mb-1">Sale Price (Optional ₹)</label>
-                  <input type="number" value={formData.salePrice} onChange={e => setFormData({ ...formData, salePrice: e.target.value })} className="w-full p-2 border rounded" />
+                  <label className="block font-bold mb-1 text-slate-700">Sale Price (Optional ₹)</label>
+                  <input 
+                    type="number" 
+                    value={formData.salePrice} 
+                    onChange={e => setFormData({ ...formData, salePrice: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  />
                 </div>
+
                 <div>
-                  <label className="block font-bold mb-1">Stock</label>
-                  <input type="number" required value={formData.stock} onChange={e => setFormData({ ...formData, stock: e.target.value })} className="w-full p-2 border rounded" />
+                  <label className="block font-bold mb-1 text-slate-700">Stock</label>
+                  <input 
+                    type="number" 
+                    required 
+                    value={formData.stock} 
+                    onChange={e => setFormData({ ...formData, stock: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  />
                 </div>
+
                 <div>
-                  <label className="block font-bold mb-1">SKU</label>
-                  <input type="text" required value={formData.sku} onChange={e => setFormData({ ...formData, sku: e.target.value })} className="w-full p-2 border rounded" />
+                  <label className="block font-bold mb-1 text-slate-700">SKU</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formData.sku} 
+                    onChange={e => setFormData({ ...formData, sku: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  />
                 </div>
-                
-                {/* 1. IMAGE UPLOAD & PREVIEW COMPONENT */}
+
+                {/* File Upload Component */}
                 <div className="md:col-span-2 border-2 border-dashed border-slate-300 p-4 rounded-lg bg-slate-50 text-center">
-                  <label className="block font-bold mb-2">Upload Product Image File</label>
+                  <label className="block font-bold mb-2 text-slate-700">Upload Product Image File</label>
                   <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="file-input" />
                   <label htmlFor="file-input" className="cursor-pointer inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md font-bold hover:bg-blue-500">
                     <Upload className="w-4 h-4" /> Choose File
@@ -523,17 +567,24 @@ export default function LuxmoHubApp() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block font-bold mb-1">Description</label>
-                  <textarea rows="2" required value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full p-2 border rounded"></textarea>
+                  <label className="block font-bold mb-1 text-slate-700">Description</label>
+                  <textarea 
+                    rows="3" 
+                    required 
+                    value={formData.description} 
+                    onChange={e => setFormData({ ...formData, description: e.target.value })} 
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  ></textarea>
                 </div>
+
                 <div className="md:col-span-2 flex gap-2">
-                  <button type="submit" className="bg-blue-600 text-white font-bold px-4 py-2 rounded">Save Product</button>
-                  {editingProduct && <button type="button" onClick={resetForm} className="bg-slate-200 px-4 py-2 rounded">Cancel</button>}
+                  <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2.5 rounded-md text-xs">Save Product</button>
+                  {editingProduct && <button type="button" onClick={resetForm} className="bg-slate-200 text-slate-800 px-4 py-2.5 rounded-md text-xs font-bold">Cancel</button>}
                 </div>
               </form>
             </div>
 
-            <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b font-bold">
                   <tr>
@@ -580,9 +631,9 @@ export default function LuxmoHubApp() {
                 value={adminAuthInput} 
                 onChange={e => setAdminAuthInput(e.target.value)} 
                 placeholder="Enter Key..." 
-                className="w-full text-xs p-2 border rounded-lg" 
+                className="w-full text-xs p-2.5 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
               />
-              <button type="submit" className="w-full bg-slate-900 text-white text-xs font-bold py-2 rounded-lg">Authenticate</button>
+              <button type="submit" className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg">Authenticate</button>
             </form>
           </div>
         </div>
@@ -591,6 +642,7 @@ export default function LuxmoHubApp() {
   );
 }
 
+// FULLY FIXED PRODUCT CARD COMPONENT
 function ProductCard({ product, onSelect, onAddToCart }) {
   return (
     <div className="bg-white border rounded-xl overflow-hidden hover:shadow-md transition flex flex-col justify-between">
