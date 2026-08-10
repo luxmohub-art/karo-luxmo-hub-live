@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
-  AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail
+  AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
+  FileText, Info, HelpCircle, RefreshCw, Truck, Scale
 } from 'lucide-react';
 
 const BUSINESS_INFO = {
@@ -13,11 +14,11 @@ const BUSINESS_INFO = {
     line2: "Near Mathura Chhapar Branch Post Office",
     area: "Vill-Kotwa, Mathura Chhapar",
     district: "District Deoria",
-    state: "Uttar Pradesh - 274405"
+    state: "Uttar Pradesh – 274405, India"
   },
   emails: ["luxmohub@gmail.com"],
   phones: ["+91 7565012418", "+91 8299260182"],
-  paymentSecurityText: "Payments are processed securely through our authorized payment gateway."
+  hours: "Monday–Saturday, 10:00 AM–6:00 PM (Sunday and public holidays may be closed.)"
 };
 
 const CATEGORIES = ["Mobile Back Case", "Hybrid Solar Inverter", "Solar Accessories"];
@@ -60,29 +61,65 @@ const MODEL_MAP = {
   "Solar Accessories": ACCESSORY_MODELS
 };
 
+// Tax rules supplied for LUXMO HUB product listings.
+// HSN/GST are derived from the selected category and, for mobile cases, material.
+const MATERIAL_LABELS = {
+  "": "Select material",
+  "Genuine Leather": "Genuine Leather",
+  "PU Leather": "PU Leather",
+  "Plastic / Silicone / TPU / Rubber": "Plastic / Silicone / TPU / Rubber"
+};
+
+const MATERIAL_OPTIONS = {
+  "Mobile Back Case": [
+    "",
+    "Genuine Leather",
+    "PU Leather",
+    "Plastic / Silicone / TPU / Rubber"
+  ],
+  "Hybrid Solar Inverter": ["Not Applicable"],
+  "Solar Accessories": ["Not Specified"]
+};
+
+const TAX_RULES = {
+  "Hybrid Solar Inverter": { hsn: "85044010", gstRate: 18, label: "Hybrid Solar Inverter / Electric Inverter" },
+  "Mobile Back Case": {
+    "Genuine Leather": { hsn: "42029900", gstRate: 18, label: "Mobile Phone Back Case / Cover – Genuine Leather" },
+    "PU Leather": { hsn: "42029900", gstRate: 18, label: "Mobile Phone Back Case / Cover – PU Leather" },
+    "Plastic / Silicone / TPU / Rubber": { hsn: "39269099", gstRate: 18, label: "Mobile Phone Back Case / Cover – Plastic / Silicone / TPU / Rubber" }
+  },
+  "Solar Accessories": null
+};
+
+const getTaxInfo = (category, material) => {
+  if (category === "Hybrid Solar Inverter") return TAX_RULES[category];
+  if (category === "Mobile Back Case") return TAX_RULES[category]?.[material] || null;
+  return null;
+};
+
 const FORBIDDEN_TERMS = ["solar panel", "solar panels", "topcon", "mono perc", "bifacial", "half-cut"];
 
 const INITIAL_PRODUCTS = [
   {
     id: "prod-001",
-    title: "Premium Protective Case for Galaxy S25 Ultra",
-    category: "Mobile Back Case",
-    model: "Galaxy S25 Ultra",
-    description: "Shockproof heavy-duty protection case with precision cutouts.",
-    price: 899,
-    salePrice: 499,
-    stock: 50,
-    sku: "MBC-GS25U-01",
-    hsn: "39269099",
+    title: "LUXMO HUB 5.5KW 24V Hybrid Solar Inverter",
+    category: "Hybrid Solar Inverter",
+    model: "Hybrid Solar Inverter 5.5KW 24V",
+    material: "Not Applicable",
+    description: "Pure Sine Wave | MPPT Solar Charge Controller | 24V Battery Support | Home & Solar Power Backup System",
+    price: 65000,
+    salePrice: 54999,
+    stock: 10,
+    sku: "LUX5.5H24V",
+    hsn: "85044010",
     gstRate: 18,
-    images: ["https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&q=80&w=600"],
+    images: ["https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&q=80&w=600"],
     published: true,
     rating: null,
     reviewsCount: 0
   }
 ];
 
-// FIXED IMAGE COMPRESSION FUNCTION
 const compressImage = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -92,7 +129,7 @@ const compressImage = (file) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 600; // Optimal size for fast rendering
+        const MAX_WIDTH = 600;
         let width = img.width;
         let height = img.height;
 
@@ -104,7 +141,6 @@ const compressImage = (file) => {
         canvas.width = width;
         canvas.height = height;
         
-        // FIXED CONTEXT BUG: Changed 'canvas' to '2d'
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           resolve(event.target.result);
@@ -112,7 +148,7 @@ const compressImage = (file) => {
         }
         
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.6)); // 60% quality compression
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
       };
       img.onerror = (err) => reject(err);
     };
@@ -124,7 +160,19 @@ export default function LuxmoHubApp() {
   const [products, setProducts] = useState(() => {
     try {
       const saved = localStorage.getItem('luxmo_products');
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      const loaded = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      return loaded.map(product => {
+        const materialOptions = MATERIAL_OPTIONS[product.category] || [];
+        const material = materialOptions.includes(product.material) ? product.material : (product.category === "Hybrid Solar Inverter" ? "Not Applicable" : "");
+        const taxInfo = getTaxInfo(product.category, material);
+        const isMobileWithoutMaterial = product.category === "Mobile Back Case" && !material;
+        return {
+          ...product,
+          material,
+          hsn: isMobileWithoutMaterial ? "" : (taxInfo?.hsn || product.hsn || ""),
+          gstRate: isMobileWithoutMaterial ? null : (taxInfo?.gstRate ?? product.gstRate ?? null)
+        };
+      });
     } catch (err) {
       console.error("Storage load error:", err);
       return INITIAL_PRODUCTS;
@@ -174,14 +222,13 @@ export default function LuxmoHubApp() {
 
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
-    title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], description: '',
-    price: '', salePrice: '', stock: '', sku: '', hsn: '39269099', gstRate: '18',
+    title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], material: "", description: '',
+    price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
     images: [], published: true
   });
   const [formError, setFormError] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
 
-  // FIXED IMAGE UPLOAD HANDLER
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
@@ -215,22 +262,39 @@ export default function LuxmoHubApp() {
     }));
   };
 
-  // Safe Save to LocalStorage with fallback
   useEffect(() => {
     try {
       localStorage.setItem('luxmo_products', JSON.stringify(products));
     } catch (e) {
       console.error("Storage Limit Reached!", e);
-      alert("Browser storage limit full! Delete some products or use fewer images.");
+      alert("Browser storage limit full!");
     }
   }, [products]);
 
   useEffect(() => {
-    const available = MODEL_MAP[formData.category] || [];
-    if (!available.includes(formData.model)) {
-      setFormData(prev => ({ ...prev, model: available[0] || '' }));
-    }
+    const availableModels = MODEL_MAP[formData.category] || [];
+    const availableMaterials = MATERIAL_OPTIONS[formData.category] || [];
+    const nextModel = availableModels.includes(formData.model) ? formData.model : (availableModels[0] || '');
+    const nextMaterial = availableMaterials.includes(formData.material) ? formData.material : (availableMaterials[0] || '');
+    const tax = getTaxInfo(formData.category, nextMaterial);
+
+    setFormData(prev => ({
+      ...prev,
+      model: nextModel,
+      material: nextMaterial,
+      hsn: tax?.hsn || '',
+      gstRate: tax?.gstRate ?? ''
+    }));
   }, [formData.category]);
+
+  useEffect(() => {
+    const tax = getTaxInfo(formData.category, formData.material);
+    if (tax) {
+      setFormData(prev => ({ ...prev, hsn: tax.hsn, gstRate: tax.gstRate }));
+    } else if (formData.category === "Solar Accessories") {
+      setFormData(prev => ({ ...prev, hsn: '', gstRate: '' }));
+    }
+  }, [formData.material]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -263,18 +327,29 @@ export default function LuxmoHubApp() {
       return;
     }
 
+    const taxInfo = getTaxInfo(formData.category, formData.material);
+    if (formData.category === "Mobile Back Case" && !formData.material) {
+      setFormError('Please select the correct mobile case material so the correct HSN code can be applied.');
+      return;
+    }
+    if ((formData.category === "Mobile Back Case" || formData.category === "Hybrid Solar Inverter") && !taxInfo) {
+      setFormError('Please select a valid product material/category so the correct HSN and GST can be applied.');
+      return;
+    }
+
     const productPayload = {
       id: editingProduct ? editingProduct.id : `prod-${Date.now()}`,
       title: formData.title.trim(),
       category: formData.category,
       model: formData.model,
+      material: formData.material,
       description: formData.description.trim(),
       price: Number(formData.price),
       salePrice: formData.salePrice ? Number(formData.salePrice) : null,
       stock: Number(formData.stock),
       sku: formData.sku.trim(),
-      hsn: formData.hsn.trim(),
-      gstRate: Number(formData.gstRate),
+      hsn: taxInfo?.hsn || '',
+      gstRate: taxInfo?.gstRate ?? null,
       images: formData.images,
       published: Boolean(formData.published),
       rating: editingProduct ? editingProduct.rating : null,
@@ -293,8 +368,8 @@ export default function LuxmoHubApp() {
   const resetForm = () => {
     setEditingProduct(null);
     setFormData({
-      title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], description: '',
-      price: '', salePrice: '', stock: '', sku: '', hsn: '39269099', gstRate: '18',
+      title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], material: "", description: '',
+      price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
       images: [], published: true
     });
     setFormError('');
@@ -302,8 +377,14 @@ export default function LuxmoHubApp() {
 
   const handleEditInit = (prod) => {
     setEditingProduct(prod);
+    const materialOptions = MATERIAL_OPTIONS[prod.category] || [];
+    const material = materialOptions.includes(prod.material) ? prod.material : (materialOptions[0] || '');
+    const taxInfo = getTaxInfo(prod.category, material);
     setFormData({ 
-      ...prod, 
+      ...prod,
+      material,
+      hsn: taxInfo?.hsn || '',
+      gstRate: taxInfo?.gstRate ?? '',
       salePrice: prod.salePrice || '',
       images: prod.images || (prod.image ? [prod.image] : []) 
     });
@@ -330,7 +411,7 @@ export default function LuxmoHubApp() {
 
   const handleRazorpayPayment = () => {
     if (!window.Razorpay) {
-      alert("Payment gateway component loading. Please try again in a few seconds.");
+      alert("Payment gateway component loading. Please try again.");
       return;
     }
 
@@ -346,7 +427,7 @@ export default function LuxmoHubApp() {
         setActiveTab("home");
       },
       prefill: {
-        name: "Customer Name",
+        name: "Customer",
         email: BUSINESS_INFO.emails[0],
         contact: BUSINESS_INFO.phones[0]
       },
@@ -359,7 +440,7 @@ export default function LuxmoHubApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
-      {/* Top Strip */}
+      {/* Top Banner */}
       <div className="bg-slate-900 text-slate-300 text-xs py-1.5 px-4 border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
           <span>GST Registered Proprietorship: <strong>{BUSINESS_INFO.legalName}</strong> ({BUSINESS_INFO.tradeName})</span>
@@ -374,16 +455,7 @@ export default function LuxmoHubApp() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab("home")}>
-            <img 
-              src="/logo.jpeg" 
-              alt="LUXMO HUB" 
-              className="h-10 w-auto object-contain rounded"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'block';
-              }}
-            />
-            <div className="hidden bg-slate-900 text-white font-black text-xl px-3 py-1 rounded tracking-wider border border-amber-500">
+            <div className="bg-slate-900 text-white font-black text-xl px-3 py-1 rounded tracking-wider border border-amber-500">
               LUX<span className="text-amber-400">M</span>O <span className="text-amber-400">HUB</span>
             </div>
           </div>
@@ -402,6 +474,7 @@ export default function LuxmoHubApp() {
           <div className="flex items-center gap-6 text-sm font-medium">
             <button onClick={() => setActiveTab("home")} className={activeTab === 'home' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={activeTab === 'catalog' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Products</button>
+            <button onClick={() => setActiveTab("policies")} className={activeTab === 'policies' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Policies</button>
             <button onClick={() => setActiveTab("cart")} className="relative p-1.5 hover:text-blue-600 text-slate-700">
               <ShoppingBag className="w-6 h-6" />
               {cart.length > 0 && (
@@ -416,16 +489,17 @@ export default function LuxmoHubApp() {
                 <Lock className="w-3 h-3" /> Dashboard
               </button>
             ) : (
-              <button onClick={() => setShowAdminModal(true)} className="text-slate-400 hover:text-slate-600 text-xs flex items-center gap-1">
-                <Lock className="w-3 h-3" /> Portal
+              <button onClick={() => setShowAdminModal(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1">
+                <Lock className="w-3 h-3" /> Dashboard
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+        {/* HOME VIEW */}
         {activeTab === "home" && (
           <div className="space-y-8">
             <div className="bg-gradient-to-r from-slate-900 to-blue-900 text-white rounded-2xl p-8 shadow-lg">
@@ -444,6 +518,7 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
+        {/* CATALOG VIEW */}
         {activeTab === "catalog" && (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -461,6 +536,102 @@ export default function LuxmoHubApp() {
                 <ProductCard key={prod.id} product={prod} onSelect={(p) => { setSelectedProduct(p); setActiveImageIndex(0); setActiveTab("product"); }} onAddToCart={addToCart} />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* CUSTOMER POLICIES TAB VIEW */}
+        {activeTab === "policies" && (
+          <div className="bg-white border rounded-2xl p-6 md:p-8 space-y-8 max-w-4xl mx-auto shadow-sm text-sm leading-relaxed text-slate-700">
+            <div className="border-b pb-4">
+              <h1 className="text-2xl font-bold text-slate-900">CUSTOMER POLICIES — LUXMO HUB</h1>
+              <p className="text-xs text-slate-500 mt-1">Official Legal Guidelines, Privacy, Shipping & Refund Terms</p>
+            </div>
+
+            {/* 1. About Us */}
+            <section className="space-y-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 border-b pb-1">
+                <Info className="w-4 h-4 text-blue-600" /> 1. About Us
+              </h2>
+              <p>LUXMO HUB is a customer-focused business dealing in Hybrid Solar Inverters and Solar Accessories.</p>
+              <p>Our aim is to provide quality products, transparent pricing, reliable customer support, and dependable after-sales assistance.</p>
+              <p>LUXMO HUB is operated as a proprietorship business. The legal name of the proprietor is <strong>Sarita Devi</strong>, and the trade name is <strong>LUXMO HUB</strong>.</p>
+              <p>We continuously work to improve our products and services to provide customers with a smooth and trustworthy shopping experience.</p>
+            </section>
+
+            {/* 2. Contact Us */}
+            <section className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 border-b pb-1 border-slate-200">
+                <Phone className="w-4 h-4 text-blue-600" /> 2. Contact Us
+              </h2>
+              <p>If you have any questions regarding products, orders, payments, shipping, warranty, cancellation, returns, or refunds, please contact us.</p>
+              <div className="text-xs space-y-1 font-medium text-slate-800 pt-2">
+                <p><strong>Business Name:</strong> LUXMO HUB</p>
+                <p><strong>Proprietor:</strong> Sarita Devi</p>
+                <p><strong>Email:</strong> <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="text-blue-600 hover:underline">{BUSINESS_INFO.emails[0]}</a></p>
+                <p><strong>Helpline:</strong> {BUSINESS_INFO.phones.join(', ')}</p>
+                <p><strong>Operating Address:</strong> {BUSINESS_INFO.address.line1}, {BUSINESS_INFO.address.line2}, {BUSINESS_INFO.address.area}, {BUSINESS_INFO.address.district}, {BUSINESS_INFO.address.state}</p>
+                <p><strong>Business Hours:</strong> {BUSINESS_INFO.hours}</p>
+              </div>
+            </section>
+
+            {/* 3. Privacy Policy */}
+            <section className="space-y-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 border-b pb-1">
+                <ShieldCheck className="w-4 h-4 text-blue-600" /> 3. Privacy Policy
+              </h2>
+              <p>At LUXMO HUB, we respect your privacy and are committed to protecting the personal information you provide to us.</p>
+              
+              <h3 className="font-semibold text-slate-800 pt-2">Information We May Collect</h3>
+              <ul className="list-disc pl-5 space-y-1 text-xs">
+                <li>Customer name</li>
+                <li>Mobile number</li>
+                <li>Email address</li>
+                <li>Billing and shipping address</li>
+                <li>Order details</li>
+                <li>Payment-related transaction information</li>
+                <li>Information provided when contacting customer support</li>
+              </ul>
+
+              <h3 className="font-semibold text-slate-800 pt-2">How We Use Your Information</h3>
+              <p className="text-xs">Your information may be used for processing and delivering orders, providing customer support, processing payments and refunds, communicating order updates, providing warranty or after-sales support, improving our products and services, and preventing fraudulent transactions.</p>
+
+              <h3 className="font-semibold text-slate-800 pt-2">Payment Information</h3>
+              <p className="text-xs">Payments may be processed through third-party payment gateway providers. LUXMO HUB does not intentionally store customers' complete debit/credit card, UPI, or banking credentials.</p>
+
+              <h3 className="font-semibold text-slate-800 pt-2">Information Sharing & Data Security</h3>
+              <p className="text-xs">We may share necessary information with trusted service providers such as shipping and logistics partners, payment gateway providers, and technology service providers solely to fulfill your order or comply with applicable laws.</p>
+            </section>
+
+            {/* 4. Terms & Conditions */}
+            <section className="space-y-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 border-b pb-1">
+                <Scale className="w-4 h-4 text-blue-600" /> 4. Terms & Conditions
+              </h2>
+              <p>By accessing or using the LUXMO HUB website, you agree to comply with these Terms & Conditions.</p>
+              
+              <p><strong>Products:</strong> We make reasonable efforts to display accurate product descriptions, specifications, images, prices, and availability. However, minor variations in product appearance, packaging, or specifications may occur.</p>
+              <p><strong>Orders & Pricing:</strong> An order is considered accepted only after successful order confirmation and payment verification. LUXMO HUB reserves the right to cancel an order due to product unavailability, pricing errors, or suspected fraud. Product prices displayed on the website may change without prior notice.</p>
+              <p><strong>Customer Responsibility:</strong> Customers are responsible for providing accurate name, mobile number, email address, and shipping address. LUXMO HUB will not be responsible for delays caused by incorrect information.</p>
+            </section>
+
+            {/* 5. Shipping Policy */}
+            <section className="space-y-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 border-b pb-1">
+                <Truck className="w-4 h-4 text-blue-600" /> 5. Shipping Policy
+              </h2>
+              <p><strong>Order Processing:</strong> Orders are generally processed within 1–3 business days, subject to product availability and payment confirmation.</p>
+              <p><strong>Delivery Inspection:</strong> For products such as solar inverters and electronic equipment, customers are advised to inspect the package carefully at the time of delivery. If the package appears visibly damaged, customers should take photographs/videos of the package and contact LUXMO HUB as soon as possible.</p>
+            </section>
+
+            {/* 6. Cancellation & Refund Policy */}
+            <section className="space-y-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 border-b pb-1">
+                <RefreshCw className="w-4 h-4 text-blue-600" /> 6. Cancellation & Refund Policy
+              </h2>
+              <p><strong>Order Cancellation:</strong> Customers may request cancellation before the order has been shipped. Once shipped, cancellation may not be possible.</p>
+              <p><strong>Refunds:</strong> If a refund is approved, the amount will generally be processed to the original payment method used for the transaction within standard bank timelines.</p>
+              <p><strong>Damaged or Defective Product:</strong> If a product is received damaged or defective, contact LUXMO HUB promptly with your order number and photos/videos of the issue for verification and resolution.</p>
+            </section>
           </div>
         )}
 
@@ -492,12 +663,24 @@ export default function LuxmoHubApp() {
               <h1 className="text-2xl font-bold">{selectedProduct.title}</h1>
               <p className="text-xs text-slate-500">Model: {selectedProduct.model}</p>
               <div className="text-2xl font-extrabold text-slate-900">₹{selectedProduct.salePrice || selectedProduct.price}</div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <h3 className="text-sm font-bold text-slate-900 mb-2">Tax Information</h3>
+                {selectedProduct.hsn && selectedProduct.gstRate != null ? (
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div><span className="text-slate-500 block">HSN Code</span><strong className="text-slate-900">{selectedProduct.hsn}</strong></div>
+                    <div><span className="text-slate-500 block">GST Rate</span><strong className="text-slate-900">{selectedProduct.gstRate}%</strong></div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">Tax classification will be displayed here when specified for this product.</p>
+                )}
+              </div>
               <p className="text-sm text-slate-600 whitespace-pre-line">{selectedProduct.description}</p>
               <button onClick={() => addToCart(selectedProduct)} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm">Add to Cart</button>
             </div>
           </div>
         )}
 
+        {/* CART VIEW */}
         {activeTab === "cart" && (
           <div className="bg-white rounded-2xl border p-6 max-w-2xl mx-auto space-y-6">
             <h1 className="text-xl font-bold border-b pb-3">Shopping Cart</h1>
@@ -517,14 +700,14 @@ export default function LuxmoHubApp() {
                   <span className="text-blue-600">₹{cartTotal}</span>
                 </div>
                 <button onClick={handleRazorpayPayment} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg text-sm">
-                  Pay Now via Razorpay Standard Checkout
+                  Pay Now via Razorpay
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* ADMIN FORM */}
+        {/* ADMIN DASHBOARD VIEW */}
         {activeTab === "admin" && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -572,6 +755,43 @@ export default function LuxmoHubApp() {
                 </div>
 
                 <div>
+                  <label className="block font-bold mb-1 text-slate-700">Product Material / Type</label>
+                  <select
+                    value={formData.material}
+                    onChange={e => setFormData({ ...formData, material: e.target.value })}
+                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    {(MATERIAL_OPTIONS[formData.category] || []).map(material => (
+                      <option key={material || 'select-material'} value={material}>
+                        {MATERIAL_LABELS[material] || material}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">HSN Code</label>
+                  <input
+                    type="text"
+                    value={formData.hsn}
+                    readOnly
+                    className="w-full p-2.5 bg-slate-100 text-slate-900 border border-slate-300 rounded-md"
+                    placeholder="Auto-assigned from category/material"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">GST Rate</label>
+                  <input
+                    type="text"
+                    value={formData.gstRate === '' ? '' : `${formData.gstRate}%`}
+                    readOnly
+                    className="w-full p-2.5 bg-slate-100 text-slate-900 border border-slate-300 rounded-md"
+                    placeholder="Auto-assigned from category/material"
+                  />
+                </div>
+
+                <div>
                   <label className="block font-bold mb-1 text-slate-700">Price (₹)</label>
                   <input 
                     type="number" 
@@ -614,7 +834,6 @@ export default function LuxmoHubApp() {
                   />
                 </div>
 
-                {/* UPLOAD BOX WITH PREVIEW */}
                 <div className="md:col-span-2 border-2 border-dashed border-slate-300 p-4 rounded-lg bg-slate-50 text-center">
                   <label className="block font-bold mb-2 text-slate-700">Upload Product Images (Up to 5)</label>
                   
@@ -639,7 +858,6 @@ export default function LuxmoHubApp() {
                     </>
                   )}
 
-                  {/* PREVIEW THUMBNAILS */}
                   {formData.images.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-3 justify-center">
                       {formData.images.map((img, index) => (
@@ -683,6 +901,8 @@ export default function LuxmoHubApp() {
                     <th className="p-3">Title</th>
                     <th className="p-3">Category</th>
                     <th className="p-3">Price</th>
+                    <th className="p-3">HSN</th>
+                    <th className="p-3">GST</th>
                     <th className="p-3">Stock</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
@@ -693,6 +913,8 @@ export default function LuxmoHubApp() {
                       <td className="p-3 font-semibold">{p.title}</td>
                       <td className="p-3">{p.category}</td>
                       <td className="p-3">₹{p.salePrice || p.price}</td>
+                      <td className="p-3">{p.hsn || '—'}</td>
+                      <td className="p-3">{p.gstRate != null ? `${p.gstRate}%` : '—'}</td>
                       <td className="p-3">{p.stock}</td>
                       <td className="p-3 text-right space-x-2">
                         <button onClick={() => handleEditInit(p)} className="hover:text-blue-600"><Edit3 className="w-4 h-4 inline" /></button>
@@ -706,6 +928,18 @@ export default function LuxmoHubApp() {
           </div>
         )}
       </main>
+
+      {/* Footer with Policies Link */}
+      <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p>© {new Date().getFullYear()} {BUSINESS_INFO.tradeName} ({BUSINESS_INFO.legalName}). All rights reserved.</p>
+          <div className="flex gap-4">
+            <button onClick={() => setActiveTab("policies")} className="hover:text-white underline">Terms & Customer Policies</button>
+            <button onClick={() => setActiveTab("policies")} className="hover:text-white underline">Privacy Policy</button>
+            <button onClick={() => setActiveTab("policies")} className="hover:text-white underline">Refund Policy</button>
+          </div>
+        </div>
+      </footer>
 
       {/* ADMIN AUTH MODAL */}
       {showAdminModal && (
@@ -746,6 +980,9 @@ function ProductCard({ product, onSelect, onAddToCart }) {
           <h3 className="font-semibold text-sm line-clamp-1">{product.title}</h3>
           <p className="text-xs text-slate-500">Model: {product.model}</p>
           <div className="font-extrabold text-base pt-1">₹{product.salePrice || product.price}</div>
+          {product.hsn && product.gstRate != null && (
+            <div className="text-[10px] text-slate-500 pt-1">HSN: {product.hsn} · GST: {product.gstRate}%</div>
+          )}
         </div>
       </div>
       <div className="p-4 pt-0">
