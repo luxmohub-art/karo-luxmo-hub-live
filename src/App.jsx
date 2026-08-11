@@ -411,34 +411,116 @@ export default function LuxmoHubApp() {
 
   const currentFormTaxInfo = getTaxInfo(formData.category, formData.material);
 
-  const handleRazorpayPayment = () => {
-    if (!window.Razorpay) {
-      alert("Payment gateway component loading. Please try again.");
-      return;
+  const handleRazorpayPayment = async () => {
+  if (!window.Razorpay) {
+    alert("Razorpay loading. Please try again.");
+    return;
+  }
+
+  if (!cart || cart.length === 0) {
+    alert("Your cart is empty.");
+    return;
+  }
+
+  try {
+    const orderResponse = await fetch("/api/create-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        amount: cartTotal
+      })
+    });
+
+    const orderData = await orderResponse.json();
+
+    if (!orderResponse.ok || !orderData.success) {
+      throw new Error(
+        orderData.error || "Unable to create order"
+      );
     }
 
     const options = {
-      key: "rzp_test_YourMerchantKeyHere",
-      amount: cartTotal * 100,
-      currency: "INR",
+      key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+      amount: orderData.amount,
+      currency: orderData.currency,
       name: BUSINESS_INFO.tradeName,
-      description: "Order Checkout Payment",
-      handler: function (response) {
-        alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
-        setCart([]);
-        setActiveTab("home");
+      description: "Luxmo Hub Order",
+      order_id: orderData.orderId,
+
+      handler: async function (response) {
+        try {
+          const verifyResponse = await fetch(
+            "/api/verify-payment",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(response)
+            }
+          );
+
+          const verifyData = await verifyResponse.json();
+
+          if (!verifyResponse.ok || !verifyData.success) {
+            alert("Payment verification failed.");
+            return;
+          }
+
+          alert(
+            `Payment Successful!\nPayment ID: ${response.razorpay_payment_id}`
+          );
+
+          setCart([]);
+          setActiveTab("home");
+
+        } catch (error) {
+          console.error("Verification error:", error);
+          alert("Payment verification failed.");
+        }
       },
+
       prefill: {
         name: "Customer",
         email: BUSINESS_INFO.emails[0],
         contact: BUSINESS_INFO.phones[0]
       },
-      theme: { color: "#2563eb" }
+
+      theme: {
+        color: "#2563eb"
+      }
     };
 
     const paymentObject = new window.Razorpay(options);
+
+    paymentObject.on(
+      "payment.failed",
+      function (response) {
+        console.error(
+          "Payment failed:",
+          response.error
+        );
+
+        alert(
+          response.error?.description ||
+          "Payment failed. Please try again."
+        );
+      }
+    );
+
     paymentObject.open();
-  };
+
+  } catch (error) {
+    console.error("Razorpay Error:", error);
+
+    alert(
+      error.message ||
+      "Unable to start payment."
+    );
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
