@@ -814,7 +814,7 @@ export default function LuxmoHubApp() {
         Explore Solar Accessories →
       </button>
 
-    </</div>
+    </div>
 {/* Why Choose LUXMO HUB */}
 <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
   <h2 className="text-2xl font-bold text-slate-900">
