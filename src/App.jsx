@@ -646,7 +646,31 @@ export default function LuxmoHubApp() {
   </div>
 </div>
     
+  {/* Hybrid Solar Inverters */}
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-slate-900">
+        ☀️ Hybrid Solar Inverters
+      </h2>
 
+      <p className="text-slate-600 mt-2">
+        Reliable power solutions for your home.
+      </p>
+
+      <p className="text-slate-600 mt-3">
+        24V Hybrid Inverters • 48V Hybrid Inverters • WiFi Monitoring •
+        Solar Accessories
+      </p>
+
+      <button
+        onClick={() => {
+          setSelectedCategory("Hybrid Solar Inverter");
+          setActiveTab("catalog");
+        }}
+        className="mt-5 text-blue-600 font-semibold"
+      >
+        View Solar Inverters →
+      </button>
+    </div>
     {/* Mobile Back Cases */}
     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
       <h2 className="text-2xl font-bold text-slate-900">
@@ -673,31 +697,7 @@ export default function LuxmoHubApp() {
       </button>
     </div>
 
-    {/* Hybrid Solar Inverters */}
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-slate-900">
-        ☀️ Hybrid Solar Inverters
-      </h2>
-
-      <p className="text-slate-600 mt-2">
-        Reliable power solutions for your home.
-      </p>
-
-      <p className="text-slate-600 mt-3">
-        24V Hybrid Inverters • 48V Hybrid Inverters • WiFi Monitoring •
-        Solar Accessories
-      </p>
-
-      <button
-        onClick={() => {
-          setSelectedCategory("Hybrid Solar Inverter");
-          setActiveTab("catalog");
-        }}
-        className="mt-5 text-blue-600 font-semibold"
-      >
-        View Solar Inverters →
-      </button>
-    </div>
+  
 
     {/* Solar Accessories */}
 {/* Premium Product Categories */}
