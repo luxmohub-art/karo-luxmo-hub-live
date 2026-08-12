@@ -588,41 +588,64 @@ export default function LuxmoHubApp() {
   <div className="space-y-8">
 
     {/* Hero Section */}
-    <div className="bg-gradient-to-r from-slate-900 to-blue-900 text-white rounded-2xl p-8 md:p-12 shadow-lg">
-      <h1 className="text-3xl md:text-5xl font-bold">
-        LUXMO HUB
-      </h1>
+    {/* Premium Hero Section */}
+<div className="bg-gradient-to-r from-slate-950 via-blue-950 to-blue-800 text-white rounded-2xl p-6 md:p-10 shadow-xl">
+  <div className="max-w-4xl">
+    <p className="text-sm md:text-base font-semibold text-blue-300 uppercase tracking-wider">
+      LUXMO HUB
+    </p>
 
-      <h2 className="text-2xl md:text-4xl font-bold mt-2">
-        Mobile Accessories & Solar Power Solutions
-      </h2>
+    <h1 className="text-3xl md:text-5xl font-bold mt-3 leading-tight">
+      Smart Power & Premium Mobile Protection
+    </h1>
 
-      <p className="text-slate-300 mt-4 text-lg">
-        Quality Products, Trusted by You.
-      </p>
+    <p className="text-lg md:text-xl text-slate-200 mt-4">
+      Hybrid Solar Inverters, Solar Accessories & Premium Mobile Back Cases
+    </p>
 
-      <div className="flex flex-wrap gap-4 mt-6">
-        <button
-          onClick={() => {
-            setSelectedCategory("Mobile Back Case");
-            setActiveTab("catalog");
-          }}
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
-        >
-          Shop Mobile Cases →
-        </button>
+    <p className="text-slate-300 mt-3 text-base md:text-lg">
+      Quality Products, Trusted by You.
+    </p>
 
-        <button
-          onClick={() => {
-            setSelectedCategory("Hybrid Solar Inverter");
-            setActiveTab("catalog");
-          }}
-          className="px-6 py-3 bg-white text-blue-900 hover:bg-slate-100 rounded-lg font-semibold"
-        >
-          Shop Solar Inverters →
-        </button>
-      </div>
+    <div className="flex flex-wrap gap-4 mt-7">
+      <button
+        onClick={() => {
+          setSelectedCategory("Hybrid Solar Inverter");
+          setActiveTab("catalog");
+        }}
+        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-md"
+      >
+        Shop Solar Inverters →
+      </button>
+
+      <button
+        onClick={() => {
+          setSelectedCategory("Mobile Back Case");
+          setActiveTab("catalog");
+        }}
+        className="px-6 py-3 bg-white text-blue-900 hover:bg-slate-100 rounded-lg font-semibold shadow-md"
+      >
+        Shop Mobile Cases →
+      </button>
     </div>
+
+    <div className="flex flex-wrap gap-3 mt-7 text-sm text-slate-200">
+      <span className="px-3 py-1 bg-white/10 rounded-full">
+        ✓ GST Invoice
+      </span>
+      <span className="px-3 py-1 bg-white/10 rounded-full">
+        ✓ Secure Payment
+      </span>
+      <span className="px-3 py-1 bg-white/10 rounded-full">
+        ✓ Customer Support
+      </span>
+      <span className="px-3 py-1 bg-white/10 rounded-full">
+        ✓ Reliable Shipping
+      </span>
+    </div>
+  </div>
+</div>
+    
 
     {/* Mobile Back Cases */}
     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
