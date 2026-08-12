@@ -815,7 +815,7 @@ export default function LuxmoHubApp() {
       </button>
 
     </</div>
-{/* {/* Why Choose LUXMO HUB */}
+{/* Why Choose LUXMO HUB */}
 <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
   <h2 className="text-2xl font-bold text-slate-900">
     ⭐ Why Choose LUXMO HUB
