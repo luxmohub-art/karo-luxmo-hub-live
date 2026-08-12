@@ -585,22 +585,155 @@ export default function LuxmoHubApp() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         {/* HOME VIEW */}
         {activeTab === "home" && (
-          <div className="space-y-8">
-            <div className="bg-gradient-to-r from-slate-900 to-blue-900 text-white rounded-2xl p-8 shadow-lg">
-              <h1 className="text-3xl font-extrabold mb-2">LUXMO HUB Official Store</h1>
-              <p className="text-slate-300 text-sm mb-4">Mobile Cases, Hybrid Solar Inverters & Accessories</p>
-              <button onClick={() => setActiveTab("catalog")} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg">View Catalog</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {CATEGORIES.map(cat => (
-                <div key={cat} onClick={() => { setSelectedCategory(cat); setActiveTab("catalog"); }} className="bg-white border p-6 rounded-xl shadow-sm cursor-pointer hover:border-blue-500">
-                  <h3 className="font-bold text-slate-900">{cat}</h3>
-                  <span className="text-blue-600 text-xs font-bold mt-2 inline-block flex items-center">Browse <ChevronRight className="w-3 h-3"/></span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+  <div className="space-y-8">
+
+    {/* Hero Section */}
+    <div className="bg-gradient-to-r from-slate-900 to-blue-900 text-white rounded-2xl p-8 md:p-12 shadow-lg">
+      <h1 className="text-3xl md:text-5xl font-bold">
+        LUXMO HUB
+      </h1>
+
+      <h2 className="text-2xl md:text-4xl font-bold mt-2">
+        Mobile Accessories & Solar Power Solutions
+      </h2>
+
+      <p className="text-slate-300 mt-4 text-lg">
+        Quality Products, Trusted by You.
+      </p>
+
+      <div className="flex flex-wrap gap-4 mt-6">
+        <button
+          onClick={() => {
+            setSelectedCategory("Mobile Back Case");
+            setActiveTab("catalog");
+          }}
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+        >
+          Shop Mobile Cases →
+        </button>
+
+        <button
+          onClick={() => {
+            setSelectedCategory("Hybrid Solar Inverter");
+            setActiveTab("catalog");
+          }}
+          className="px-6 py-3 bg-white text-blue-900 hover:bg-slate-100 rounded-lg font-semibold"
+        >
+          Shop Solar Inverters →
+        </button>
+      </div>
+    </div>
+
+    {/* Mobile Back Cases */}
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-slate-900">
+        📱 Mobile Back Cases
+      </h2>
+
+      <p className="text-slate-600 mt-2">
+        Premium protection for your smartphone.
+      </p>
+
+      <p className="text-slate-600 mt-3">
+        iPhone Cases • Samsung Cases • MagSafe Cases • Leather Cases •
+        Silicone / TPU Cases
+      </p>
+
+      <button
+        onClick={() => {
+          setSelectedCategory("Mobile Back Case");
+          setActiveTab("catalog");
+        }}
+        className="mt-5 text-blue-600 font-semibold"
+      >
+        View Mobile Cases →
+      </button>
+    </div>
+
+    {/* Hybrid Solar Inverters */}
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-slate-900">
+        ☀️ Hybrid Solar Inverters
+      </h2>
+
+      <p className="text-slate-600 mt-2">
+        Reliable power solutions for your home.
+      </p>
+
+      <p className="text-slate-600 mt-3">
+        24V Hybrid Inverters • 48V Hybrid Inverters • WiFi Monitoring •
+        Solar Accessories
+      </p>
+
+      <button
+        onClick={() => {
+          setSelectedCategory("Hybrid Solar Inverter");
+          setActiveTab("catalog");
+        }}
+        className="mt-5 text-blue-600 font-semibold"
+      >
+        View Solar Inverters →
+      </button>
+    </div>
+
+    {/* Solar Accessories */}
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-slate-900">
+        🔌 Solar Accessories
+      </h2>
+
+      <p className="text-slate-600 mt-2">
+        Quality accessories for your solar power system.
+      </p>
+
+      <p className="text-slate-600 mt-3">
+        Solar DC Cables • MC4 Connectors • DC Fuse • PV Combiner Box •
+        WiFi Monitoring Dongle
+      </p>
+
+      <button
+        onClick={() => {
+          setSelectedCategory("Solar Accessories");
+          setActiveTab("catalog");
+        }}
+        className="mt-5 text-blue-600 font-semibold"
+      >
+        View Solar Accessories →
+      </button>
+    </div>
+
+    {/* Why Choose LUXMO HUB */}
+    <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+      <h2 className="text-2xl font-bold text-slate-900">
+        ⭐ Why Choose LUXMO HUB
+      </h2>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-5 text-slate-700">
+        <div>✅ Quality Products</div>
+        <div>✅ GST Invoice</div>
+        <div>✅ Secure Payment</div>
+        <div>✅ Customer Support</div>
+        <div>✅ Reliable Shipping</div>
+      </div>
+    </div>
+
+    {/* Contact Section */}
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-slate-900">
+        📞 Need Help?
+      </h2>
+
+      <p className="text-slate-600 mt-2">
+        WhatsApp / Call: +91 7565012418
+      </p>
+
+      <p className="text-slate-600 mt-1">
+        Email: luxmohub@gmail.com
+      </p>
+    </div>
+
+  </div>
+)}
 
         {/* CATALOG VIEW */}
         {activeTab === "catalog" && (
