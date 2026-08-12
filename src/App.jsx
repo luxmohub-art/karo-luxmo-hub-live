@@ -21,7 +21,7 @@ const BUSINESS_INFO = {
   hours: "Monday–Saturday, 10:00 AM–6:00 PM (Sunday and public holidays may be closed.)"
 };
 
-const CATEGORIES = ["Mobile Back Case", "Hybrid Solar Inverter", "Solar Accessories"];
+const CATEGORIES = ["Hybrid Solar Inverter", "Mobile Back Case", "Solar Accessories"];
 
 const MOBILE_MODELS = [
   "Galaxy Z Fold 7", "Galaxy Z Fold 6", "Galaxy Z Fold 5", "Galaxy Z Fold 4", "Galaxy Z Fold 3", "Galaxy Z Fold 2", "Galaxy Fold",
