@@ -1272,61 +1272,144 @@ export default function LuxmoHubApp() {
             <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b font-bold">
-                  <tr>
-                    <th className="p-3">Title</th>
-                    <th className="p-3">Category</th>
-                    <th className="p-3">Price</th>
-                    <th className="p-3">HSN</th>
-                    <th className="p-3">GST</th>
-                    <th className="p-3">Stock</th>
-                    <th className="p-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  
-        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p>© {new Date().getFullYear()} {BUSINESS_INFO.tradeName} ({BUSINESS_INFO.legalName}). All rights reserved.</p>
-          <div className="flex gap-4">
-            <button onClick={() => setActiveTab("policies")} className="hover:text-white underline">Terms & Customer Policies</button>
-            <button onClick={() => setActiveTab("policies")} className="hover:text-white underline">Privacy Policy</button>
-            <button onClick={() => setActiveTab("policies")} className="hover:text-white underline">Refund Policy</button>
-          </div>
-        </div>
-      </footer>
+                              <tr>
+              <th className="p-3">Title</th>
+              <th className="p-3">Category</th>
+              <th className="p-3">Price</th>
+              <th className="p-3">HSN</th>
+              <th className="p-3">GST</th>
+              <th className="p-3">Stock</th>
+              <th className="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
 
-      {/* ADMIN AUTH MODAL */}
-      {showAdminModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-sm flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-blue-600"/> Secure Admin Verification</h3>
-              <button onClick={() => setShowAdminModal(false)}><X className="w-4 h-4"/></button>
-            </div>
-            {authError && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{authError}</p>}
-            <form onSubmit={handleAdminLogin} className="space-y-3">
-              <input 
-                type="password" 
-                required 
-                value={adminAuthInput} 
-                onChange={e => setAdminAuthInput(e.target.value)} 
-                placeholder="Enter Key..." 
-                className="w-full text-xs p-2.5 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
-              />
-              <button type="submit" className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg">Authenticate</button>
-            </form>
-          </div>
-        </div>
-      )}
+          <tbody className="divide-y">
+            {products.map((p) => (
+              <tr key={p.id}>
+                <td className="p-3 font-semibold">{p.title}</td>
+                <td className="p-3">{p.category}</td>
+                <td className="p-3">₹{p.salePrice || p.price}</td>
+                <td className="p-3">{p.hsn || "-"}</td>
+                <td className="p-3">
+                  {p.gstRate != null ? `${p.gstRate}%` : "-"}
+                </td>
+                <td className="p-3">{p.stock}</td>
+                <td className="p-3 text-right space-x-2">
+                  <button
+                    onClick={() => handleEditInit(p)}
+                    className="hover:text-blue-600"
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteProduct(p.id)}
+                    className="hover:text-red-600"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
+  )}
+
+  </main>
+
+  {/* Footer with Policies Link */}
+  <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 mt-auto">
+    <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
+      <p>
+        © {new Date().getFullYear()} {BUSINESS_INFO.tradeName}. All rights reserved.
+      </p>
+
+      <div className="flex gap-4">
+        <button
+          onClick={() => setActiveTab("policies")}
+          className="hover:text-white underline"
+        >
+          Terms & Customer Policy
+        </button>
+
+        <button
+          onClick={() => setActiveTab("policies")}
+          className="hover:text-white underline"
+        >
+          Privacy Policy
+        </button>
+
+        <button
+          onClick={() => setActiveTab("policies")}
+          className="hover:text-white underline"
+        >
+          Refund Policy
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  {/* ADMIN AUTH MODAL */}
+  {showAdminModal && (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-bold text-sm flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-blue-600" />
+            Admin Authentication
+          </h3>
+
+          <button
+            onClick={() => setShowAdminModal(false)}
+            className="text-slate-500 hover:text-slate-900"
+          >
+            X
+          </button>
+        </div>
+
+        {authError && (
+          <p className="text-xs text-red-600 bg-red-50 p-2 rounded">
+            {authError}
+          </p>
+        )}
+
+        <form onSubmit={handleAdminLogin} className="space-y-3">
+          <input
+            type="password"
+            required
+            value={adminAuthInput}
+            onChange={(e) => setAdminAuthInput(e.target.value)}
+            placeholder="Enter Key..."
+            className="w-full px-3 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          />
+
+          <button
+            type="submit"
+            className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg"
+          >
+            Authenticate
+          </button>
+        </form>
+      </div>
+    </div>
+  )}
+
+  </div>
   );
 }
 
 function ProductCard({ product, onSelect, onAddToCart }) {
-  const displayImage = (product.images && product.images[0]) || product.image;
+  const displayImage =
+    (product.images && product.images[0]) || product.image;
 
   return (
     <div className="bg-white border rounded-xl overflow-hidden hover:shadow-md transition flex flex-col justify-between">
-      <div className="cursor-pointer" onClick={() => onSelect(product)}>
+      <div
+        className="cursor-pointer"
+        onClick={() => onSelect(product)}
+      >
         <img src={displayImage} alt={product.title} className="w-full aspect-square object-cover" />
         <div className="p-4 space-y-1">
           <span className="text-[10px] font-bold text-blue-600 uppercase">{product.category}</span>
