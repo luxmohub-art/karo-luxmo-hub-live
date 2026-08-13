@@ -9,6 +9,54 @@ const BUSINESS_INFO = {
   tradeName: "LUXMO HUB",
   legalName: "Sarita Devi",
   type: "Proprietorship",
+  gstin: "09CNCPD1174R1ZN",
+
+  // Complete Udyam Registration Certificate details
+  udyam: {
+    registrationNumber: "UDYAM-UP-21-0062490",
+    enterpriseName: "LUXMO HUB",
+    classificationYear: "2026-27",
+    enterpriseType: "Micro",
+    classificationDate: "05/08/2026",
+    majorActivity: "TRADING",
+    socialCategory: "OBC",
+    unitName: "Luxmo Hub",
+
+    officialAddress: {
+      flatDoorBlockNo: "147",
+      premisesBuilding: "Luxmo Hub Office",
+      villageTown: "Kotwa",
+      blockPost: "Mathura Chhapar",
+      roadStreetLane: "Unnamed Road",
+      city: "Deoria",
+      state: "UTTAR PRADESH",
+      district: "DEORIA",
+      pinCode: "274405"
+    },
+
+    registeredMobile: "8299260182",
+    registeredEmail: "Luxmohub@gmail.com",
+
+    dateOfIncorporationRegistration: "25/05/2026",
+    dateOfCommencementOfProductionBusiness: "25/05/2026",
+    dateOfUdyamRegistration: "05/08/2026",
+
+    nicClassification: {
+      nic2Digit: "46",
+      nic2DigitActivity: "Wholesale trade, except of motor vehicles and motorcycles",
+      nic4Digit: "4659",
+      nic4DigitActivity: "Wholesale of other machinery and equipment",
+      nic5Digit: "46599",
+      nic5DigitActivity: "Wholesale of other machinery, equipment and supplies n.e.c. including computer-controlled machine tools and computer-controlled sewing and knitting machines",
+      activity: "Trading"
+    },
+
+    assistance: {
+      districtIndustriesCentre: "DEORIA (UTTAR PRADESH)",
+      msmeDfo: "KANPUR (UTTAR PRADESH)"
+    }
+  },
+
   address: {
     line1: "Building No. 147, Unnamed Road",
     line2: "Near Mathura Chhapar Branch Post Office",
@@ -1544,6 +1592,59 @@ export default function LuxmoHubApp() {
                   <p><strong>GSTIN:</strong> 09CNCPD1174R1ZN</p>
                 </div>
 
+                <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-900 p-5">
+                  <h4 className="text-lg font-black text-amber-300">Udyam / MSME Registration Details</h4>
+
+                  <div className="mt-4 grid md:grid-cols-2 gap-3 text-sm text-slate-200">
+                    <p><strong>Udyam Registration Number:</strong> {BUSINESS_INFO.udyam.registrationNumber}</p>
+                    <p><strong>Name of Enterprise:</strong> {BUSINESS_INFO.udyam.enterpriseName}</p>
+                    <p><strong>Classification Year:</strong> {BUSINESS_INFO.udyam.classificationYear}</p>
+                    <p><strong>Enterprise Type:</strong> {BUSINESS_INFO.udyam.enterpriseType}</p>
+                    <p><strong>Classification Date:</strong> {BUSINESS_INFO.udyam.classificationDate}</p>
+                    <p><strong>Major Activity:</strong> {BUSINESS_INFO.udyam.majorActivity}</p>
+                    <p><strong>Social Category:</strong> {BUSINESS_INFO.udyam.socialCategory}</p>
+                    <p><strong>Name of Unit:</strong> {BUSINESS_INFO.udyam.unitName}</p>
+                    <p><strong>Registered Mobile:</strong> {BUSINESS_INFO.udyam.registeredMobile}</p>
+                    <p><strong>Registered Email:</strong> {BUSINESS_INFO.udyam.registeredEmail}</p>
+                    <p><strong>Date of Incorporation / Registration:</strong> {BUSINESS_INFO.udyam.dateOfIncorporationRegistration}</p>
+                    <p><strong>Date of Commencement of Production / Business:</strong> {BUSINESS_INFO.udyam.dateOfCommencementOfProductionBusiness}</p>
+                    <p><strong>Date of Udyam Registration:</strong> {BUSINESS_INFO.udyam.dateOfUdyamRegistration}</p>
+                  </div>
+
+                  <div className="mt-5 pt-5 border-t border-slate-700">
+                    <h4 className="font-bold text-amber-300">Official Address of Enterprise</h4>
+                    <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm text-slate-300">
+                      <p><strong>Flat/Door/Block No.:</strong> {BUSINESS_INFO.udyam.officialAddress.flatDoorBlockNo}</p>
+                      <p><strong>Name of Premises/Building:</strong> {BUSINESS_INFO.udyam.officialAddress.premisesBuilding}</p>
+                      <p><strong>Village/Town:</strong> {BUSINESS_INFO.udyam.officialAddress.villageTown}</p>
+                      <p><strong>Block/Post:</strong> {BUSINESS_INFO.udyam.officialAddress.blockPost}</p>
+                      <p><strong>Road/Street/Lane:</strong> {BUSINESS_INFO.udyam.officialAddress.roadStreetLane}</p>
+                      <p><strong>City:</strong> {BUSINESS_INFO.udyam.officialAddress.city}</p>
+                      <p><strong>State:</strong> {BUSINESS_INFO.udyam.officialAddress.state}</p>
+                      <p><strong>District:</strong> {BUSINESS_INFO.udyam.officialAddress.district}</p>
+                      <p><strong>PIN:</strong> {BUSINESS_INFO.udyam.officialAddress.pinCode}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 pt-5 border-t border-slate-700">
+                    <h4 className="font-bold text-amber-300">National Industry Classification (NIC) Codes</h4>
+                    <div className="mt-3 space-y-3 text-sm text-slate-300">
+                      <p><strong>NIC 2 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic2Digit} — {BUSINESS_INFO.udyam.nicClassification.nic2DigitActivity}</p>
+                      <p><strong>NIC 4 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic4Digit} — {BUSINESS_INFO.udyam.nicClassification.nic4DigitActivity}</p>
+                      <p><strong>NIC 5 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic5Digit} — {BUSINESS_INFO.udyam.nicClassification.nic5DigitActivity}</p>
+                      <p><strong>Activity:</strong> {BUSINESS_INFO.udyam.nicClassification.activity}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 pt-5 border-t border-slate-700">
+                    <h4 className="font-bold text-amber-300">Udyam Assistance Offices</h4>
+                    <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm text-slate-300">
+                      <p><strong>District Industries Centre:</strong> {BUSINESS_INFO.udyam.assistance.districtIndustriesCentre}</p>
+                      <p><strong>MSME-DFO:</strong> {BUSINESS_INFO.udyam.assistance.msmeDfo}</p>
+                    </div>
+                  </div>
+                </div>
+
                 <h4 className="font-bold mt-6">Customer Support:</h4>
                 <p className="mt-1">Email: <a href="mailto:luxmohub@gmail.com" className="underline hover:text-white">luxmohub@gmail.com</a></p>
                 <p>Phone: <a href="tel:+917565012418" className="underline hover:text-white">+91 75650 12418</a></p>
@@ -1739,6 +1840,100 @@ export default function LuxmoHubApp() {
                 <div><span className="font-bold">Customer Support:</span> luxmohub@gmail.com</div>
                 <div><span className="font-bold">Phone:</span> +91 75650 12418</div>
                 <div><span className="font-bold">Grievance Officer:</span> Gyaneshwar Sharma</div>
+              </div>
+            </section>
+
+            {/* COMPLETE UDYAM / MSME REGISTRATION */}
+            <section className="bg-slate-950 text-white border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl">
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Government Registration</p>
+              <h2 className="mt-1 text-2xl md:text-3xl font-black">Udyam / MSME Registration Details</h2>
+
+              <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Udyam Registration Number</p>
+                  <p className="mt-1 font-black text-amber-300">{BUSINESS_INFO.udyam.registrationNumber}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Name of Enterprise</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.enterpriseName}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Enterprise Type</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.enterpriseType}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Classification Year</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.classificationYear}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Classification Date</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.classificationDate}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Major Activity</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.majorActivity}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Social Category</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.socialCategory}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Name of Unit</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.unitName}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Registered Mobile</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.registeredMobile}</p>
+                </div>
+                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Registered Email</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.registeredEmail}</p>
+                </div>
+                <div className="sm:col-span-2 rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Date of Incorporation / Registration</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.dateOfIncorporationRegistration}</p>
+                </div>
+                <div className="sm:col-span-2 rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Date of Commencement of Production / Business</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.dateOfCommencementOfProductionBusiness}</p>
+                </div>
+                <div className="sm:col-span-2 rounded-xl bg-white/5 border border-slate-700 p-4">
+                  <p className="text-slate-400">Date of Udyam Registration</p>
+                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.dateOfUdyamRegistration}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl bg-white/5 border border-slate-700 p-5">
+                <h3 className="font-black text-amber-300">Official Address of Enterprise</h3>
+                <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-300">
+                  <p><strong>Flat/Door/Block No.:</strong> {BUSINESS_INFO.udyam.officialAddress.flatDoorBlockNo}</p>
+                  <p><strong>Premises/Building:</strong> {BUSINESS_INFO.udyam.officialAddress.premisesBuilding}</p>
+                  <p><strong>Village/Town:</strong> {BUSINESS_INFO.udyam.officialAddress.villageTown}</p>
+                  <p><strong>Block/Post:</strong> {BUSINESS_INFO.udyam.officialAddress.blockPost}</p>
+                  <p><strong>Road/Street/Lane:</strong> {BUSINESS_INFO.udyam.officialAddress.roadStreetLane}</p>
+                  <p><strong>City:</strong> {BUSINESS_INFO.udyam.officialAddress.city}</p>
+                  <p><strong>State:</strong> {BUSINESS_INFO.udyam.officialAddress.state}</p>
+                  <p><strong>District:</strong> {BUSINESS_INFO.udyam.officialAddress.district}</p>
+                  <p><strong>PIN:</strong> {BUSINESS_INFO.udyam.officialAddress.pinCode}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl bg-white/5 border border-slate-700 p-5">
+                <h3 className="font-black text-amber-300">National Industry Classification (NIC) Codes</h3>
+                <div className="mt-3 space-y-3 text-sm text-slate-300">
+                  <p><strong>NIC 2 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic2Digit} — {BUSINESS_INFO.udyam.nicClassification.nic2DigitActivity}</p>
+                  <p><strong>NIC 4 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic4Digit} — {BUSINESS_INFO.udyam.nicClassification.nic4DigitActivity}</p>
+                  <p><strong>NIC 5 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic5Digit} — {BUSINESS_INFO.udyam.nicClassification.nic5DigitActivity}</p>
+                  <p><strong>Activity:</strong> {BUSINESS_INFO.udyam.nicClassification.activity}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl bg-white/5 border border-slate-700 p-5">
+                <h3 className="font-black text-amber-300">Udyam Assistance Offices</h3>
+                <div className="mt-3 grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
+                  <p><strong>District Industries Centre:</strong> {BUSINESS_INFO.udyam.assistance.districtIndustriesCentre}</p>
+                  <p><strong>MSME-DFO:</strong> {BUSINESS_INFO.udyam.assistance.msmeDfo}</p>
+                </div>
               </div>
             </section>
 
@@ -2181,6 +2376,9 @@ export default function LuxmoHubApp() {
             <p><strong className="text-slate-200">Legal Business Name:</strong> Sarita Devi</p>
             <p><strong className="text-slate-200">Business Constitution:</strong> Proprietorship</p>
             <p><strong className="text-slate-200">GSTIN:</strong> 09CNCPD1174R1ZN</p>
+            <p><strong className="text-slate-200">Udyam Registration No.:</strong> {BUSINESS_INFO.udyam.registrationNumber}</p>
+            <p><strong className="text-slate-200">Enterprise Type:</strong> {BUSINESS_INFO.udyam.enterpriseType}</p>
+            <p><strong className="text-slate-200">Major Activity:</strong> {BUSINESS_INFO.udyam.majorActivity}</p>
             <p><strong className="text-slate-200">Grievance Officer:</strong> Gyaneshwar Sharma</p>
             <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="block hover:text-white pt-1">{BUSINESS_INFO.emails[0]}</a>
             <a href={`tel:+917565012418`} className="block hover:text-white">+91 75650 12418</a>
