@@ -1301,8 +1301,6 @@ export default function LuxmoHubApp() {
               </table>
             </div>
           </div>
-        
-      </div>
 
       {/* Footer with Policies Link */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 mt-auto">
