@@ -1396,7 +1396,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-  </div>
+  
   );
 }
 
