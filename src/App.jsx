@@ -815,6 +815,7 @@ export default function LuxmoHubApp() {
       </button>
 
     </div>
+  </div>
 {/* Why Choose LUXMO HUB */}
 <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
   <h2 className="text-2xl font-bold text-slate-900">
@@ -843,7 +844,11 @@ export default function LuxmoHubApp() {
   <p className="text-slate-600 mt-1">
     Email: luxmohub@gmail.com
   </p>
-</div>        {/* CATALOG VIEW */}
+</div>
+</div>
+</div>
+
+        {/* CATALOG VIEW */}
         {activeTab === "catalog" && (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -964,20 +969,21 @@ export default function LuxmoHubApp() {
         {activeTab === "product" && selectedProduct && (
           <div className="bg-white rounded-2xl border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
-              <img 
-                src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image} 
-                alt={selectedProduct.title} 
-                className="w-full aspect-square object-cover rounded-xl border" 
+              <img
+                src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image}
+                alt={selectedProduct.title}
+                className="w-full aspect-square object-cover rounded-xl border"
               />
+
               {selectedProduct.images && selectedProduct.images.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {selectedProduct.images.map((img, idx) => (
-                    <img 
-                      key={idx} 
-                      src={img} 
-                      alt="" 
-                      onClick={() => setActiveImageIndex(idx)} 
-                      className={`w-16 h-16 object-cover rounded-lg border-2 cursor-pointer ${activeImageIndex === idx ? 'border-blue-600' : 'border-transparent'}`}
+                    <img
+                      key={idx}
+                      src={img}
+                      alt=""
+                      onClick={() => setActiveImageIndex(idx)}
+                      className={`w-16 h-16 object-cover rounded-lg border-2 cursor-pointer ${activeImageIndex === idx ? "border-blue-600" : "border-transparent"}`}
                     />
                   ))}
                 </div>
@@ -987,10 +993,15 @@ export default function LuxmoHubApp() {
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">{selectedProduct.title}</h1>
               <p className="text-xs text-slate-500">Model: {selectedProduct.model}</p>
+
               {selectedProduct.material && selectedProduct.material !== "Not Applicable" && (
                 <p className="text-xs text-slate-500">Material / Type: {selectedProduct.material}</p>
               )}
-              <div className="text-2xl font-extrabold text-slate-900">₹{selectedProduct.salePrice || selectedProduct.price}</div>
+
+              <div className="text-2xl font-extrabold text-slate-900">
+                ₹{selectedProduct.salePrice || selectedProduct.price}
+              </div>
+
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h3 className="text-sm font-bold text-slate-900">Tax Information</h3>
@@ -1018,8 +1029,17 @@ export default function LuxmoHubApp() {
                   </div>
                 )}
               </div>
-              <p className="text-sm text-slate-600 whitespace-pre-line">{selectedProduct.description}</p>
-              <button onClick={() => addToCart(selectedProduct)} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm">Add to Cart</button>
+
+              <p className="text-sm text-slate-600 whitespace-pre-line">
+                {selectedProduct.description}
+              </p>
+
+              <button
+                onClick={() => addToCart(selectedProduct)}
+                className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm"
+              >
+                Add to Cart
+              </button>
             </div>
           </div>
         )}
@@ -1317,7 +1337,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-  </div>
+      </main>
 
   {/* Footer with Policies Link */}
   <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 mt-auto">
@@ -1396,7 +1416,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-  
+    </div>
   );
 }
 
