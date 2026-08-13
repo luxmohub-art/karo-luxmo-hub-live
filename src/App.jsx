@@ -2386,6 +2386,48 @@ export default function LuxmoHubApp() {
         </div>
       </div>
 
+      {/* SOCIAL MEDIA */}
+      <div className="mt-8 pt-6 border-t border-slate-800">
+        <h4 className="text-white font-bold">Follow LUXMO HUB</h4>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <a
+            href="https://wa.me/917565012418"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition"
+          >
+            WhatsApp
+          </a>
+
+          <a
+            href="https://www.youtube.com/@LuxmoHub"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition"
+          >
+            YouTube
+          </a>
+
+          <a
+            href="https://www.instagram.com/luxmohub?igsh=dndlNGM5aWVvZjRl"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold transition"
+          >
+            Instagram
+          </a>
+
+          <a
+            href="https://www.facebook.com/profile.php?id=61591823462762"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition"
+          >
+            Facebook Page
+          </a>
+        </div>
+      </div>
+
       <div className="mt-8 pt-6 border-t border-slate-800 flex flex-col md:flex-row justify-between gap-3 text-xs text-slate-500">
         <p>© {new Date().getFullYear()} LUXMO HUB. All rights reserved.</p>
         <p>LUXMO HUB — Quality Products, Trusted by You.</p>
