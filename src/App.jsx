@@ -2386,44 +2386,46 @@ export default function LuxmoHubApp() {
         </div>
       </div>
 
-      {/* SOCIAL MEDIA */}
+      {/* SOCIAL MEDIA LINKS */}
       <div className="mt-8 pt-6 border-t border-slate-800">
-        <h4 className="text-white font-bold">Follow LUXMO HUB</h4>
-        <div className="mt-4 flex flex-wrap gap-3">
+        <h4 className="text-white text-lg font-bold">Connect With LUXMO HUB</h4>
+        <p className="mt-2 text-sm text-slate-400">Follow LUXMO HUB and contact us through our official social channels.</p>
+
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <a
             href="https://wa.me/917565012418"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-white font-bold hover:bg-green-700 transition shadow-sm"
           >
-            WhatsApp
+            🟢 WhatsApp
           </a>
 
           <a
             href="https://www.youtube.com/@LuxmoHub"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-white font-bold hover:bg-red-700 transition shadow-sm"
           >
-            YouTube
+            ▶️ YouTube
           </a>
 
           <a
             href="https://www.instagram.com/luxmohub?igsh=dndlNGM5aWVvZjRl"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 py-3 text-white font-bold hover:bg-pink-700 transition shadow-sm"
           >
-            Instagram
+            📸 Instagram
           </a>
 
           <a
             href="https://www.facebook.com/profile.php?id=61591823462762"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-white font-bold hover:bg-blue-700 transition shadow-sm"
           >
-            Facebook Page
+            🔵 Facebook Page
           </a>
         </div>
       </div>
