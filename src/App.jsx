@@ -1283,23 +1283,7 @@ export default function LuxmoHubApp() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {products.map(p => (
-                    <tr key={p.id}>
-                      <td className="p-3 font-semibold">{p.title}</td>
-                      <td className="p-3">{p.category}</td>
-                      <td className="p-3">₹{p.salePrice || p.price}</td>
-                      <td className="p-3">{p.hsn || '—'}</td>
-                      <td className="p-3">{p.gstRate != null ? `${p.gstRate}%` : '—'}</td>
-                      <td className="p-3">{p.stock}</td>
-                      <td className="p-3 text-right space-x-2">
-                        <button onClick={() => handleEditInit(p)} className="hover:text-blue-600"><Edit3 className="w-4 h-4 inline" /></button>
-                        <button onClick={() => handleDeleteProduct(p.id)} className="hover:text-red-600"><Trash2 className="w-4 h-4 inline" /></button>
-                      </td>
-                    </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
+                  
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <p>© {new Date().getFullYear()} {BUSINESS_INFO.tradeName} ({BUSINESS_INFO.legalName}). All rights reserved.</p>
           <div className="flex gap-4">
