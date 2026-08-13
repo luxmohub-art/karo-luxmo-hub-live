@@ -1299,7 +1299,7 @@ export default function LuxmoHubApp() {
                 </tbody>
               </table>
             </div>
-          
+          )}
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <p>© {new Date().getFullYear()} {BUSINESS_INFO.tradeName} ({BUSINESS_INFO.legalName}). All rights reserved.</p>
           <div className="flex gap-4">
