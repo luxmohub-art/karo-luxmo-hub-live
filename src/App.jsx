@@ -1296,7 +1296,6 @@ export default function LuxmoHubApp() {
                         <button onClick={() => handleDeleteProduct(p.id)} className="hover:text-red-600"><Trash2 className="w-4 h-4 inline" /></button>
                       </td>
                     </tr>
-                  ))}
                 </tbody>
               </table>
             </div>
