@@ -71,21 +71,97 @@ const BUSINESS_INFO = {
 
 const CATEGORIES = ["Hybrid Solar Inverter", "Mobile Back Case", "Solar Accessories"];
 
-const MOBILE_MODELS = [
-  "Galaxy Z Fold 7", "Galaxy Z Fold 6", "Galaxy Z Fold 5", "Galaxy Z Fold 4", "Galaxy Z Fold 3", "Galaxy Z Fold 2", "Galaxy Fold",
-  "iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17 Plus", "iPhone 17",
+const IPHONE_MODELS = [
+  "iPhone 18 Pro Max", "iPhone 18 Pro", "iPhone 18 Plus", "iPhone 18", "iPhone Air",
+  "iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17 Plus", "iPhone 17", "iPhone Air",
   "iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16",
   "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15",
   "iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14 Plus", "iPhone 14",
   "iPhone 13 Pro Max", "iPhone 13 Pro", "iPhone 13 Mini", "iPhone 13",
   "iPhone 12 Pro Max", "iPhone 12 Pro", "iPhone 12 Mini", "iPhone 12",
   "iPhone 11 Pro Max", "iPhone 11 Pro", "iPhone 11",
-  "Galaxy S26 Ultra", "Galaxy S26 Plus", "Galaxy S26 FE", "Galaxy S26",
-  "Galaxy S25 Ultra", "Galaxy S25 Plus", "Galaxy S25 FE", "Galaxy S25",
-  "Galaxy S24 Ultra", "Galaxy S24 Plus", "Galaxy S24 FE", "Galaxy S24",
-  "Galaxy S23 Ultra", "Galaxy S23 Plus", "Galaxy S23 FE", "Galaxy S23",
-  "Galaxy S22 Ultra", "Galaxy S22 Plus", "Galaxy S22 FE", "Galaxy S22"
+  "iPhone SE (3rd Gen)", "iPhone SE (2nd Gen)", "iPhone XR", "iPhone XS Max", "iPhone XS", "iPhone X"
 ];
+
+const SAMSUNG_MODELS = [
+  "Galaxy Z Fold 9 Ultra", "Galaxy Z Fold 9", "Galaxy Z Fold 8",
+  "Galaxy Z Flip 8", "Galaxy Z Flip 7",
+  // Galaxy S Series
+  "Galaxy S26 Ultra", "Galaxy S26+", "Galaxy S26", "Galaxy S26 FE",
+  "Galaxy S25 Ultra", "Galaxy S25+", "Galaxy S25", "Galaxy S25 FE",
+  "Galaxy S24 Ultra", "Galaxy S24+", "Galaxy S24", "Galaxy S24 FE",
+  "Galaxy S23 Ultra", "Galaxy S23+", "Galaxy S23", "Galaxy S23 FE",
+  "Galaxy S22 Ultra", "Galaxy S22+", "Galaxy S22", "Galaxy S22 FE",
+  "Galaxy S21 Ultra", "Galaxy S21+", "Galaxy S21", "Galaxy S21 FE",
+  "Galaxy S20 Ultra", "Galaxy S20+", "Galaxy S20", "Galaxy S20 FE",
+  // Galaxy Z Fold / Flip
+  "Galaxy Z Fold 7", "Galaxy Z Fold 6", "Galaxy Z Fold 5", "Galaxy Z Fold 4", "Galaxy Z Fold 3", "Galaxy Z Fold 2", "Galaxy Fold",
+  "Galaxy Z Flip 7", "Galaxy Z Flip 6", "Galaxy Z Flip 5", "Galaxy Z Flip 4", "Galaxy Z Flip 3", "Galaxy Z Flip",
+  // Galaxy A Series
+  "Galaxy A56 5G", "Galaxy A55 5G", "Galaxy A54 5G", "Galaxy A53 5G", "Galaxy A52 5G", "Galaxy A52",
+  "Galaxy A36 5G", "Galaxy A35 5G", "Galaxy A34 5G", "Galaxy A33 5G", "Galaxy A32",
+  "Galaxy A26 5G", "Galaxy A25 5G", "Galaxy A24", "Galaxy A23", "Galaxy A22", "Galaxy A15", "Galaxy A14", "Galaxy A13",
+  // Galaxy M Series
+  "Galaxy M56 5G", "Galaxy M55 5G", "Galaxy M54 5G", "Galaxy M53 5G", "Galaxy M52 5G", "Galaxy M51",
+  "Galaxy M36 5G", "Galaxy M35 5G", "Galaxy M34 5G", "Galaxy M33 5G", "Galaxy M32", "Galaxy M31", "Galaxy M30",
+  "Galaxy M26 5G", "Galaxy M25 5G", "Galaxy M15 5G", "Galaxy M14 5G", "Galaxy M13",
+  // Galaxy F Series
+  "Galaxy F56 5G", "Galaxy F55 5G", "Galaxy F54 5G", "Galaxy F34 5G", "Galaxy F33", "Galaxy F23 5G", "Galaxy F22", "Galaxy F15 5G", "Galaxy F14 5G", "Galaxy F13"
+];
+
+const GOOGLE_PIXEL_MODELS = [
+  "Google Pixel 10a", "Google Pixel 10", "Google Pixel 10 Pro", "Google Pixel 10 Pro XL", "Google Pixel 10 Pro Fold",
+  "Google Pixel 9a", "Google Pixel 9", "Google Pixel 9 Pro", "Google Pixel 9 Pro XL", "Google Pixel 9 Pro Fold",
+  "Google Pixel 8a", "Google Pixel 8", "Google Pixel 8 Pro", "Google Pixel 8 Pro Fold",
+  "Google Pixel 7a", "Google Pixel 7", "Google Pixel 7 Pro",
+  "Google Pixel 6a", "Google Pixel 6", "Google Pixel 6 Pro",
+  "Google Pixel 5a", "Google Pixel 5", "Google Pixel 4a", "Google Pixel 4", "Google Pixel 4 XL",
+  "Google Pixel 3a", "Google Pixel 3a XL", "Google Pixel 3", "Google Pixel 3 XL",
+  "Google Pixel 2", "Google Pixel 2 XL", "Google Pixel XL", "Google Pixel"
+];
+
+const MOBILE_MODELS = [
+  // Apple
+  "iPhone 18", "iPhone 18 Plus", "iPhone 18 Pro", "iPhone 18 Pro Max", "iPhone Air",
+  "iPhone 17", "iPhone 17 Plus", "iPhone 17 Pro", "iPhone 17 Pro Max",
+  "iPhone 16", "iPhone 16 Plus", "iPhone 16 Pro", "iPhone 16 Pro Max",
+  "iPhone 15", "iPhone 15 Plus", "iPhone 15 Pro", "iPhone 15 Pro Max",
+  "iPhone 14", "iPhone 14 Plus", "iPhone 14 Pro", "iPhone 14 Pro Max",
+  "iPhone 13", "iPhone 13 Mini", "iPhone 13 Pro", "iPhone 13 Pro Max",
+  "iPhone 12", "iPhone 12 Mini", "iPhone 12 Pro", "iPhone 12 Pro Max",
+  "iPhone 11", "iPhone 11 Pro", "iPhone 11 Pro Max",
+  "iPhone SE (3rd Gen)", "iPhone SE (2nd Gen)", "iPhone XR", "iPhone XS", "iPhone XS Max", "iPhone X", "iPhone 8", "iPhone 8 Plus",
+  // Samsung Galaxy S
+  "Galaxy S25", "Galaxy S25 FE", "Galaxy S25 Plus", "Galaxy S25 Ultra",
+  "Galaxy S24", "Galaxy S24 FE", "Galaxy S24 Plus", "Galaxy S24 Ultra",
+  "Galaxy S23", "Galaxy S23 FE", "Galaxy S23 Plus", "Galaxy S23 Ultra",
+  "Galaxy S22", "Galaxy S22 Plus", "Galaxy S22 Ultra",
+  "Galaxy S21", "Galaxy S21 FE", "Galaxy S21 Plus", "Galaxy S21 Ultra",
+  "Galaxy S20", "Galaxy S20 FE", "Galaxy S20 Plus", "Galaxy S20 Ultra",
+  // Samsung Galaxy Fold / Flip
+  "Galaxy Fold", "Galaxy Z Fold2", "Galaxy Z Fold3", "Galaxy Z Fold4", "Galaxy Z Fold5", "Galaxy Z Fold6", "Galaxy Z Fold7", "Galaxy Z Fold8", "Galaxy Z Fold9", "Galaxy Z Fold9 Ultra",
+  "Galaxy Z Flip", "Galaxy Z Flip3", "Galaxy Z Flip4", "Galaxy Z Flip5", "Galaxy Z Flip6", "Galaxy Z Flip7", "Galaxy Z Flip8",
+  // Samsung A series
+  "Galaxy A05", "Galaxy A05s", "Galaxy A06", "Galaxy A14", "Galaxy A15", "Galaxy A16", "Galaxy A17", "Galaxy A24", "Galaxy A25", "Galaxy A26", "Galaxy A34", "Galaxy A35", "Galaxy A36", "Galaxy A54", "Galaxy A55", "Galaxy A56", "Galaxy A73",
+  // Samsung M series
+  "Galaxy M14", "Galaxy M15", "Galaxy M16", "Galaxy M33", "Galaxy M34", "Galaxy M35", "Galaxy M36", "Galaxy M51", "Galaxy M52", "Galaxy M53", "Galaxy M54", "Galaxy M55", "Galaxy M56",
+  // Samsung F series
+  "Galaxy F14", "Galaxy F15", "Galaxy F16", "Galaxy F23", "Galaxy F34", "Galaxy F54", "Galaxy F55", "Galaxy F56",
+  // Google Pixel
+  "Google Pixel 10", "Google Pixel 10a", "Google Pixel 10 Pro", "Google Pixel 10 Pro XL", "Google Pixel 10 Pro Fold",
+  "Google Pixel 9", "Google Pixel 9a", "Google Pixel 9 Pro", "Google Pixel 9 Pro XL", "Google Pixel 9 Pro Fold",
+  "Google Pixel 8", "Google Pixel 8a", "Google Pixel 8 Pro", "Google Pixel 8 Fold",
+  "Google Pixel 7", "Google Pixel 7a", "Google Pixel 7 Pro", "Google Pixel 7 Fold",
+  "Google Pixel 6", "Google Pixel 6a", "Google Pixel 6 Pro", "Google Pixel 5", "Google Pixel 4a", "Google Pixel 4", "Google Pixel 3a", "Google Pixel 3"
+];
+
+const MOBILE_COLOURS = [
+  "Black", "White", "Gray", "Light Gray", "Dark Gray", "Navy Blue", "Blue", "Sky Blue",
+  "Cognac Brown", "Dark Brown", "Light Brown", "Tan Brown", "Burnt Orange", "Orange", "Red",
+  "Green", "Forest Green", "Olive Green", "Beige", "Cream", "Yellow", "Purple", "Lavender", "Pink", "Rose Gold", "Clear"
+];
+
+const VARIANT_COLOURS = MOBILE_COLOURS;
 
 const INVERTER_MODELS = [
   "Hybrid Solar Inverter 3KW 24V", "Hybrid Solar Inverter 3.5KW 24V", "Hybrid Solar Inverter 5KW 24V",
@@ -830,6 +906,558 @@ const compressImage = (file) => {
   });
 };
 
+
+
+/* ============================================================================
+   LUXMO HUB — ECOMMERCE PRO SUITE
+   ---------------------------------------------------------------------------
+   This layer is intentionally additive. It does not remove the original
+   catalogue, policies, Razorpay hooks, admin product editor, tax fields,
+   product cards, or footer. It adds production-oriented customer and
+   operations workflows that can later be connected to a real database/API.
+   ============================================================================ */
+
+const LUXMO_PRO_STORAGE = {
+  wishlist: "luxmo_pro_wishlist",
+  addresses: "luxmo_pro_addresses",
+  customer: "luxmo_pro_customer",
+  orders: "luxmo_pro_orders",
+  reviews: "luxmo_pro_reviews",
+  recentlyViewed: "luxmo_pro_recently_viewed",
+  compare: "luxmo_pro_compare",
+  newsletter: "luxmo_pro_newsletter",
+  contacts: "luxmo_pro_contacts",
+  cookie: "luxmo_pro_cookie_consent",
+  theme: "luxmo_pro_theme",
+  notifications: "luxmo_pro_notifications",
+  stockAlerts: "luxmo_pro_stock_alerts"
+};
+
+const LUXMO_COUPONS = [
+  { code: "WELCOME5", type: "percent", value: 5, min: 499, maxDiscount: 500, label: "5% off on orders ₹499+" },
+  { code: "LUXMO100", type: "flat", value: 100, min: 1999, maxDiscount: 100, label: "₹100 off on orders ₹1,999+" },
+  { code: "SOLAR500", type: "flat", value: 500, min: 15000, maxDiscount: 500, category: "Hybrid Solar Inverter", label: "₹500 off eligible inverter orders" }
+];
+
+const LUXMO_SHIPPING_RULES = {
+  mobile: { freeAbove: 999, standard: 79, express: 149, minDays: 4, maxDays: 8 },
+  inverter: { freeAbove: 20000, standard: 499, express: 999, minDays: 5, maxDays: 12 },
+  accessories: { freeAbove: 1499, standard: 99, express: 199, minDays: 4, maxDays: 9 }
+};
+
+const LUXMO_COURIER_PROVIDERS = [
+  { id: "ithink", name: "iThink Logistics", mode: "Aggregator", enabled: true, priority: 1 },
+  { id: "shiprocket", name: "Shiprocket", mode: "Aggregator", enabled: true, priority: 2 },
+  { id: "delhivery", name: "Delhivery", mode: "Direct / Carrier", enabled: true, priority: 3 },
+  { id: "amazon_shipping", name: "Amazon Shipping", mode: "Carrier", enabled: false, priority: 4 }
+];
+
+const LUXMO_PAYMENT_METHODS = [
+  { id: "razorpay", label: "Online Payment", description: "UPI, cards, net banking and supported wallets" },
+  { id: "cod", label: "Cash on Delivery", description: "Available only where COD serviceability and order rules allow" },
+  { id: "partial_cod", label: "Partial COD", description: "Advance payment + remaining amount on delivery for selected high-value products" }
+];
+
+const LUXMO_ORDER_STATUSES = [
+  "Pending Payment", "Confirmed", "Processing", "Packed", "Shipped", "In Transit", "Out for Delivery", "Delivered", "Cancelled", "RTO", "Returned", "Refunded"
+];
+
+const LUXMO_REVIEW_STATUS = ["Pending", "Published", "Rejected"];
+
+const safeReadJSON = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+};
+
+const safeWriteJSON = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    console.error("LUXMO storage error", key, e);
+    return false;
+  }
+};
+
+const luxmoMoney = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
+
+const luxmoDate = (value) => {
+  try {
+    return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  } catch (e) {
+    return "—";
+  }
+};
+
+const luxmoOrderNumber = () => `LMH${new Date().getFullYear()}${String(Date.now()).slice(-8)}`;
+
+const luxmoNormalizePincode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+
+const luxmoValidateIndianMobile = (value) => /^[6-9]\d{9}$/.test(String(value || "").replace(/\D/g, ""));
+
+const luxmoValidatePincode = (value) => /^[1-9]\d{5}$/.test(luxmoNormalizePincode(value));
+
+const luxmoProductPrice = (product) => Number(product?.salePrice || product?.price || 0);
+
+const luxmoProductStock = (product) => {
+  if (Array.isArray(product?.variants) && product.variants.length) {
+    return product.variants.reduce((sum, v) => sum + Number(v.stock || 0), 0);
+  }
+  return Number(product?.stock || 0);
+};
+
+const luxmoProductKey = (product, variant) => variant ? `${product.id}::${variant.key}` : String(product.id);
+
+const luxmoProductCategoryType = (product) => {
+  if (product?.category === "Hybrid Solar Inverter") return "inverter";
+  if (product?.category === "Solar Accessories") return "accessories";
+  return "mobile";
+};
+
+const luxmoShippingEstimate = (items, mode = "standard") => {
+  const hasInverter = items.some(item => item.category === "Hybrid Solar Inverter");
+  const hasMobile = items.some(item => item.category === "Mobile Back Case");
+  const hasAccessory = items.some(item => item.category === "Solar Accessories");
+  const total = items.reduce((sum, item) => sum + luxmoProductPrice(item) * Number(item.qty || 1), 0);
+  const rules = hasInverter ? LUXMO_SHIPPING_RULES.inverter : hasAccessory && !hasMobile ? LUXMO_SHIPPING_RULES.accessories : LUXMO_SHIPPING_RULES.mobile;
+  const fee = total >= rules.freeAbove ? 0 : mode === "express" ? rules.express : rules.standard;
+  return { fee, minDays: mode === "express" ? Math.max(2, rules.minDays - 1) : rules.minDays, maxDays: mode === "express" ? Math.max(4, rules.maxDays - 2) : rules.maxDays };
+};
+
+const luxmoCodEligibility = (items, subtotal, pincode) => {
+  if (!luxmoValidatePincode(pincode)) return { allowed: false, reason: "Enter a valid 6-digit pincode." };
+  if (subtotal > 30000) return { allowed: false, reason: "Full COD is disabled for orders above ₹30,000. Use prepaid or eligible partial COD." };
+  if (items.some(item => item.category === "Hybrid Solar Inverter") && subtotal > 10000) {
+    return { allowed: false, reason: "High-value inverter orders require prepaid or partial COD." };
+  }
+  return { allowed: true, reason: "COD may be available subject to courier serviceability." };
+};
+
+const luxmoApplyCoupon = (couponCode, subtotal, items) => {
+  const code = String(couponCode || "").trim().toUpperCase();
+  if (!code) return { valid: false, discount: 0, message: "Enter a coupon code." };
+  const coupon = LUXMO_COUPONS.find(c => c.code === code);
+  if (!coupon) return { valid: false, discount: 0, message: "Invalid coupon code." };
+  if (subtotal < coupon.min) return { valid: false, discount: 0, message: `Minimum order value is ${luxmoMoney(coupon.min)}.` };
+  if (coupon.category && !items.some(item => item.category === coupon.category)) return { valid: false, discount: 0, message: "This coupon is not applicable to the selected products." };
+  const raw = coupon.type === "percent" ? subtotal * coupon.value / 100 : coupon.value;
+  const discount = Math.min(raw, coupon.maxDiscount || raw, subtotal);
+  return { valid: true, discount, coupon, message: `${coupon.label} applied.` };
+};
+
+const LUXMO_FAQ = [
+  { q: "How can I select my phone model and colour?", a: "Open the product, choose your exact device model, then choose the available colour. The selected combination should be treated as a separate variant/SKU." },
+  { q: "Do you support COD?", a: "COD can be offered for eligible orders and pincodes. High-value inverter orders should use prepaid or partial COD according to your business rules." },
+  { q: "How can I track my order?", a: "Use the Orders area and enter the order ID/AWB. Once courier API integration is connected, the tracking status can be synchronized automatically." },
+  { q: "What is the return period?", a: "The current website policy states a 7-day Return & Replacement process for eligible issues. Customers should review the complete policy before ordering." },
+  { q: "What payment options are available?", a: "The checkout can support Razorpay online payment and eligible COD/partial COD flows." },
+  { q: "How should a solar inverter be installed?", a: "Follow the applicable manufacturer manual and electrical safety requirements. Your current warranty policy requires appropriate installation and protection equipment for eligible claims." },
+  { q: "Can I request a GST invoice?", a: "Yes. The checkout can collect GST details such as GSTIN and billing information when required, subject to backend invoice generation." },
+  { q: "Can I save products for later?", a: "Yes. The Wishlist feature stores selected products locally until you connect a customer account/database." },
+  { q: "How do I report a damaged delivery?", a: "Contact support promptly, keep the original packaging and provide photographs/video as requested by the applicable return policy." },
+  { q: "Can I buy both phone cases and solar products?", a: "Yes. The catalog supports Mobile Back Case, Hybrid Solar Inverter and Solar Accessories as separate categories." }
+];
+
+const LUXMO_PROTECTED_FEATURES = [
+  "Product catalogue and category management",
+  "Model × colour variants",
+  "SKU and stock controls",
+  "Wishlist",
+  "Product comparison",
+  "Recently viewed products",
+  "Coupon and promotion rules",
+  "Customer profile and address book",
+  "Checkout and payment selection",
+  "COD eligibility rules",
+  "Pincode/serviceability placeholder",
+  "Order history",
+  "Order tracking placeholder",
+  "Review and rating workflow",
+  "Stock alert subscriptions",
+  "Contact and support tickets",
+  "Newsletter subscription",
+  "Invoice print view",
+  "Admin operations dashboard",
+  "Courier provider configuration",
+  "SEO/structured-data helpers",
+  "Cookie consent",
+  "Accessibility controls",
+  "Dark/light theme preference",
+  "Recently searched terms"
+];
+
+function LuxmoProBadge({ children, tone = "blue" }) {
+  const styles = {
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    green: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+    slate: "bg-slate-100 text-slate-700 border-slate-200"
+  };
+  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${styles[tone] || styles.blue}`}>{children}</span>;
+}
+
+function LuxmoSectionTitle({ eyebrow, title, description, action }) {
+  return (
+    <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-5">
+      <div>
+        {eyebrow && <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-600">{eyebrow}</div>}
+        <h2 className="text-xl md:text-2xl font-black text-slate-900 mt-1">{title}</h2>
+        {description && <p className="text-sm text-slate-500 mt-1 max-w-3xl">{description}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function LuxmoMetricCard({ label, value, hint, icon = "▣" }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-bold text-slate-500">{label}</div>
+          <div className="text-2xl font-black text-slate-900 mt-1">{value}</div>
+          {hint && <div className="text-[11px] text-slate-500 mt-1">{hint}</div>}
+        </div>
+        <div className="w-10 h-10 rounded-xl bg-slate-900 text-white grid place-items-center font-black">{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+function LuxmoCustomerProfile({ customer, setCustomer }) {
+  const [draft, setDraft] = useState(customer || { name: "", email: "", phone: "" });
+  useEffect(() => setDraft(customer || { name: "", email: "", phone: "" }), [customer]);
+  const save = () => {
+    if (!draft.name.trim()) return alert("Please enter your name.");
+    if (!luxmoValidateIndianMobile(draft.phone)) return alert("Please enter a valid 10-digit mobile number.");
+    setCustomer(draft);
+    safeWriteJSON(LUXMO_PRO_STORAGE.customer, draft);
+    alert("Customer profile saved.");
+  };
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <LuxmoSectionTitle eyebrow="Account" title="Customer Profile" description="Save basic customer information for faster checkout." />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="Full name" className="border rounded-xl px-3 py-2.5 text-sm" />
+        <input value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} placeholder="Email" type="email" className="border rounded-xl px-3 py-2.5 text-sm" />
+        <input value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} placeholder="Mobile number" inputMode="numeric" className="border rounded-xl px-3 py-2.5 text-sm" />
+      </div>
+      <button onClick={save} className="mt-4 bg-slate-900 text-white rounded-xl px-5 py-2.5 text-sm font-bold">Save Profile</button>
+    </div>
+  );
+}
+
+function LuxmoAddressBook({ addresses, setAddresses }) {
+  const empty = { id: "", label: "Home", name: "", phone: "", line1: "", line2: "", city: "", state: "Uttar Pradesh", pincode: "" };
+  const [draft, setDraft] = useState(empty);
+  const save = () => {
+    if (!draft.name || !draft.line1 || !draft.city || !luxmoValidatePincode(draft.pincode) || !luxmoValidateIndianMobile(draft.phone)) {
+      return alert("Please complete name, mobile, address, city and valid pincode.");
+    }
+    const next = [...addresses, { ...draft, id: `addr-${Date.now()}` }];
+    setAddresses(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.addresses, next);
+    setDraft(empty);
+  };
+  const remove = id => {
+    const next = addresses.filter(a => a.id !== id);
+    setAddresses(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.addresses, next);
+  };
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <LuxmoSectionTitle eyebrow="Checkout" title="Address Book" description="Save multiple delivery addresses for future orders." />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {Object.entries({ label: "Label", name: "Full name", phone: "Mobile", line1: "Address line 1", line2: "Address line 2", city: "City", state: "State", pincode: "Pincode" }).map(([key, label]) => (
+          <input key={key} value={draft[key]} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border rounded-xl px-3 py-2.5 text-sm" inputMode={key === "phone" || key === "pincode" ? "numeric" : undefined} />
+        ))}
+      </div>
+      <button onClick={save} className="mt-4 bg-blue-600 text-white rounded-xl px-5 py-2.5 text-sm font-bold">Save Address</button>
+      <div className="mt-5 space-y-3">
+        {addresses.length === 0 ? <div className="text-sm text-slate-500">No saved addresses yet.</div> : addresses.map(address => (
+          <div key={address.id} className="border rounded-xl p-4 flex items-start justify-between gap-3">
+            <div><div className="font-black text-sm">{address.label} · {address.name}</div><div className="text-xs text-slate-600 mt-1">{address.line1}{address.line2 ? `, ${address.line2}` : ""}, {address.city}, {address.state} - {address.pincode}</div><div className="text-xs text-slate-500 mt-1">{address.phone}</div></div>
+            <button onClick={() => remove(address.id)} className="text-red-600 text-xs font-bold">Remove</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LuxmoWishlist({ products, wishlist, setWishlist, onSelect, onAddToCart }) {
+  const items = products.filter(p => wishlist.includes(p.id));
+  const toggle = id => {
+    const next = wishlist.includes(id) ? wishlist.filter(x => x !== id) : [...wishlist, id];
+    setWishlist(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.wishlist, next);
+  };
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <LuxmoSectionTitle eyebrow="Saved" title="Wishlist" description="Keep products you may want to purchase later." />
+      {items.length === 0 ? <div className="py-10 text-center text-sm text-slate-500">Your wishlist is empty.</div> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {items.map(p => (
+            <div key={p.id} className="border rounded-2xl overflow-hidden bg-white">
+              <button onClick={() => onSelect(p)} className="block w-full"><img src={p.images?.[0] || p.image} alt={p.title} className="w-full aspect-square object-cover" /></button>
+              <div className="p-3"><div className="font-bold text-sm line-clamp-2">{p.title}</div><div className="font-black mt-2">{luxmoMoney(luxmoProductPrice(p))}</div><div className="flex gap-2 mt-3"><button onClick={() => onAddToCart(p)} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-xs font-bold">Add to Cart</button><button onClick={() => toggle(p.id)} className="px-3 border rounded-lg text-xs">♥</button></div></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LuxmoCompare({ products, compareIds, setCompareIds, onSelect }) {
+  const items = products.filter(p => compareIds.includes(p.id));
+  const toggle = id => {
+    if (compareIds.includes(id)) return setCompareIds(compareIds.filter(x => x !== id));
+    if (compareIds.length >= 4) return alert("You can compare up to 4 products.");
+    setCompareIds([...compareIds, id]);
+  };
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <LuxmoSectionTitle eyebrow="Decision tools" title="Product Compare" description="Compare up to four products side by side." />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {products.slice(0, 20).map(p => <button key={p.id} onClick={() => toggle(p.id)} className={`text-left border rounded-xl p-3 ${compareIds.includes(p.id) ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><div className="font-bold text-xs line-clamp-2">{p.title}</div><div className="text-xs mt-1">{luxmoMoney(luxmoProductPrice(p))}</div></button>)}
+      </div>
+      {items.length > 0 && <div className="mt-6 overflow-auto"><table className="w-full text-xs border-collapse"><thead><tr>{items.map(p => <th key={p.id} className="border p-3 text-left min-w-48">{p.title}</th>)}</tr></thead><tbody><tr>{items.map(p => <td key={p.id} className="border p-3 align-top"><div><b>Category:</b> {p.category}</div><div className="mt-1"><b>Model:</b> {p.model}</div><div className="mt-1"><b>Price:</b> {luxmoMoney(luxmoProductPrice(p))}</div><div className="mt-1"><b>Stock:</b> {luxmoProductStock(p)}</div><div className="mt-1"><b>SKU:</b> {p.sku || "—"}</div><button onClick={() => onSelect(p)} className="mt-3 text-blue-600 font-bold">View Product</button></td>)}</tr></tbody></table></div>}
+    </div>
+  );
+}
+
+function LuxmoRecentlyViewed({ products, ids, onSelect, onClear }) {
+  const items = ids.map(id => products.find(p => p.id === id)).filter(Boolean);
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="History" title="Recently Viewed" action={items.length ? <button onClick={onClear} className="text-xs font-bold text-red-600">Clear</button> : null} />{items.length === 0 ? <p className="text-sm text-slate-500">Products you view will appear here.</p> : <div className="flex gap-3 overflow-x-auto pb-2">{items.map(p => <button key={p.id} onClick={() => onSelect(p)} className="w-44 shrink-0 border rounded-xl overflow-hidden text-left"><img src={p.images?.[0] || p.image} alt={p.title} className="w-full h-32 object-cover"/><div className="p-2"><div className="text-xs font-bold line-clamp-2">{p.title}</div><div className="text-xs font-black mt-1">{luxmoMoney(luxmoProductPrice(p))}</div></div></button>)}</div>}</div>;
+}
+
+function LuxmoCouponBox({ subtotal, items, onDiscountChange }) {
+  const [code, setCode] = useState("");
+  const [message, setMessage] = useState("");
+  const apply = () => {
+    const result = luxmoApplyCoupon(code, subtotal, items);
+    setMessage(result.message);
+    onDiscountChange(result.valid ? result.discount : 0, result.valid ? result.coupon.code : "");
+  };
+  return <div className="border rounded-xl p-4 bg-slate-50"><div className="text-sm font-black">Have a coupon?</div><div className="flex gap-2 mt-2"><input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Coupon code" className="flex-1 border rounded-lg px-3 py-2 text-sm bg-white"/><button onClick={apply} className="bg-slate-900 text-white rounded-lg px-4 text-xs font-bold">Apply</button></div>{message && <div className="text-xs mt-2 text-slate-600">{message}</div>}<div className="flex flex-wrap gap-2 mt-3">{LUXMO_COUPONS.map(c => <button key={c.code} onClick={() => setCode(c.code)} className="text-[10px] border rounded-full px-2 py-1 bg-white">{c.code}</button>)}</div></div>;
+}
+
+function LuxmoPincodeChecker({ cartItems }) {
+  const [pincode, setPincode] = useState("");
+  const [result, setResult] = useState(null);
+  const check = () => {
+    const pin = luxmoNormalizePincode(pincode);
+    if (!luxmoValidatePincode(pin)) return setResult({ ok: false, message: "Please enter a valid 6-digit pincode." });
+    const estimate = luxmoShippingEstimate(cartItems.length ? cartItems : [{ category: "Mobile Back Case", price: 999, qty: 1 }]);
+    setResult({ ok: true, message: `Estimated standard delivery: ${estimate.minDays}–${estimate.maxDays} business days. Final courier availability will be confirmed by the shipping provider.` });
+  };
+  return <div className="border rounded-xl p-4"><div className="font-black text-sm">Check Delivery Availability</div><div className="flex gap-2 mt-2"><input value={pincode} onChange={e => setPincode(e.target.value)} maxLength={6} inputMode="numeric" placeholder="6-digit pincode" className="flex-1 border rounded-lg px-3 py-2 text-sm"/><button onClick={check} className="bg-blue-600 text-white rounded-lg px-4 text-xs font-bold">Check</button></div>{result && <div className={`mt-2 text-xs ${result.ok ? "text-emerald-700" : "text-red-600"}`}>{result.message}</div>}</div>;
+}
+
+function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, onClose }) {
+  const [selectedAddress, setSelectedAddress] = useState(addresses[0]?.id || "");
+  const [draft, setDraft] = useState(addresses[0] || { name: customer?.name || "", phone: customer?.phone || "", line1: "", line2: "", city: "", state: "Uttar Pradesh", pincode: "" });
+  const [payment, setPayment] = useState("razorpay");
+  const [shippingMode, setShippingMode] = useState("standard");
+  const [discount, setDiscount] = useState(0);
+  const [coupon, setCoupon] = useState("");
+  const shipping = luxmoShippingEstimate(cart, shippingMode);
+  const total = Math.max(0, subtotal - discount + shipping.fee);
+  const cod = luxmoCodEligibility(cart, subtotal, draft.pincode);
+  const submit = () => {
+    if (!draft.name.trim() || !luxmoValidateIndianMobile(draft.phone) || !draft.line1.trim() || !draft.city.trim() || !luxmoValidatePincode(draft.pincode)) return alert("Please complete valid delivery details.");
+    if (payment === "cod" && !cod.allowed) return alert(cod.reason);
+    const order = {
+      id: luxmoOrderNumber(),
+      createdAt: new Date().toISOString(),
+      status: payment === "razorpay" ? "Pending Payment" : "Confirmed",
+      paymentMethod: payment,
+      paymentStatus: payment === "razorpay" ? "Pending" : "Pending Collection",
+      items: cart.map(item => ({ id: item.id, title: item.title, qty: item.qty, price: luxmoProductPrice(item), model: item.model, colour: item.colour, sku: item.sku })),
+      subtotal,
+      discount,
+      coupon,
+      shippingFee: shipping.fee,
+      total,
+      shippingMode,
+      address: draft,
+      courierProvider: "Pending Assignment",
+      awb: "",
+      trackingUrl: ""
+    };
+    onOrderCreated(order);
+  };
+  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft(a); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"],["pincode","Pincode"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border rounded-xl px-3 py-2.5 text-sm" />)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery"],["express","Express Delivery"]].map(([id,label]) => <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${shippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{luxmoMoney(id === "express" ? luxmoShippingEstimate(cart,"express").fee : luxmoShippingEstimate(cart,"standard").fee)} · {id === "express" ? luxmoShippingEstimate(cart,"express").minDays : shipping.minDays}–{id === "express" ? luxmoShippingEstimate(cart,"express").maxDays : shipping.maxDays} business days</div></button>)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{LUXMO_PAYMENT_METHODS.map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : payment === "cod" ? "COD" : "Partial COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
+}
+
+function LuxmoOrderCenter({ orders, setOrders }) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(null);
+  const filtered = orders.filter(o => !query || `${o.id} ${o.status} ${o.awb || ""}`.toLowerCase().includes(query.toLowerCase()));
+  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
+  const printInvoice = order => { const w = window.open("", "_blank", "width=900,height=900"); if (!w) return; w.document.write(`<html><head><title>${order.id} Invoice</title><style>body{font-family:Arial;padding:40px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:10px;text-align:left}</style></head><body><h1>LUXMO HUB</h1><p>Order: ${order.id}<br/>Date: ${luxmoDate(order.createdAt)}</p><p>${order.address?.name || ""}<br/>${order.address?.line1 || ""}, ${order.address?.city || ""}, ${order.address?.state || ""} - ${order.address?.pincode || ""}</p><table><tr><th>Product</th><th>Qty</th><th>Price</th></tr>${order.items.map(i=>`<tr><td>${i.title} ${i.model||""} ${i.colour||""}</td><td>${i.qty}</td><td>${luxmoMoney(i.price*i.qty)}</td></tr>`).join("")}<tr><th colspan="2">Total</th><th>${luxmoMoney(order.total)}</th></tr></table><p>Payment: ${order.paymentMethod}</p></body></html>`); w.document.close(); w.focus(); w.print(); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="View order status, payment state, courier assignment and invoice print views."/><div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>{filtered.length===0?<div className="text-sm text-slate-500 py-8 text-center">No orders found.</div>:<div className="space-y-3">{filtered.map(o=><div key={o.id} className="border rounded-2xl p-4"><div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div></div><div className="flex items-center gap-2"><select value={o.status} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select><button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button><button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Invoice</button></div></div>{selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4"><div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty}<br/>{i.model} {i.colour}</div>)}</div><div><b>Delivery</b><div className="mt-1">{o.address?.name}<br/>{o.address?.line1}<br/>{o.address?.city}, {o.address?.state} - {o.address?.pincode}<br/>{o.address?.phone}</div></div><div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.status}</div></div></div>}</div>)}</div>}</div>;
+}
+
+function LuxmoReviewCenter({ products, reviews, setReviews }) {
+  const [draft, setDraft] = useState({ productId: products[0]?.id || "", name: "", rating: 5, text: "" });
+  const submit = () => { if (!draft.productId || !draft.name.trim() || !draft.text.trim()) return alert("Please select a product and complete your review."); const review = { ...draft, id: `rev-${Date.now()}`, createdAt: new Date().toISOString(), status: "Pending" }; const next=[review,...reviews]; setReviews(next); safeWriteJSON(LUXMO_PRO_STORAGE.reviews,next); setDraft({ ...draft, name:"", text:"" }); alert("Review submitted for moderation."); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">Submit Review</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
+}
+
+function LuxmoStockAlerts({ products, alerts, setAlerts }) {
+  const [email, setEmail] = useState("");
+  const [productId, setProductId] = useState(products[0]?.id || "");
+  const save = () => { if (!email.includes("@") || !productId) return alert("Enter a valid email and product."); const next=[...alerts,{id:`alert-${Date.now()}`,email,productId,createdAt:new Date().toISOString()}]; setAlerts(next); safeWriteJSON(LUXMO_PRO_STORAGE.stockAlerts,next); setEmail(""); alert("Stock alert preference saved."); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Inventory" title="Back-in-Stock Alerts" description="Collect customer interest when a product is unavailable."/><div className="grid grid-cols-1 md:grid-cols-3 gap-3"><select value={productId} onChange={e=>setProductId(e.target.value)} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email address" className="border rounded-xl px-3 py-2.5 text-sm"/><button onClick={save} className="bg-slate-900 text-white rounded-xl px-4 py-2.5 text-sm font-bold">Notify Me</button></div></div>;
+}
+
+function LuxmoContactCenter() {
+  const [form, setForm] = useState({ name:"", email:"", phone:"", subject:"Order / Product Query", message:"" });
+  const submit = () => { if (!form.name || !form.email || !form.message) return alert("Please complete the required fields."); const existing=safeReadJSON(LUXMO_PRO_STORAGE.contacts,[]); safeWriteJSON(LUXMO_PRO_STORAGE.contacts,[{...form,id:`ticket-${Date.now()}`,createdAt:new Date().toISOString(),status:"Open"},...existing]); alert("Support request submitted."); setForm({...form,name:"",email:"",phone:"",message:""}); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Support" title="Contact & Support" description="Create a customer support request without leaving the website."/><div className="grid grid-cols-1 md:grid-cols-2 gap-3">{[["name","Name"],["email","Email"],["phone","Phone"],["subject","Subject"]].map(([k,l])=><input key={k} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={l} className="border rounded-xl px-3 py-2.5 text-sm"/> )}</div><textarea value={form.message} onChange={e=>setForm({...form,message:e.target.value})} placeholder="How can we help?" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-32"/><button onClick={submit} className="mt-3 bg-blue-600 text-white rounded-xl px-5 py-2.5 text-sm font-bold">Submit Support Request</button></div>;
+}
+
+function LuxmoNewsletter() {
+  const [email,setEmail]=useState(""); const submit=()=>{if(!email.includes("@"))return alert("Enter a valid email.");const next=Array.from(new Set([...safeReadJSON(LUXMO_PRO_STORAGE.newsletter,[]),email]));safeWriteJSON(LUXMO_PRO_STORAGE.newsletter,next);setEmail("");alert("You are subscribed to Luxmo Hub updates.");};
+  return <div className="rounded-2xl bg-slate-950 text-white p-6"><div className="text-xs font-black uppercase tracking-widest text-amber-400">Stay Updated</div><h3 className="text-xl font-black mt-1">New products, offers & updates</h3><div className="flex gap-2 mt-4 max-w-xl"><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Your email" className="flex-1 rounded-xl px-3 py-2.5 text-sm text-slate-900"/><button onClick={submit} className="bg-amber-400 text-slate-950 rounded-xl px-4 font-black text-sm">Subscribe</button></div></div>;
+}
+
+function LuxmoFAQ() {
+  const [open,setOpen]=useState(0); return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Help" title="Frequently Asked Questions" description="Quick answers for common shopping and support questions."/><div className="space-y-2">{LUXMO_FAQ.map((f,i)=><div key={i} className="border rounded-xl overflow-hidden"><button onClick={()=>setOpen(open===i?-1:i)} className="w-full flex justify-between gap-3 text-left p-4 text-sm font-bold"><span>{f.q}</span><span>{open===i?"−":"+"}</span></button>{open===i&&<div className="px-4 pb-4 text-xs text-slate-600 leading-relaxed">{f.a}</div>}</div>)}</div></div>;
+}
+
+function LuxmoCourierSettings({ settings, setSettings }) {
+  const toggle = id => { const next=settings.map(x=>x.id===id?{...x,enabled:!x.enabled}:x); setSettings(next); safeWriteJSON("luxmo_pro_couriers",next); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Shipping" title="Courier Partner Settings" description="Configure the providers you plan to connect through server-side APIs."/><div className="space-y-3">{settings.map(c=><div key={c.id} className="border rounded-xl p-4 flex items-center justify-between"><div><div className="font-black text-sm">{c.name}</div><div className="text-xs text-slate-500">{c.mode} · Priority {c.priority}</div></div><button onClick={()=>toggle(c.id)} className={`rounded-full px-4 py-2 text-xs font-black ${c.enabled?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{c.enabled?"Enabled":"Disabled"}</button></div>)}</div><div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">API credentials must remain server-side in Vercel environment variables. Do not expose courier secrets in browser code.</div></div>;
+}
+
+function LuxmoAnalytics({ products, orders, reviews, alerts }) {
+  const revenue=orders.filter(o=>!['Cancelled','RTO','Returned','Refunded'].includes(o.status)).reduce((s,o)=>s+Number(o.total||0),0);
+  const delivered=orders.filter(o=>o.status==='Delivered').length;
+  const lowStock=products.filter(p=>luxmoProductStock(p)<=5).length;
+  const pendingReviews=reviews.filter(r=>r.status==='Pending').length;
+  return <div className="space-y-5"><LuxmoSectionTitle eyebrow="Business" title="Store Analytics" description="Local operational dashboard. Connect a database/analytics provider for production reporting."/><div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><LuxmoMetricCard label="Orders" value={orders.length} icon="▤"/><LuxmoMetricCard label="Gross Order Value" value={luxmoMoney(revenue)} icon="₹"/><LuxmoMetricCard label="Delivered" value={delivered} icon="✓"/><LuxmoMetricCard label="Low Stock" value={lowStock} icon="!"/></div><div className="grid grid-cols-1 md:grid-cols-2 gap-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Operational Alerts</h3><div className="mt-3 space-y-2 text-xs"><div className="flex justify-between"><span>Pending review moderation</span><b>{pendingReviews}</b></div><div className="flex justify-between"><span>Stock alert subscriptions</span><b>{alerts.length}</b></div><div className="flex justify-between"><span>Orders needing shipment assignment</span><b>{orders.filter(o=>!o.awb).length}</b></div></div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Product Categories</h3><div className="mt-3 space-y-2 text-xs">{CATEGORIES.map(c=><div key={c} className="flex justify-between"><span>{c}</span><b>{products.filter(p=>p.category===c).length}</b></div>)}</div></div></div></div>;
+}
+
+function LuxmoSeoTools({ products }) {
+  const title = "LUXMO HUB | Hybrid Solar Inverters & Premium Mobile Phone Cases";
+  const description = "Shop hybrid solar inverters, solar accessories and premium mobile phone back case covers from LUXMO HUB.";
+  const copy = text => { navigator.clipboard?.writeText(text); alert("Copied to clipboard."); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Growth" title="SEO & Sharing Tools" description="Useful content blocks for page metadata, social sharing and structured product information."/><div className="space-y-3"><div><label className="text-xs font-bold">Suggested SEO Title</label><div className="flex gap-2 mt-1"><input readOnly value={title} className="flex-1 border rounded-xl px-3 py-2 text-sm"/><button onClick={()=>copy(title)} className="border rounded-xl px-3 text-xs font-bold">Copy</button></div></div><div><label className="text-xs font-bold">Suggested Meta Description</label><div className="flex gap-2 mt-1"><textarea readOnly value={description} className="flex-1 border rounded-xl px-3 py-2 text-sm"/><button onClick={()=>copy(description)} className="border rounded-xl px-3 text-xs font-bold">Copy</button></div></div><div className="bg-slate-50 rounded-xl p-3 text-xs"><b>Structured-data reminder:</b> Product pages should emit Product, Offer, AggregateRating (only when genuine ratings exist), BreadcrumbList and Organization JSON-LD from the server-rendered page.</div><div className="text-xs text-slate-500">Current catalogue count: {products.length}</div></div></div>;
+}
+
+function LuxmoCookieConsent() {
+  const [visible,setVisible]=useState(()=>!localStorage.getItem(LUXMO_PRO_STORAGE.cookie));
+  if(!visible)return null;
+  const save=choice=>{localStorage.setItem(LUXMO_PRO_STORAGE.cookie,choice);setVisible(false);};
+  return <div className="fixed bottom-3 left-3 right-3 md:left-auto md:max-w-xl z-[90] bg-white border border-slate-300 rounded-2xl shadow-2xl p-4"><div className="font-black text-sm">Privacy & Cookies</div><p className="text-xs text-slate-600 mt-1">This website may use essential storage for cart, preferences and checkout. Analytics/marketing cookies should be enabled only after appropriate consent and implementation.</p><div className="flex gap-2 mt-3"><button onClick={()=>save("essential")} className="border rounded-lg px-3 py-2 text-xs font-bold">Essential Only</button><button onClick={()=>save("all")} className="bg-slate-900 text-white rounded-lg px-3 py-2 text-xs font-bold">Accept</button></div></div>;
+}
+
+function LuxmoFeatureChecklist() {
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Readiness" title="Ecommerce Feature Checklist" description="A practical checklist for the Luxmo Hub storefront."/><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{LUXMO_PROTECTED_FEATURES.map((f,i)=><div key={f} className="flex gap-2 items-center border rounded-xl px-3 py-2.5 text-xs"><span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center font-black">✓</span><span>{f}</span></div>)}</div></div>;
+}
+
+function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn }) {
+  const [tab,setTab]=useState("overview");
+  const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
+  const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
+  const [customer,setCustomer]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.customer,{name:"",email:"",phone:""}));
+  const [orders,setOrders]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.orders,[]));
+  const [reviews,setReviews]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.reviews,[]));
+  const [recent,setRecent]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]));
+  const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
+  const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
+  const [couriers,setCouriers]=useState(()=>safeReadJSON("luxmo_pro_couriers",LUXMO_COURIER_PROVIDERS));
+  const [checkout,setCheckout]=useState(false);
+  const [discount,setDiscount]=useState(0);
+  const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
+  const selectProduct=p=>{setRecent(prev=>{const next=[p.id,...prev.filter(id=>id!==p.id)].slice(0,12);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,next);return next;});onSelectProduct(p);};
+  const createOrder=order=>{const next=[order,...orders];setOrders(next);safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);setCheckout(false);alert(`Order ${order.id} created successfully.`);};
+  const tabs=[
+    ["overview","Overview"],["profile","Profile"],["wishlist","Wishlist"],["compare","Compare"],["orders","Orders"],["reviews","Reviews"],["alerts","Stock Alerts"],["support","Support"],["faq","FAQ"],["shipping","Shipping"],["seo","SEO"]
+  ];
+  if(isAdminLoggedIn) tabs.push(["analytics","Analytics"],["couriers","Couriers"],["checklist","Checklist"]);
+  return <>
+    <div className="rounded-3xl bg-slate-50 border border-slate-200 p-4 md:p-6 space-y-5">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div><div className="text-[11px] uppercase tracking-[0.2em] text-blue-600 font-black">LUXMO HUB PRO</div><h2 className="text-2xl font-black text-slate-900">Ecommerce Control Center</h2><p className="text-sm text-slate-500 mt-1">Customer tools, checkout workflows, reviews, orders, shipping settings and store operations.</p></div>
+        <div className="flex flex-wrap gap-2"><LuxmoProBadge tone="green">{products.length} Products</LuxmoProBadge><LuxmoProBadge>{cart.length} Cart Items</LuxmoProBadge><LuxmoProBadge tone="amber">{orders.length} Orders</LuxmoProBadge></div>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">{tabs.map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold border ${tab===id?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-700 border-slate-200"}`}>{label}</button>)}</div>
+      {tab==="overview"&&<div className="space-y-5"><div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><LuxmoMetricCard label="Wishlist" value={wishlist.length} icon="♥"/><LuxmoMetricCard label="Saved Addresses" value={addresses.length} icon="⌂"/><LuxmoMetricCard label="Orders" value={orders.length} icon="▤"/><LuxmoMetricCard label="Compare" value={compare.length} icon="⇄"/></div><LuxmoRecentlyViewed products={products} ids={recent} onSelect={selectProduct} onClear={()=>{setRecent([]);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]);}}/><LuxmoNewsletter/><LuxmoFeatureChecklist/></div>}
+      {tab==="profile"&&<div className="space-y-5"><LuxmoCustomerProfile customer={customer} setCustomer={setCustomer}/><LuxmoAddressBook addresses={addresses} setAddresses={setAddresses}/></div>}
+      {tab==="wishlist"&&<LuxmoWishlist products={products} wishlist={wishlist} setWishlist={setWishlist} onSelect={selectProduct} onAddToCart={addToCart}/>} 
+      {tab==="compare"&&<LuxmoCompare products={products} compareIds={compare} setCompareIds={v=>{setCompare(v);safeWriteJSON(LUXMO_PRO_STORAGE.compare,v)}} onSelect={selectProduct}/>} 
+      {tab==="orders"&&<LuxmoOrderCenter orders={orders} setOrders={setOrders}/>} 
+      {tab==="reviews"&&<LuxmoReviewCenter products={products} reviews={reviews} setReviews={setReviews}/>} 
+      {tab==="alerts"&&<LuxmoStockAlerts products={products} alerts={alerts} setAlerts={setAlerts}/>} 
+      {tab==="support"&&<LuxmoContactCenter/>} 
+      {tab==="faq"&&<LuxmoFAQ/>} 
+      {tab==="shipping"&&<div className="space-y-5"><LuxmoPincodeChecker cartItems={cart}/><LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/></div>} 
+      {tab==="seo"&&<LuxmoSeoTools products={products}/>} 
+      {tab==="analytics"&&isAdminLoggedIn&&<LuxmoAnalytics products={products} orders={orders} reviews={reviews} alerts={alerts}/>} 
+      {tab==="couriers"&&isAdminLoggedIn&&<LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/>} 
+      {tab==="checklist"&&isAdminLoggedIn&&<LuxmoFeatureChecklist/>}
+      {cart.length>0&&<div className="sticky bottom-3 bg-slate-950 text-white rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-2xl"><div><div className="font-black">Ready to checkout?</div><div className="text-xs text-slate-300">{cart.length} line item(s) · {luxmoMoney(subtotal)}</div></div><div className="flex gap-2"><button onClick={()=>setCheckout(true)} className="bg-blue-600 rounded-xl px-5 py-2.5 text-sm font-black">Checkout</button><LuxmoCouponBox subtotal={subtotal} items={cart} onDiscountChange={(d,c)=>{setDiscount(d);}}/></div></div>}
+    </div>
+    {checkout&&<LuxmoCheckout cart={cart} subtotal={subtotal} customer={customer} addresses={addresses} onOrderCreated={createOrder} onClose={()=>setCheckout(false)}/>} 
+    <LuxmoCookieConsent/>
+  </>;
+}
+
+/* ============================================================================
+   PRODUCT / CUSTOMER EXPERIENCE HELPERS
+   ============================================================================ */
+
+function LuxmoVariantSummary({ product }) {
+  const variants=product?.variants||[];
+  if(!variants.length)return null;
+  const models=[...new Set(variants.map(v=>v.model))];
+  const colours=[...new Set(variants.map(v=>v.colour))];
+  return <div className="grid grid-cols-2 gap-2 text-[11px] mt-3"><div className="border rounded-lg p-2"><span className="text-slate-500 block">Device Options</span><b>{models.length}</b></div><div className="border rounded-lg p-2"><span className="text-slate-500 block">Colour Options</span><b>{colours.length}</b></div></div>;
+}
+
+function LuxmoTrustStrip() {
+  const items=[["✓","Secure Checkout","Razorpay-ready online payments"],["↻","7-Day Policy","Eligible return/replacement support"],["⚡","Fast Support","Product and order assistance"],["▣","Variant Accuracy","Model + colour selection"]];
+  return <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{items.map(([icon,title,text])=><div key={title} className="bg-white border rounded-2xl p-4"><div className="text-xl font-black">{icon}</div><div className="font-black text-sm mt-2">{title}</div><div className="text-[11px] text-slate-500 mt-1">{text}</div></div>)}</div>;
+}
+
+function LuxmoProductSchema({ product }) {
+  useEffect(()=>{
+    if(!product)return;
+    const id=`luxmo-product-schema-${product.id}`;
+    let script=document.getElementById(id);
+    if(!script){script=document.createElement("script");script.id=id;script.type="application/ld+json";document.head.appendChild(script);}
+    script.textContent=JSON.stringify({"@context":"https://schema.org","@type":"Product",name:product.title,description:product.description,image:product.images||[],sku:product.sku,offers:{"@type":"Offer",priceCurrency:"INR",price:String(luxmoProductPrice(product)),availability:luxmoProductStock(product)>0?"https://schema.org/InStock":"https://schema.org/OutOfStock"}});
+    return()=>{script?.remove();};
+  },[product]);
+  return null;
+}
+
+function LuxmoBackToTop() {
+  const [show,setShow]=useState(false);
+  useEffect(()=>{const fn=()=>setShow(window.scrollY>500);window.addEventListener("scroll",fn,{passive:true});return()=>window.removeEventListener("scroll",fn);},[]);
+  if(!show)return null;
+  return <button onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} aria-label="Back to top" className="fixed bottom-5 right-5 z-[60] w-11 h-11 rounded-full bg-slate-900 text-white shadow-xl font-black">↑</button>;
+}
+
+function LuxmoAccessibilityTools() {
+  const [large,setLarge]=useState(false);
+  const toggle=()=>{setLarge(v=>!v);document.documentElement.style.fontSize=!large?"110%":"100%";};
+  return <button onClick={toggle} aria-label="Toggle larger text" title="Accessibility: larger text" className="fixed left-3 bottom-5 z-[60] w-10 h-10 rounded-full bg-white border shadow-lg text-sm font-black">A+</button>;
+}
+
+/* ============================================================================
+   END OF ADDITIVE PRO SUITE
+   ============================================================================ */
+
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(() => {
     try {
@@ -860,6 +1488,8 @@ export default function LuxmoHubApp() {
   const [activeTab, setActiveTab] = useState("home");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedVariantKey, setSelectedVariantKey] = useState("");
+  const [showProCenter, setShowProCenter] = useState(false);
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -896,9 +1526,9 @@ export default function LuxmoHubApp() {
 
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
-    title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], material: "", description: '',
+    title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], models: [MOBILE_MODELS[0]], material: "", description: '',
     price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
-    images: [], published: true
+    images: [], published: true, colours: [MOBILE_COLOURS[0]], variants: []
   });
   const [formError, setFormError] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
@@ -955,6 +1585,7 @@ export default function LuxmoHubApp() {
     setFormData(prev => ({
       ...prev,
       model: nextModel,
+      models: prev.models?.filter(m => availableModels.includes(m)).length ? prev.models.filter(m => availableModels.includes(m)) : [nextModel],
       material: nextMaterial,
       hsn: tax?.hsn || '',
       gstRate: tax?.gstRate ?? ''
@@ -972,20 +1603,40 @@ export default function LuxmoHubApp() {
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      const combinedText = `${p.title} ${p.description} ${p.category} ${p.model}`.toLowerCase();
+      const combinedText = `${p.title} ${p.description} ${p.category} ${p.model} ${(p.models || []).join(" ")} ${(p.colours || []).join(" ")}`.toLowerCase();
       if (FORBIDDEN_TERMS.some(term => combinedText.includes(term))) return false;
 
       const matchesCat = selectedCategory === "All" || p.category === selectedCategory;
-      const matchesModel = selectedModelFilter === "All" || p.model === selectedModelFilter;
+      const matchesModel = selectedModelFilter === "All" || p.model === selectedModelFilter || (p.models || []).includes(selectedModelFilter);
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q || 
         p.title.toLowerCase().includes(q) || 
-        p.model.toLowerCase().includes(q) || 
+        (`${p.model || ""} ${(p.models || []).join(" ")} ${(p.colours || []).join(" ")}`).toLowerCase().includes(q) || 
         p.sku.toLowerCase().includes(q);
 
       return matchesCat && matchesModel && matchesSearch && (isAdminLoggedIn || p.published);
     });
   }, [products, selectedCategory, selectedModelFilter, searchQuery, isAdminLoggedIn]);
+
+  const buildVariantMatrix = (models, colours, baseSku, basePrice, baseSalePrice, baseStock, images) => {
+    const safeModels = models?.length ? models : [formData.model];
+    const safeColours = colours?.length ? colours : ["Default"];
+    return safeModels.flatMap(model => safeColours.map(colour => {
+      const key = `${model}__${colour}`;
+      const compactModel = model.replace(/[^A-Za-z0-9]/g, "").slice(0, 12).toUpperCase();
+      const compactColour = colour.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase();
+      return {
+        key,
+        model,
+        colour,
+        sku: `${baseSku || "LUX"}-${compactModel}-${compactColour}`,
+        price: Number(basePrice) || 0,
+        salePrice: baseSalePrice ? Number(baseSalePrice) : null,
+        stock: Number(baseStock) || 0,
+        images: images || []
+      };
+    }));
+  };
 
   const validateAndSaveProduct = (e) => {
     e.preventDefault();
@@ -1016,6 +1667,11 @@ export default function LuxmoHubApp() {
       title: formData.title.trim(),
       category: formData.category,
       model: formData.model,
+      models: formData.category === "Mobile Back Case" ? (formData.models?.length ? formData.models : [formData.model]) : [formData.model],
+      colours: formData.category === "Mobile Back Case" ? (formData.colours?.length ? formData.colours : ["Default"]) : [],
+      variants: formData.category === "Mobile Back Case"
+        ? (formData.variants?.length ? formData.variants : buildVariantMatrix(formData.models, formData.colours, formData.sku.trim(), formData.price, formData.salePrice, formData.stock, formData.images))
+        : [],
       material: formData.material,
       description: formData.description.trim(),
       price: Number(formData.price),
@@ -1042,9 +1698,9 @@ export default function LuxmoHubApp() {
   const resetForm = () => {
     setEditingProduct(null);
     setFormData({
-      title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], material: "", description: '',
+      title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], models: [MOBILE_MODELS[0]], material: "", description: '',
       price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
-      images: [], published: true
+      images: [], published: true, colours: [MOBILE_COLOURS[0]], variants: []
     });
     setFormError('');
   };
@@ -1056,6 +1712,9 @@ export default function LuxmoHubApp() {
     const taxInfo = getTaxInfo(prod.category, material);
     setFormData({ 
       ...prod,
+      models: prod.models || (prod.model ? [prod.model] : [MOBILE_MODELS[0]]),
+      colours: prod.colours || (prod.category === "Mobile Back Case" ? [MOBILE_COLOURS[0]] : []),
+      variants: prod.variants || [],
       material,
       hsn: taxInfo?.hsn || '',
       gstRate: taxInfo?.gstRate ?? '',
@@ -1071,19 +1730,31 @@ export default function LuxmoHubApp() {
     }
   };
 
-  const addToCart = (product) => {
+  const addToCart = (product, variant = null) => {
+    const item = variant ? {
+      ...product,
+      model: variant.model,
+      colour: variant.colour,
+      sku: variant.sku,
+      price: variant.price,
+      salePrice: variant.salePrice,
+      stock: variant.stock,
+      images: variant.images?.length ? variant.images : product.images
+    } : product;
+    const cartKey = variant ? `${product.id}::${variant.key}` : product.id;
     setCart(prev => {
-      const exists = prev.find(item => item.id === product.id);
-      if (exists) {
-        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
-      }
-      return [...prev, { ...product, qty: 1 }];
+      const exists = prev.find(x => x.cartKey === cartKey);
+      if (exists) return prev.map(x => x.cartKey === cartKey ? { ...x, qty: Math.min(x.qty + 1, Number(x.stock || 999999)) } : x);
+      return [...prev, { ...item, cartKey, qty: 1 }];
     });
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.salePrice || item.price) * item.qty, 0);
 
   const currentFormTaxInfo = getTaxInfo(formData.category, formData.material);
+  const selectedProductVariants = selectedProduct?.variants || [];
+  const activeVariant = selectedProductVariants.find(v => v.key === selectedVariantKey) || selectedProductVariants[0] || null;
+  const displayedProduct = activeVariant ? { ...selectedProduct, ...activeVariant, images: activeVariant.images?.length ? activeVariant.images : selectedProduct.images } : selectedProduct;
 
   const handleRazorpayPayment = async () => {
   if (!window.Razorpay) {
@@ -1233,6 +1904,8 @@ export default function LuxmoHubApp() {
             <button onClick={() => setActiveTab("home")} className={activeTab === 'home' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={activeTab === 'catalog' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Products</button>
             <button onClick={() => setActiveTab("policies")} className={activeTab === 'policies' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Policies</button>
+            <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-md">Store Tools</button>
+
             <button onClick={() => setActiveTab("cart")} className="relative p-1.5 hover:text-blue-600 text-slate-700">
               <ShoppingBag className="w-6 h-6" />
               {cart.length > 0 && (
@@ -1459,7 +2132,7 @@ export default function LuxmoHubApp() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {filteredProducts.map(prod => (
-                <ProductCard key={prod.id} product={prod} onSelect={(p) => { setSelectedProduct(p); setActiveImageIndex(0); setActiveTab("product"); }} onAddToCart={addToCart} />
+                <ProductCard key={prod.id} product={prod} onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }} onAddToCart={addToCart} />
               ))}
             </div>
           </div>
@@ -1957,10 +2630,14 @@ export default function LuxmoHubApp() {
 
         {/* PRODUCT DETAILS VIEW */}
         {activeTab === "product" && selectedProduct && (
-          <div className="bg-white rounded-2xl border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <>
+            <LuxmoProductSchema product={displayedProduct || selectedProduct} />
+            <LuxmoTrustStrip />
+            <LuxmoVariantSummary product={selectedProduct} />
+            <div className="bg-white rounded-2xl border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <img
-                src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image}
+                src={(displayedProduct.images && displayedProduct.images[activeImageIndex]) || displayedProduct.image}
                 alt={selectedProduct.title}
                 className="w-full aspect-square object-cover rounded-xl border"
               />
@@ -1982,14 +2659,36 @@ export default function LuxmoHubApp() {
 
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">{selectedProduct.title}</h1>
-              <p className="text-xs text-slate-500">Model: {selectedProduct.model}</p>
+              {selectedProduct.category === "Mobile Back Case" && selectedProductVariants.length > 0 && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold mb-2 text-slate-700">Select Device Model</label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedProductVariants.map(v => v.model).filter((m, i, arr) => arr.indexOf(m) === i).map(model => {
+                        const isActive = activeVariant?.model === model;
+                        return <button key={model} type="button" onClick={() => { const next = selectedProductVariants.find(v => v.model === model); setSelectedVariantKey(next?.key || ""); setActiveImageIndex(0); }} className={`px-3 py-2 rounded-lg border text-xs font-semibold ${isActive ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-300 bg-white text-slate-700"}`}>{model}</button>;
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-2 text-slate-700">Select Colour</label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedProductVariants.filter(v => v.model === activeVariant?.model).map(v => (
+                        <button key={v.key} type="button" onClick={() => { setSelectedVariantKey(v.key); setActiveImageIndex(0); }} className={`px-3 py-2 rounded-lg border text-xs font-semibold ${activeVariant?.key === v.key ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-300 bg-white text-slate-700"}`}>{v.colour}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-slate-500">Model: {displayedProduct.model}{displayedProduct.colour ? ` · ${displayedProduct.colour}` : ""}</p>
 
               {selectedProduct.material && selectedProduct.material !== "Not Applicable" && (
                 <p className="text-xs text-slate-500">Material / Type: {selectedProduct.material}</p>
               )}
 
               <div className="text-2xl font-extrabold text-slate-900">
-                ₹{selectedProduct.salePrice || selectedProduct.price}
+                ₹{displayedProduct.salePrice || displayedProduct.price}
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -2021,17 +2720,18 @@ export default function LuxmoHubApp() {
               </div>
 
               <p className="text-sm text-slate-600 whitespace-pre-line">
-                {selectedProduct.description}
+                {displayedProduct.description}
               </p>
 
               <button
-                onClick={() => addToCart(selectedProduct)}
+                onClick={() => addToCart(selectedProduct, activeVariant)}
                 className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm"
               >
                 Add to Cart
               </button>
             </div>
           </div>
+          </>
         )}
 
         {/* CART VIEW */}
@@ -2097,16 +2797,23 @@ export default function LuxmoHubApp() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block font-bold mb-1 text-slate-700">Model</label>
-                  <select 
-                    value={formData.model} 
-                    onChange={e => setFormData({ ...formData, model: e.target.value })} 
-                    className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    {MODEL_MAP[formData.category]?.map(m => <option key={m} value={m}>{m}</option>)}
+                <div className="md:col-span-2">
+                  <label className="block font-bold mb-1 text-slate-700">Device Models (Multi-Select)</label>
+                  <select multiple value={formData.models || [formData.model]} onChange={e => { const models = Array.from(e.target.selectedOptions).map(o => o.value); setFormData({ ...formData, models, model: models[0] || '' }); }} className="w-full min-h-40 p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    {(MODEL_MAP[formData.category] || []).map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
+                  <p className="text-[10px] text-slate-500 mt-1">Mobile cases: Ctrl/Cmd-click (desktop) or multi-select to choose all compatible models for this design.</p>
                 </div>
+
+                {formData.category === "Mobile Back Case" && (
+                  <div className="md:col-span-2">
+                    <label className="block font-bold mb-1 text-slate-700">Colours (Multi-Select)</label>
+                    <select multiple value={formData.colours || [MOBILE_COLOURS[0]]} onChange={e => setFormData({ ...formData, colours: Array.from(e.target.selectedOptions).map(o => o.value) })} className="w-full min-h-32 p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                      {MOBILE_COLOURS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setFormData(prev => ({ ...prev, variants: buildVariantMatrix(prev.models, prev.colours, prev.sku, prev.price, prev.salePrice, prev.stock, prev.images) }))} className="mt-2 bg-slate-900 text-white font-bold px-4 py-2 rounded-md">Generate Model × Colour Variants</button>
+                  </div>
+                )}
 
                 <div>
                   <label className="block font-bold mb-1 text-slate-700">Product Material / Type</label>
@@ -2219,6 +2926,16 @@ export default function LuxmoHubApp() {
                   />
                 </div>
 
+                {formData.category === "Mobile Back Case" && formData.variants?.length > 0 && (
+                  <div className="md:col-span-2 border rounded-xl overflow-auto bg-white">
+                    <div className="p-3 border-b bg-slate-50 font-bold text-slate-800">Generated Variants ({formData.variants.length})</div>
+                    <table className="w-full text-[11px]">
+                      <thead><tr className="border-b"><th className="p-2 text-left">Model</th><th className="p-2 text-left">Colour</th><th className="p-2 text-left">SKU</th><th className="p-2 text-left">Stock</th></tr></thead>
+                      <tbody>{formData.variants.map((v, i) => <tr key={v.key || i} className="border-b last:border-0"><td className="p-2">{v.model}</td><td className="p-2">{v.colour}</td><td className="p-2">{v.sku}</td><td className="p-2">{v.stock}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                )}
+
                 <div className="md:col-span-2 border-2 border-dashed border-slate-300 p-4 rounded-lg bg-slate-50 text-center">
                   <label className="block font-bold mb-2 text-slate-700">Upload Product Images (Up to 5)</label>
                   
@@ -2326,6 +3043,25 @@ export default function LuxmoHubApp() {
       </div>
     </div>
   )}
+
+        {showProCenter && (
+          <div className="fixed inset-0 z-[65] bg-black/40 p-2 md:p-5 overflow-auto">
+            <div className="max-w-7xl mx-auto my-2 md:my-5">
+              <div className="flex justify-end mb-2">
+                <button onClick={() => setShowProCenter(false)} className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg">Close Store Tools ×</button>
+              </div>
+              <LuxmoProSuite
+                products={products}
+                cart={cart}
+                addToCart={addToCart}
+                onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowProCenter(false); }}
+                isAdminLoggedIn={isAdminLoggedIn}
+              />
+            </div>
+          </div>
+        )}
+        <LuxmoBackToTop />
+        <LuxmoAccessibilityTools />
 
       </main>
 
@@ -2500,7 +3236,7 @@ function ProductCard({ product, onSelect, onAddToCart }) {
         <div className="p-4 space-y-1">
           <span className="text-[10px] font-bold text-blue-600 uppercase">{product.category}</span>
           <h3 className="font-semibold text-sm line-clamp-1">{product.title}</h3>
-          <p className="text-xs text-slate-500">Model: {product.model}</p>
+          <p className="text-xs text-slate-500">{product.models?.length ? `${product.models.length} models` : `Model: ${product.model}`}{product.colours?.length ? ` · ${product.colours.length} colours` : ""}</p>
           <div className="font-extrabold text-base pt-1">₹{product.salePrice || product.price}</div>
           {product.hsn && product.gstRate != null && (
             <div className="text-[10px] text-slate-500 pt-1">HSN: {product.hsn} · GST: {product.gstRate}%</div>
@@ -2509,10 +3245,10 @@ function ProductCard({ product, onSelect, onAddToCart }) {
       </div>
       <div className="p-4 pt-0">
         <button 
-          onClick={() => onAddToCart(product)} 
+          onClick={() => product.variants?.length ? onSelect(product) : onAddToCart(product)} 
           className="w-full bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-800 text-xs font-bold py-2 rounded-lg transition"
         >
-          Add to Cart
+          {product.variants?.length ? "Select Model & Colour" : "Add to Cart"}
         </button>
       </div>
     </div>
