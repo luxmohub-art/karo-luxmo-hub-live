@@ -3,6 +3,32 @@
 
   <url>
     <loc>https://luxmohub.in/</loc>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://luxmohub.in/solar</loc>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://luxmohub.in/mobile-cases</loc>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://luxmohub.in/warranty</loc>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://luxmohub.in/track-order</loc>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://luxmohub.in/contact</loc>
+    <priority>0.6</priority>
   </url>
 
 </urlset>
