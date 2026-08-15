@@ -78,6 +78,14 @@ async function redisCommand(command) {
   const url = getEnv("UPSTASH_REDIS_REST_URL");
   const token = getEnv("UPSTASH_REDIS_REST_TOKEN");
 
+  console.log("REDIS DEBUG:", {
+    url,
+    tokenConfigured: Boolean(token),
+    tokenLength: token.length,
+    tokenStart: token.slice(0, 6),
+    tokenEnd: token.slice(-6),
+  });
+
   if (!url || !token) {
     throw new Error("Redis environment variables are not configured");
   }
@@ -92,6 +100,13 @@ async function redisCommand(command) {
   });
 
   if (!response.ok) {
+    const responseBody = await response.text();
+
+    console.error("REDIS ERROR:", {
+      status: response.status,
+      body: responseBody,
+    });
+
     throw new Error(`Redis request failed: ${response.status}`);
   }
 
