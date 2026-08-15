@@ -1,4 +1,14 @@
 /*
+ * LUXMO HUB — ALL FEATURES PRESERVED
+ * Based on the 5,022-line Production Clean App.jsx.
+ * This revision is additive: no existing feature/component was intentionally removed.
+ * Added/retained: Live Tracking, WhatsApp Inquiry, Solar Calculator,
+ * Warranty Registration, Low Stock Alerts, Store Shipping Settings,
+ * persistent Store Settings, Premium Homepage sections, and Admin Email+Mobile+OTP.
+ * Homepage inverter card text contrast was improved only.
+ */
+
+/*
  * LUXMO HUB — PRODUCTION CLEAN FRONTEND
  *
  * Changes made from the supplied App file:
@@ -1155,7 +1165,19 @@ const LUXMO_PROTECTED_FEATURES = [
   "Cookie consent",
   "Accessibility controls",
   "Dark/light theme preference",
-  "Recently searched terms"
+  "Recently searched terms",
+  "Live order tracking modal (Order ID + mobile verification)",
+  "WhatsApp quick order / inquiry modal",
+  "Solar calculator / load estimator",
+  "Warranty registration form",
+  "Low-stock and inventory alert badge",
+  "Store shipping settings panel",
+  "Default store settings system",
+  "Store settings persistent storage/key system",
+  "Premium homepage sections",
+  "Admin Email + Mobile + OTP authentication",
+  "Secure HttpOnly admin session",
+  "Secure admin logout"
 ];
 
 function LuxmoProBadge({ children, tone = "blue" }) {
@@ -4790,19 +4812,37 @@ function LuxmoPremiumHomepageSections({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {inverterCards.map((p, i) => (
             <div key={p.id || i} className="group rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
-              <div className="h-36 bg-gradient-to-br from-slate-950 via-slate-800 to-blue-950 grid place-items-center text-white">
+              <div className="relative h-48 overflow-hidden bg-gradient-to-br from-slate-950 via-slate-800 to-blue-950 text-white">
                 {p.images?.[0] ? (
-                  <img src={p.images[0]} alt={p.title} className="w-full h-full object-cover" />
+                  <img
+                    src={p.images[0]}
+                    alt={p.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
                 ) : (
-                  <div className="text-center">
-                    <div className="text-4xl">☀️</div>
-                    <div className="mt-1 text-xs font-black tracking-widest">LUXMO HUB</div>
+                  <div className="absolute inset-0 grid place-items-center">
+                    <div className="text-center">
+                      <div className="text-4xl">☀️</div>
+                      <div className="mt-1 text-xs font-black tracking-widest">LUXMO HUB</div>
+                    </div>
                   </div>
                 )}
+
+                {/* High-contrast product information overlay.
+                    Existing product image and badges are preserved. */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/55 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-4">
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300">
+                    HYBRID SOLAR INVERTER
+                  </div>
+                  <h3 className="mt-1 max-w-[95%] text-base sm:text-lg leading-tight font-black text-white drop-shadow-md">
+                    {String(p.title || "LUXMO HUB Hybrid Solar Inverter")
+                      .replace(/\s*\/\s*/g, " / ")}
+                  </h3>
+                </div>
               </div>
               <div className="p-4">
                 <div className="text-[10px] font-black uppercase tracking-wider text-amber-600">Hybrid Solar Inverter</div>
-                <h3 className="mt-1 font-black text-slate-900 line-clamp-2">{p.title}</h3>
                 <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold">
                   <span className="rounded-full bg-slate-100 px-2 py-1">{p.spec?.[0] || p.model?.match(/[\d.]+KW/i)?.[0] || "Hybrid"}</span>
                   <span className="rounded-full bg-slate-100 px-2 py-1">{p.spec?.[1] || (p.model?.match(/24V|48V/i)?.[0] || "Battery")}</span>
