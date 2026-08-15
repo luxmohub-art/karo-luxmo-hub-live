@@ -1,3 +1,20 @@
+/*
+ * LUXMO HUB — PRODUCTION CLEAN FRONTEND
+ *
+ * Changes made from the supplied App file:
+ * 1. Removed the duplicated Pro Suite / customer-tools / main-app block.
+ * 2. Kept one canonical LuxmoHubApp export.
+ * 3. Kept one canonical set of Pro Suite helpers/components.
+ * 4. Disabled Partial COD until server-side verified payment + balance
+ *    collection is implemented.
+ *
+ * Important production boundary:
+ * Secure admin authentication, Razorpay signature verification, courier
+ * credentials, order persistence and shipping settings must be enforced by
+ * server/API code. Browser localStorage/sessionStorage must not be treated
+ * as a secure source of truth.
+ */
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
@@ -917,6 +934,57 @@ const compressImage = (file) => {
    operations workflows that can later be connected to a real database/API.
    ============================================================================ */
 
+    {text}
+  </div>
+);
+
+const compressImage = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target.result);
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
+
+
+/* ============================================================================
+   LUXMO HUB — ECOMMERCE PRO SUITE
+   ---------------------------------------------------------------------------
+   This layer is intentionally additive. It does not remove the original
+   catalogue, policies, Razorpay hooks, admin product editor, tax fields,
+   product cards, or footer. It adds production-oriented customer and
+   operations workflows that can later be connected to a real database/API.
+   ============================================================================ */
+
 const LUXMO_PRO_STORAGE = {
   wishlist: "luxmo_pro_wishlist",
   addresses: "luxmo_pro_addresses",
@@ -952,10 +1020,41 @@ const LUXMO_COURIER_PROVIDERS = [
   { id: "amazon_shipping", name: "Amazon Shipping", mode: "Carrier", enabled: false, priority: 4 }
 ];
 
+const LUXMO_DEFAULT_STORE_SETTINGS = {
+  codEnabled: true,
+  onlinePaymentEnabled: true,
+  standardDeliveryEnabled: true,
+  expressDeliveryEnabled: true,
+  standardDeliveryRate: 79,
+  expressDeliveryRate: 149,
+  standardMinDays: 4,
+  standardMaxDays: 8,
+  expressMinDays: 3,
+  expressMaxDays: 6,
+  freeShippingAboveMobile: 999,
+  freeShippingAboveInverter: 20000,
+  freeShippingAboveAccessories: 1499
+};
+
+const LUXMO_STORE_SETTINGS_KEY = "luxmo_store_settings";
+
+const luxmoNormalizeStoreSettings = (value = {}) => ({
+  ...LUXMO_DEFAULT_STORE_SETTINGS,
+  ...value,
+  standardDeliveryRate: Math.max(0, Number(value.standardDeliveryRate ?? LUXMO_DEFAULT_STORE_SETTINGS.standardDeliveryRate)),
+  expressDeliveryRate: Math.max(0, Number(value.expressDeliveryRate ?? LUXMO_DEFAULT_STORE_SETTINGS.expressDeliveryRate)),
+  standardMinDays: Math.max(1, Number(value.standardMinDays ?? LUXMO_DEFAULT_STORE_SETTINGS.standardMinDays)),
+  standardMaxDays: Math.max(1, Number(value.standardMaxDays ?? LUXMO_DEFAULT_STORE_SETTINGS.standardMaxDays)),
+  expressMinDays: Math.max(1, Number(value.expressMinDays ?? LUXMO_DEFAULT_STORE_SETTINGS.expressMinDays)),
+  expressMaxDays: Math.max(1, Number(value.expressMaxDays ?? LUXMO_DEFAULT_STORE_SETTINGS.expressMaxDays)),
+  freeShippingAboveMobile: Math.max(0, Number(value.freeShippingAboveMobile ?? LUXMO_DEFAULT_STORE_SETTINGS.freeShippingAboveMobile)),
+  freeShippingAboveInverter: Math.max(0, Number(value.freeShippingAboveInverter ?? LUXMO_DEFAULT_STORE_SETTINGS.freeShippingAboveInverter)),
+  freeShippingAboveAccessories: Math.max(0, Number(value.freeShippingAboveAccessories ?? LUXMO_DEFAULT_STORE_SETTINGS.freeShippingAboveAccessories))
+});
+
 const LUXMO_PAYMENT_METHODS = [
   { id: "razorpay", label: "Online Payment", description: "UPI, cards, net banking and supported wallets" },
   { id: "cod", label: "Cash on Delivery", description: "Available only where COD serviceability and order rules allow" },
-  { id: "partial_cod", label: "Partial COD", description: "Advance payment + remaining amount on delivery for selected high-value products" }
 ];
 
 const LUXMO_ORDER_STATUSES = [
@@ -1018,21 +1117,39 @@ const luxmoProductCategoryType = (product) => {
   return "mobile";
 };
 
-const luxmoShippingEstimate = (items, mode = "standard") => {
+const luxmoShippingEstimate = (items, mode = "standard", storeSettings = LUXMO_DEFAULT_STORE_SETTINGS) => {
+  const settings = luxmoNormalizeStoreSettings(storeSettings);
   const hasInverter = items.some(item => item.category === "Hybrid Solar Inverter");
   const hasMobile = items.some(item => item.category === "Mobile Back Case");
   const hasAccessory = items.some(item => item.category === "Solar Accessories");
   const total = items.reduce((sum, item) => sum + luxmoProductPrice(item) * Number(item.qty || 1), 0);
-  const rules = hasInverter ? LUXMO_SHIPPING_RULES.inverter : hasAccessory && !hasMobile ? LUXMO_SHIPPING_RULES.accessories : LUXMO_SHIPPING_RULES.mobile;
-  const fee = total >= rules.freeAbove ? 0 : mode === "express" ? rules.express : rules.standard;
-  return { fee, minDays: mode === "express" ? Math.max(2, rules.minDays - 1) : rules.minDays, maxDays: mode === "express" ? Math.max(4, rules.maxDays - 2) : rules.maxDays };
+
+  const freeAbove = hasInverter
+    ? settings.freeShippingAboveInverter
+    : hasAccessory && !hasMobile
+      ? settings.freeShippingAboveAccessories
+      : settings.freeShippingAboveMobile;
+
+  const fee = total >= freeAbove
+    ? 0
+    : mode === "express"
+      ? settings.expressDeliveryRate
+      : settings.standardDeliveryRate;
+
+  return {
+    fee,
+    minDays: mode === "express" ? settings.expressMinDays : settings.standardMinDays,
+    maxDays: mode === "express" ? settings.expressMaxDays : settings.standardMaxDays
+  };
 };
 
-const luxmoCodEligibility = (items, subtotal, pincode) => {
+const luxmoCodEligibility = (items, subtotal, pincode, storeSettings = LUXMO_DEFAULT_STORE_SETTINGS) => {
+  const settings = luxmoNormalizeStoreSettings(storeSettings);
+  if (!settings.codEnabled) return { allowed: false, reason: "Cash on Delivery is currently disabled by LUXMO HUB." };
   if (!luxmoValidatePincode(pincode)) return { allowed: false, reason: "Enter a valid 6-digit pincode." };
-  if (subtotal > 30000) return { allowed: false, reason: "Full COD is disabled for orders above ₹30,000. Use prepaid or eligible partial COD." };
+  if (subtotal > 30000) return { allowed: false, reason: "Full COD is disabled for orders above ₹30,000." };
   if (items.some(item => item.category === "Hybrid Solar Inverter") && subtotal > 10000) {
-    return { allowed: false, reason: "High-value inverter orders require prepaid or partial COD." };
+    return { allowed: false, reason: "High-value inverter orders require prepaid payment." };
   }
   return { allowed: true, reason: "COD may be available subject to courier serviceability." };
 };
@@ -1260,16 +1377,80 @@ function LuxmoPincodeChecker({ cartItems }) {
   return <div className="border rounded-xl p-4"><div className="font-black text-sm">Check Delivery Availability</div><div className="flex gap-2 mt-2"><input value={pincode} onChange={e => setPincode(e.target.value)} maxLength={6} inputMode="numeric" placeholder="6-digit pincode" className="flex-1 border rounded-lg px-3 py-2 text-sm"/><button onClick={check} className="bg-blue-600 text-white rounded-lg px-4 text-xs font-bold">Check</button></div>{result && <div className={`mt-2 text-xs ${result.ok ? "text-emerald-700" : "text-red-600"}`}>{result.message}</div>}</div>;
 }
 
-function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, onClose }) {
+function LuxmoStoreSettingsPanel({ settings, setSettings }) {
+  const update = (key, value) => setSettings(prev => ({ ...prev, [key]: value }));
+  const save = () => {
+    const normalized = luxmoNormalizeStoreSettings(settings);
+    setSettings(normalized);
+    safeWriteJSON(LUXMO_STORE_SETTINGS_KEY, normalized);
+    alert("Shipping & payment settings saved successfully.");
+  };
+  const numberField = (key, label, suffix = "₹") => (
+    <label className="block">
+      <span className="text-xs font-bold text-slate-700">{label}</span>
+      <div className="flex items-center mt-1">
+        {suffix === "₹" && <span className="px-3 py-2.5 bg-slate-100 border border-r-0 rounded-l-lg text-sm">₹</span>}
+        <input type="number" min="0" value={settings[key]} onChange={e => update(key, e.target.value)}
+          className={`w-full px-3 py-2.5 bg-white text-slate-900 border border-slate-300 ${suffix === "₹" ? "rounded-r-lg" : "rounded-lg"} text-sm`} />
+      </div>
+    </label>
+  );
+  const toggle = (key, title, description) => (
+    <label className="flex items-center justify-between gap-4 border rounded-xl p-3 bg-white cursor-pointer">
+      <div><div className="font-bold text-sm">{title}</div><div className="text-[11px] text-slate-500 mt-1">{description}</div></div>
+      <input type="checkbox" checked={!!settings[key]} onChange={e => update(key, e.target.checked)} className="w-5 h-5 accent-blue-600" />
+    </label>
+  );
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <LuxmoSectionTitle eyebrow="Admin Settings" title="Shipping & Payment Controls" description="Change COD availability and delivery charges without editing App.jsx." />
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {toggle("codEnabled","Cash on Delivery","Show or hide COD for customers.")}
+      {toggle("onlinePaymentEnabled","Online Payment","Show or hide Razorpay/online payment.")}
+      {toggle("standardDeliveryEnabled","Standard Delivery","Show or hide Standard Delivery at checkout.")}
+      {toggle("expressDeliveryEnabled","Express Delivery","Show or hide Express Delivery at checkout.")}
+    </div>
+    <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="border rounded-2xl p-4 bg-slate-50">
+        <h3 className="font-black text-sm">Standard Delivery</h3>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          {numberField("standardDeliveryRate","Rate")}
+          {numberField("standardMinDays","Minimum days","days")}
+          {numberField("standardMaxDays","Maximum days","days")}
+        </div>
+      </div>
+      <div className="border rounded-2xl p-4 bg-slate-50">
+        <h3 className="font-black text-sm">Express Delivery</h3>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          {numberField("expressDeliveryRate","Rate")}
+          {numberField("expressMinDays","Minimum days","days")}
+          {numberField("expressMaxDays","Maximum days","days")}
+        </div>
+      </div>
+    </div>
+    <div className="mt-4 border rounded-2xl p-4 bg-slate-50">
+      <h3 className="font-black text-sm">Free Shipping Thresholds</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+        {numberField("freeShippingAboveMobile","Mobile Cases free above")}
+        {numberField("freeShippingAboveInverter","Inverter free above")}
+        {numberField("freeShippingAboveAccessories","Accessories free above")}
+      </div>
+    </div>
+    <div className="mt-4 flex justify-end">
+      <button onClick={save} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 py-2.5 text-sm font-black">Save Settings</button>
+    </div>
+  </div>;
+}
+
+function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, onClose, storeSettings }) {
   const [selectedAddress, setSelectedAddress] = useState(addresses[0]?.id || "");
   const [draft, setDraft] = useState(addresses[0] || { name: customer?.name || "", phone: customer?.phone || "", line1: "", line2: "", city: "", state: "Uttar Pradesh", pincode: "" });
-  const [payment, setPayment] = useState("razorpay");
-  const [shippingMode, setShippingMode] = useState("standard");
+  const [payment, setPayment] = useState(storeSettings.onlinePaymentEnabled ? "razorpay" : "cod");
+  const [shippingMode, setShippingMode] = useState(storeSettings.standardDeliveryEnabled ? "standard" : "express");
   const [discount, setDiscount] = useState(0);
   const [coupon, setCoupon] = useState("");
-  const shipping = luxmoShippingEstimate(cart, shippingMode);
+  const shipping = luxmoShippingEstimate(cart, shippingMode, storeSettings);
   const total = Math.max(0, subtotal - discount + shipping.fee);
-  const cod = luxmoCodEligibility(cart, subtotal, draft.pincode);
+  const cod = luxmoCodEligibility(cart, subtotal, draft.pincode, storeSettings);
   const submit = () => {
     if (!draft.name.trim() || !luxmoValidateIndianMobile(draft.phone) || !draft.line1.trim() || !draft.city.trim() || !luxmoValidatePincode(draft.pincode)) return alert("Please complete valid delivery details.");
     if (payment === "cod" && !cod.allowed) return alert(cod.reason);
@@ -1293,7 +1474,7 @@ function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, on
     };
     onOrderCreated(order);
   };
-  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft(a); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"],["pincode","Pincode"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border rounded-xl px-3 py-2.5 text-sm" />)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery"],["express","Express Delivery"]].map(([id,label]) => <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${shippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{luxmoMoney(id === "express" ? luxmoShippingEstimate(cart,"express").fee : luxmoShippingEstimate(cart,"standard").fee)} · {id === "express" ? luxmoShippingEstimate(cart,"express").minDays : shipping.minDays}–{id === "express" ? luxmoShippingEstimate(cart,"express").maxDays : shipping.maxDays} business days</div></button>)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{LUXMO_PAYMENT_METHODS.map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : payment === "cod" ? "COD" : "Partial COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
+  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft(a); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"],["pincode","Pincode"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400" />)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery",storeSettings.standardDeliveryEnabled],["express","Express Delivery",storeSettings.expressDeliveryEnabled]].filter(([, ,enabled]) => enabled).map(([id,label]) => { const estimate = luxmoShippingEstimate(cart,id,storeSettings); return <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${shippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{estimate.fee ? luxmoMoney(estimate.fee) : "FREE"} · {estimate.minDays}–{estimate.maxDays} business days</div></button>; })}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{LUXMO_PAYMENT_METHODS.filter(m => m.id === "razorpay" ? storeSettings.onlinePaymentEnabled : m.id === "cod" ? storeSettings.codEnabled : false).map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : "COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
 }
 
 function LuxmoOrderCenter({ orders, setOrders }) {
@@ -1364,7 +1545,7 @@ function LuxmoFeatureChecklist() {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Readiness" title="Ecommerce Feature Checklist" description="A practical checklist for the Luxmo Hub storefront."/><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{LUXMO_PROTECTED_FEATURES.map((f,i)=><div key={f} className="flex gap-2 items-center border rounded-xl px-3 py-2.5 text-xs"><span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center font-black">✓</span><span>{f}</span></div>)}</div></div>;
 }
 
-function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn }) {
+function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn, onOnlinePayment }) {
   const [tab,setTab]=useState("overview");
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
@@ -1375,15 +1556,32 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
   const [couriers,setCouriers]=useState(()=>safeReadJSON("luxmo_pro_couriers",LUXMO_COURIER_PROVIDERS));
+  const [storeSettings,setStoreSettings]=useState(()=>luxmoNormalizeStoreSettings(safeReadJSON(LUXMO_STORE_SETTINGS_KEY,LUXMO_DEFAULT_STORE_SETTINGS)));
   const [checkout,setCheckout]=useState(false);
   const [discount,setDiscount]=useState(0);
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
   const selectProduct=p=>{setRecent(prev=>{const next=[p.id,...prev.filter(id=>id!==p.id)].slice(0,12);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,next);return next;});onSelectProduct(p);};
-  const createOrder=order=>{const next=[order,...orders];setOrders(next);safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);setCheckout(false);alert(`Order ${order.id} created successfully.`);};
+  const createOrder=order=>{
+    const next=[order,...orders];
+    setOrders(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
+    setCheckout(false);
+
+    // Online orders continue directly into the existing Razorpay flow.
+    // This removes the old duplicate cart-payment path and keeps the
+    // delivery address/order data collected by Secure Checkout.
+    if(order.paymentMethod === "razorpay"){
+      setTimeout(()=>{
+        if (typeof onOnlinePayment === "function") onOnlinePayment();
+      },0);
+    }else{
+      alert(`Order ${order.id} created successfully.`);
+    }
+  };
   const tabs=[
     ["overview","Overview"],["profile","Profile"],["wishlist","Wishlist"],["compare","Compare"],["orders","Orders"],["reviews","Reviews"],["alerts","Stock Alerts"],["support","Support"],["faq","FAQ"],["shipping","Shipping"],["seo","SEO"]
   ];
-  if(isAdminLoggedIn) tabs.push(["analytics","Analytics"],["couriers","Couriers"],["checklist","Checklist"]);
+  if(isAdminLoggedIn) tabs.push(["settings","Store Settings"],["analytics","Analytics"],["couriers","Couriers"],["checklist","Checklist"]);
   return <>
     <div className="rounded-3xl bg-slate-50 border border-slate-200 p-4 md:p-6 space-y-5">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1400,14 +1598,14 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
       {tab==="alerts"&&<LuxmoStockAlerts products={products} alerts={alerts} setAlerts={setAlerts}/>} 
       {tab==="support"&&<LuxmoContactCenter/>} 
       {tab==="faq"&&<LuxmoFAQ/>} 
-      {tab==="shipping"&&<div className="space-y-5"><LuxmoPincodeChecker cartItems={cart}/><LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/></div>} 
+      {tab==="shipping"&&<div className="space-y-5"><LuxmoPincodeChecker cartItems={cart}/><LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/></div>} {tab==="settings"&&isAdminLoggedIn&&<LuxmoStoreSettingsPanel settings={storeSettings} setSettings={setStoreSettings}/>} 
       {tab==="seo"&&<LuxmoSeoTools products={products}/>} 
-      {tab==="analytics"&&isAdminLoggedIn&&<LuxmoAnalytics products={products} orders={orders} reviews={reviews} alerts={alerts}/>} 
+      {tab==="settings"&&isAdminLoggedIn&&<LuxmoStoreSettingsPanel settings={storeSettings} setSettings={setStoreSettings}/>} {tab==="analytics"&&isAdminLoggedIn&&<LuxmoAnalytics products={products} orders={orders} reviews={reviews} alerts={alerts}/>} 
       {tab==="couriers"&&isAdminLoggedIn&&<LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/>} 
       {tab==="checklist"&&isAdminLoggedIn&&<LuxmoFeatureChecklist/>}
       {cart.length>0&&<div className="sticky bottom-3 bg-slate-950 text-white rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-2xl"><div><div className="font-black">Ready to checkout?</div><div className="text-xs text-slate-300">{cart.length} line item(s) · {luxmoMoney(subtotal)}</div></div><div className="flex gap-2"><button onClick={()=>setCheckout(true)} className="bg-blue-600 rounded-xl px-5 py-2.5 text-sm font-black">Checkout</button><LuxmoCouponBox subtotal={subtotal} items={cart} onDiscountChange={(d,c)=>{setDiscount(d);}}/></div></div>}
     </div>
-    {checkout&&<LuxmoCheckout cart={cart} subtotal={subtotal} customer={customer} addresses={addresses} onOrderCreated={createOrder} onClose={()=>setCheckout(false)}/>} 
+    {checkout&&<LuxmoCheckout cart={cart} subtotal={subtotal} customer={customer} addresses={addresses} storeSettings={storeSettings} onOrderCreated={createOrder} onClose={()=>setCheckout(false)}/>} 
     <LuxmoCookieConsent/>
   </>;
 }
@@ -2096,6 +2294,146 @@ function LuxmoLowStockBadge({ products = [], isAdmin = false, onClick }) {
   );
 }
 
+/**
+ * LUXMO HUB — Secure Admin OTP Login
+ *
+ * The browser only collects the admin email/mobile and OTP.
+ * OTP generation, delivery, verification and the authenticated
+ * session are handled by server/API endpoints.
+ */
+function LuxmoAdminOTPLogin({ onAuthenticated, onClose }) {
+  const [email, setEmail] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState("identity");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function sendOTP() {
+    setMessage("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/admin-send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, mobile })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Unable to send OTP.");
+      }
+      setStep("otp");
+      setMessage("OTP sent. Please enter the 6-digit verification code.");
+    } catch (error) {
+      setMessage(error?.message || "Unable to send OTP.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyOTP() {
+    setMessage("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/admin-verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, mobile, otp })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Invalid or expired OTP.");
+      }
+      onAuthenticated?.(data.admin || { email, mobile });
+    } catch (error) {
+      setMessage(error?.message || "OTP verification failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 text-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-amber-400">LUXMO HUB</p>
+            <h1 className="mt-2 text-2xl font-black">Admin Verification</h1>
+            <p className="mt-2 text-sm text-white/60">
+              Verify your registered email and mobile number with OTP.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-white/60 hover:text-white text-xl" aria-label="Close">×</button>
+        </div>
+
+        {step === "identity" ? (
+          <div className="space-y-4">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Registered admin email"
+              autoComplete="email"
+              className="w-full rounded-xl bg-white px-4 py-3 text-black placeholder:text-gray-400 outline-none"
+            />
+            <input
+              type="tel"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+              placeholder="Registered mobile number"
+              autoComplete="tel"
+              className="w-full rounded-xl bg-white px-4 py-3 text-black placeholder:text-gray-400 outline-none"
+            />
+            <button
+              type="button"
+              disabled={busy || !email.trim() || !mobile.trim()}
+              onClick={sendOTP}
+              className="w-full rounded-xl bg-amber-400 px-4 py-3 font-black text-black disabled:opacity-50"
+            >
+              {busy ? "Sending OTP..." : "Send OTP"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="Enter 6-digit OTP"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              className="w-full rounded-xl bg-white px-4 py-3 text-center text-xl tracking-[0.4em] text-black placeholder:text-gray-400 outline-none"
+            />
+            <button
+              type="button"
+              disabled={busy || otp.length !== 6}
+              onClick={verifyOTP}
+              className="w-full rounded-xl bg-amber-400 px-4 py-3 font-black text-black disabled:opacity-50"
+            >
+              {busy ? "Verifying..." : "Verify OTP & Open Dashboard"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => { setOtp(""); setStep("identity"); setMessage(""); }}
+              className="w-full rounded-xl border border-white/15 px-4 py-3 text-sm"
+            >
+              Change email/mobile
+            </button>
+          </div>
+        )}
+
+        {message ? (
+          <p className="mt-4 rounded-xl bg-white/10 p-3 text-sm text-white/80">{message}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(() => {
@@ -2141,30 +2479,55 @@ export default function LuxmoHubApp() {
     document.body.appendChild(script);
   }, []);
 
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
-    return sessionStorage.getItem('luxmo_admin_session') === 'true';
-  });
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminAuthInput, setAdminAuthInput] = useState("");
-  const [authError, setAuthError] = useState("");
+  const [adminCheckingSession, setAdminCheckingSession] = useState(true);
+  const [adminIdentity, setAdminIdentity] = useState(null);
 
-  const handleAdminLogin = (e) => {
-    e.preventDefault();
-    if (adminAuthInput === "LUXMO#SECURE2026") {
-      setIsAdminLoggedIn(true);
-      sessionStorage.setItem('luxmo_admin_session', 'true');
-      setShowAdminModal(false);
-      setAdminAuthInput("");
-      setAuthError("");
-    } else {
-      setAuthError("Incorrect authentication key.");
-    }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch("/api/admin-session", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store"
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!cancelled && response.ok && data.authenticated) {
+          setIsAdminLoggedIn(true);
+          setAdminIdentity(data.admin || null);
+        }
+      } catch (error) {
+        console.warn("Admin session check failed:", error);
+      } finally {
+        if (!cancelled) setAdminCheckingSession(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleAdminAuthenticated = (admin) => {
+    setIsAdminLoggedIn(true);
+    setAdminIdentity(admin || null);
+    setShowAdminModal(false);
+    setActiveTab("admin");
   };
 
-  const handleAdminLogout = () => {
-    setIsAdminLoggedIn(false);
-    sessionStorage.removeItem('luxmo_admin_session');
-    setActiveTab("home");
+  const handleAdminLogout = async () => {
+    try {
+      await fetch("/api/admin-logout", {
+        method: "POST",
+        credentials: "include"
+      });
+    } catch (error) {
+      console.warn("Admin logout request failed:", error);
+    } finally {
+      setIsAdminLoggedIn(false);
+      setAdminIdentity(null);
+      setShowAdminModal(false);
+      setActiveTab("home");
+    }
   };
 
   const [editingProduct, setEditingProduct] = useState(null);
@@ -3780,9 +4143,15 @@ export default function LuxmoHubApp() {
                   <span>Total Payable:</span>
                   <span className="text-blue-600">₹{cartTotal}</span>
                 </div>
-                <button onClick={handleRazorpayPayment} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg text-sm">
-                  Pay Now via Razorpay
+                <button
+                  onClick={() => setCheckout(true)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
+                >
+                  Proceed to Secure Checkout
                 </button>
+                <p className="text-[10px] text-slate-500 text-center mt-2">
+                  Enter your delivery address and choose your payment method at checkout.
+                </p>
               </div>
             )}
           </div>
@@ -4089,6 +4458,7 @@ export default function LuxmoHubApp() {
                 addToCart={addToCart}
                 onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowProCenter(false); }}
                 isAdminLoggedIn={isAdminLoggedIn}
+                onOnlinePayment={handleRazorpayPayment}
               />
             </div>
           </div>
@@ -4206,51 +4576,13 @@ export default function LuxmoHubApp() {
     </div>
   </footer>
 
-  {/* ADMIN AUTH MODAL */}
+  {/* SECURE ADMIN OTP AUTHENTICATION */}
   {showAdminModal && (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="font-bold text-sm flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
-            Admin Authentication
-          </h3>
-
-          <button
-            onClick={() => setShowAdminModal(false)}
-            className="text-slate-500 hover:text-slate-900"
-          >
-            X
-          </button>
-        </div>
-
-        {authError && (
-          <p className="text-xs text-red-600 bg-red-50 p-2 rounded">
-            {authError}
-          </p>
-        )}
-
-        <form onSubmit={handleAdminLogin} className="space-y-3">
-          <input
-            type="password"
-            required
-            value={adminAuthInput}
-            onChange={(e) => setAdminAuthInput(e.target.value)}
-            placeholder="Enter Key..."
-            className="w-full px-3 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-
-          <button
-            type="submit"
-            className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg"
-          >
-            Authenticate
-          </button>
-        </form>
-      </div>
-    </div>
+    <LuxmoAdminOTPLogin
+      onAuthenticated={handleAdminAuthenticated}
+      onClose={() => setShowAdminModal(false)}
+    />
   )}
-
 
       {/* GLOBAL CUSTOMER TOOLS */}
       {showTrackingModal && (
@@ -4693,5 +5025,3 @@ function ProductCard({ product, onSelect, onAddToCart }) {
     </div>
   );
 }
-
-// LUXMO HUB: syntax-checked final App.jsx
