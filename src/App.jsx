@@ -1066,17 +1066,37 @@ const luxmoProductCategoryType = (product) => {
   return "mobile";
 };
 
-const luxmoShippingEstimate = (items, mode = "standard") => {
+const luxmoShippingEstimate = (items, mode = "standard", storeSettings = LUXMO_DEFAULT_STORE_SETTINGS) => {
+  const settings = luxmoNormalizeStoreSettings(storeSettings);
   const hasInverter = items.some(item => item.category === "Hybrid Solar Inverter");
   const hasMobile = items.some(item => item.category === "Mobile Back Case");
   const hasAccessory = items.some(item => item.category === "Solar Accessories");
   const total = items.reduce((sum, item) => sum + luxmoProductPrice(item) * Number(item.qty || 1), 0);
-  const rules = hasInverter ? LUXMO_SHIPPING_RULES.inverter : hasAccessory && !hasMobile ? LUXMO_SHIPPING_RULES.accessories : LUXMO_SHIPPING_RULES.mobile;
-  const fee = total >= rules.freeAbove ? 0 : mode === "express" ? rules.express : rules.standard;
-  return { fee, minDays: mode === "express" ? Math.max(2, rules.minDays - 1) : rules.minDays, maxDays: mode === "express" ? Math.max(4, rules.maxDays - 2) : rules.maxDays };
+
+  const freeAbove = hasInverter
+    ? settings.freeShippingAboveInverter
+    : hasAccessory && !hasMobile
+      ? settings.freeShippingAboveAccessories
+      : settings.freeShippingAboveMobile;
+
+  if (mode === "express") {
+    return {
+      fee: total >= freeAbove ? 0 : settings.expressDeliveryRate,
+      minDays: settings.expressMinDays,
+      maxDays: Math.max(settings.expressMinDays, settings.expressMaxDays)
+    };
+  }
+
+  return {
+    fee: total >= freeAbove ? 0 : settings.standardDeliveryRate,
+    minDays: settings.standardMinDays,
+    maxDays: Math.max(settings.standardMinDays, settings.standardMaxDays)
+  };
 };
 
-const luxmoCodEligibility = (items, subtotal, pincode) => {
+const luxmoCodEligibility = (items, subtotal, pincode, storeSettings = LUXMO_DEFAULT_STORE_SETTINGS) => {
+  const settings = luxmoNormalizeStoreSettings(storeSettings);
+  if (!settings.codEnabled) return { allowed: false, reason: "Cash on Delivery is currently unavailable." };
   if (!luxmoValidatePincode(pincode)) return { allowed: false, reason: "Enter a valid 6-digit pincode." };
   if (subtotal > 30000) return { allowed: false, reason: "Full COD is disabled for orders above ₹30,000. Use prepaid or eligible partial COD." };
   if (items.some(item => item.category === "Hybrid Solar Inverter") && subtotal > 10000) {
@@ -1379,12 +1399,21 @@ function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, on
   const [shippingMode, setShippingMode] = useState(storeSettings.standardDeliveryEnabled ? "standard" : "express");
   const [discount, setDiscount] = useState(0);
   const [coupon, setCoupon] = useState("");
-  const shipping = luxmoShippingEstimate(cart, shippingMode, storeSettings);
+  const effectiveShippingMode =
+    shippingMode === "express" && storeSettings.expressDeliveryEnabled
+      ? "express"
+      : storeSettings.standardDeliveryEnabled
+        ? "standard"
+        : "express";
+  const shipping = luxmoShippingEstimate(cart, effectiveShippingMode, storeSettings);
   const total = Math.max(0, subtotal - discount + shipping.fee);
   const cod = luxmoCodEligibility(cart, subtotal, draft.pincode, storeSettings);
   const submit = () => {
     if (!draft.name.trim() || !luxmoValidateIndianMobile(draft.phone) || !draft.line1.trim() || !draft.city.trim() || !luxmoValidatePincode(draft.pincode)) return alert("Please complete valid delivery details.");
     if (payment === "cod" && !cod.allowed) return alert(cod.reason);
+    if (!storeSettings.standardDeliveryEnabled && !storeSettings.expressDeliveryEnabled) {
+      return alert("Delivery is currently unavailable. Please contact LUXMO HUB support.");
+    }
     const order = {
       id: luxmoOrderNumber(),
       createdAt: new Date().toISOString(),
@@ -1405,7 +1434,7 @@ function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, on
     };
     onOrderCreated(order);
   };
-  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft(a); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"],["pincode","Pincode"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border rounded-xl px-3 py-2.5 text-sm" />)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery",storeSettings.standardDeliveryEnabled],["express","Express Delivery",storeSettings.expressDeliveryEnabled]].filter(([, ,enabled]) => enabled).map(([id,label]) => { const estimate = luxmoShippingEstimate(cart,id,storeSettings); return <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${shippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{estimate.fee ? luxmoMoney(estimate.fee) : "FREE"} · {estimate.minDays}–{estimate.maxDays} business days</div></button>; })}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{LUXMO_PAYMENT_METHODS.filter(m => m.id === "razorpay" ? storeSettings.onlinePaymentEnabled : m.id === "cod" ? storeSettings.codEnabled : false).map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : "COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
+  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft(a); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"],["pincode","Pincode"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery",storeSettings.standardDeliveryEnabled],["express","Express Delivery",storeSettings.expressDeliveryEnabled]].filter(([, ,enabled]) => enabled).map(([id,label]) => { const estimate = luxmoShippingEstimate(cart,id,storeSettings); return <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${effectiveShippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{estimate.fee ? luxmoMoney(estimate.fee) : "FREE"} · {estimate.minDays}–{estimate.maxDays} business days</div></button>; })}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{LUXMO_PAYMENT_METHODS.filter(m => m.id === "razorpay" ? storeSettings.onlinePaymentEnabled : m.id === "cod" ? storeSettings.codEnabled : false).map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : "COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
 }
 
 function LuxmoOrderCenter({ orders, setOrders }) {
@@ -2270,31 +2299,181 @@ export default function LuxmoHubApp() {
     document.body.appendChild(script);
   }, []);
 
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
-    return sessionStorage.getItem('luxmo_admin_session') === 'true';
-  });
+  // Server-side admin authentication. The browser never stores an admin
+  // password, OTP, or admin session flag. The API should issue the Secure
+  // + HttpOnly session cookie after successful OTP verification.
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminSessionChecking, setAdminSessionChecking] = useState(true);
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminAuthInput, setAdminAuthInput] = useState("");
+  const [adminEmail, setAdminEmail] = useState("Luxmohub@gmail.com");
+  const [adminMobile, setAdminMobile] = useState("7565012418");
+  const [adminOtp, setAdminOtp] = useState("");
+  const [adminOtpSent, setAdminOtpSent] = useState(false);
+  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
 
-  const handleAdminLogin = (e) => {
-    e.preventDefault();
-    if (adminAuthInput === "LUXMO#SECURE2026") {
-      setIsAdminLoggedIn(true);
-      sessionStorage.setItem('luxmo_admin_session', 'true');
-      setShowAdminModal(false);
-      setAdminAuthInput("");
-      setAuthError("");
-    } else {
-      setAuthError("Incorrect authentication key.");
+  const verifyAdminSession = async () => {
+    setAdminSessionChecking(true);
+    try {
+      const response = await fetch("/api/admin-session", {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "application/json" }
+      });
+      const data = await response.json().catch(() => ({}));
+      const authenticated = Boolean(
+        response.ok &&
+        (data.authenticated === true ||
+          data.isAuthenticated === true ||
+          data.loggedIn === true ||
+          data.success === true)
+      );
+      setIsAdminLoggedIn(authenticated);
+      if (!authenticated && activeTab === "admin") setActiveTab("home");
+      return authenticated;
+    } catch (error) {
+      console.error("Admin session verification failed:", error);
+      setIsAdminLoggedIn(false);
+      if (activeTab === "admin") setActiveTab("home");
+      return false;
+    } finally {
+      setAdminSessionChecking(false);
     }
   };
 
-  const handleAdminLogout = () => {
-    setIsAdminLoggedIn(false);
-    sessionStorage.removeItem('luxmo_admin_session');
-    setActiveTab("home");
+  useEffect(() => {
+    verifyAdminSession();
+  }, []);
+
+  const openAdminLogin = () => {
+    setAuthError("");
+    setAuthMessage("");
+    setAdminOtp("");
+    setAdminOtpSent(false);
+    setShowAdminModal(true);
   };
+
+  const handleAdminSendOtp = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthMessage("");
+
+    const email = adminEmail.trim().toLowerCase();
+    const mobile = adminMobile.replace(/\D/g, "");
+
+    if (!email || !email.includes("@")) {
+      setAuthError("Please enter the registered admin email.");
+      return;
+    }
+    if (!luxmoValidateIndianMobile(mobile)) {
+      setAuthError("Please enter a valid 10-digit admin mobile number.");
+      return;
+    }
+
+    setAdminAuthLoading(true);
+    try {
+      const response = await fetch("/api/admin-send-otp", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email, mobile })
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || data.message || "Unable to send OTP.");
+      }
+
+      setAdminOtpSent(true);
+      setAuthMessage(data.message || "OTP sent successfully. Please check your registered email/mobile.");
+    } catch (error) {
+      console.error("Admin OTP send error:", error);
+      setAuthError(error.message || "Unable to send OTP. Please try again.");
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
+
+  const handleAdminVerifyOtp = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthMessage("");
+
+    const email = adminEmail.trim().toLowerCase();
+    const mobile = adminMobile.replace(/\D/g, "");
+    const otp = adminOtp.replace(/\D/g, "");
+
+    if (!adminOtpSent) {
+      setAuthError("Please request an OTP first.");
+      return;
+    }
+    if (!/^\d{4,8}$/.test(otp)) {
+      setAuthError("Please enter the OTP received from LUXMO HUB.");
+      return;
+    }
+
+    setAdminAuthLoading(true);
+    try {
+      const response = await fetch("/api/admin-verify-otp", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email, mobile, otp })
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success !== true) {
+        throw new Error(data.error || data.message || "OTP verification failed.");
+      }
+
+      const authenticated = await verifyAdminSession();
+      if (!authenticated) {
+        throw new Error("OTP verified, but secure admin session could not be established.");
+      }
+
+      setShowAdminModal(false);
+      setAdminOtp("");
+      setAdminOtpSent(false);
+      setAuthMessage("");
+      setAuthError("");
+      setActiveTab("admin");
+    } catch (error) {
+      console.error("Admin OTP verification error:", error);
+      setAuthError(error.message || "OTP verification failed.");
+      setIsAdminLoggedIn(false);
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    setAdminAuthLoading(true);
+    try {
+      await fetch("/api/admin-logout", {
+        method: "POST",
+        credentials: "include",
+        headers: { Accept: "application/json" }
+      });
+    } catch (error) {
+      console.error("Admin logout API error:", error);
+    } finally {
+      setIsAdminLoggedIn(false);
+      setAdminOtp("");
+      setAdminOtpSent(false);
+      setAuthError("");
+      setAuthMessage("");
+      setActiveTab("home");
+      setAdminAuthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "admin" && !adminSessionChecking && !isAdminLoggedIn) {
+      openAdminLogin();
+      setActiveTab("home");
+    }
+  }, [activeTab, adminSessionChecking, isAdminLoggedIn]);
 
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
@@ -3018,7 +3197,7 @@ export default function LuxmoHubApp() {
                 </button>
               </>
             ) : (
-              <button onClick={() => setShowAdminModal(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1">
+              <button onClick={openAdminLogin} className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1">
                 <Lock className="w-3 h-3" /> Dashboard
               </button>
             )}
@@ -4341,51 +4520,63 @@ export default function LuxmoHubApp() {
     </div>
   </footer>
 
-  {/* ADMIN AUTH MODAL */}
+  {/* ADMIN AUTH MODAL — EMAIL + MOBILE + OTP */}
   {showAdminModal && (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[80]">
+      <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
         <div className="flex justify-between items-center">
-          <h3 className="font-bold text-sm flex items-center gap-2">
+          <h3 className="font-bold text-sm flex items-center gap-2 text-slate-900">
             <ShieldCheck className="w-4 h-4 text-blue-600" />
-            Admin Authentication
+            Secure Admin Authentication
           </h3>
-
-          <button
-            onClick={() => setShowAdminModal(false)}
-            className="text-slate-500 hover:text-slate-900"
-          >
-            X
-          </button>
+          <button type="button" onClick={() => setShowAdminModal(false)} className="text-slate-500 hover:text-slate-900" disabled={adminAuthLoading}>✕</button>
         </div>
 
-        {authError && (
-          <p className="text-xs text-red-600 bg-red-50 p-2 rounded">
-            {authError}
-          </p>
+        <p className="text-xs text-slate-500">
+          Admin access is verified by the server using your registered email, mobile number and one-time password.
+        </p>
+
+        {authError && <p className="text-xs text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl">{authError}</p>}
+        {authMessage && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl">{authMessage}</p>}
+
+        {!adminOtpSent ? (
+          <form onSubmit={handleAdminSendOtp} className="space-y-3">
+            <label className="block">
+              <span className="text-xs font-bold text-slate-700">Admin Email</span>
+              <input type="email" required autoComplete="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="Registered admin email" className="mt-1 w-full px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-bold text-slate-700">Admin Mobile</span>
+              <input type="tel" required inputMode="numeric" autoComplete="tel" maxLength={10} value={adminMobile} onChange={e => setAdminMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit registered mobile" className="mt-1 w-full px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <button type="submit" disabled={adminAuthLoading} className="w-full bg-slate-900 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
+              {adminAuthLoading ? "Sending OTP…" : "Send OTP"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleAdminVerifyOtp} className="space-y-3">
+            <div className="rounded-xl bg-slate-50 border p-3 text-xs text-slate-600">
+              OTP requested for <strong>{adminEmail}</strong> and mobile ending in <strong>{adminMobile.slice(-4)}</strong>.
+            </div>
+            <label className="block">
+              <span className="text-xs font-bold text-slate-700">One-Time Password</span>
+              <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={adminOtp} onChange={e => setAdminOtp(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="Enter OTP" className="mt-1 w-full px-3 py-3 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-center tracking-[0.35em] font-black focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <button type="submit" disabled={adminAuthLoading} className="w-full bg-blue-600 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
+              {adminAuthLoading ? "Verifying…" : "Verify OTP & Open Dashboard"}
+            </button>
+            <button type="button" disabled={adminAuthLoading} onClick={() => { setAdminOtp(""); setAdminOtpSent(false); setAuthError(""); setAuthMessage(""); }} className="w-full bg-slate-100 text-slate-800 text-xs font-bold py-2.5 rounded-xl">
+              Change Email / Mobile
+            </button>
+          </form>
         )}
 
-        <form onSubmit={handleAdminLogin} className="space-y-3">
-          <input
-            type="password"
-            required
-            value={adminAuthInput}
-            onChange={(e) => setAdminAuthInput(e.target.value)}
-            placeholder="Enter Key..."
-            className="w-full px-3 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-
-          <button
-            type="submit"
-            className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg"
-          >
-            Authenticate
-          </button>
-        </form>
+        <p className="text-[10px] text-slate-400 text-center">
+          Authentication is server-side. No admin password or session flag is stored in browser storage.
+        </p>
       </div>
     </div>
   )}
-
 
       {/* GLOBAL CUSTOMER TOOLS */}
       {showTrackingModal && (
