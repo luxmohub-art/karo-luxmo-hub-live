@@ -4,6 +4,8 @@ const SHIPROCKET_BASE =
 const ITHINK_BASE =
   "https://my.ithinklogistics.com/api_v3";
 
+const MAX_ORDER_ID_LENGTH = 50;
+
 /*
 |--------------------------------------------------------------------------
 | Helpers
@@ -33,7 +35,23 @@ function normalizePhone(value) {
 function normalizeOrderId(value) {
   return String(value || "")
     .trim()
-    .slice(0, 50);
+    .slice(0, MAX_ORDER_ID_LENGTH);
+}
+
+function normalizeProvider(value) {
+  return String(value || "auto")
+    .trim()
+    .toLowerCase();
+}
+
+function maskMobile(mobile) {
+  const phone = normalizePhone(mobile);
+
+  if (phone.length !== 10) {
+    return "";
+  }
+
+  return `******${phone.slice(-4)}`;
 }
 
 function safeJsonResponse(data) {
@@ -42,6 +60,25 @@ function safeJsonResponse(data) {
   }
 
   return data;
+}
+
+function sendJson(res, status, data) {
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+
+  res.setHeader(
+    "Pragma",
+    "no-cache"
+  );
+
+  res.setHeader(
+    "Expires",
+    "0"
+  );
+
+  return res.status(status).json(data);
 }
 
 /*
@@ -162,7 +199,7 @@ async function shiprocketRequest(
 
 /*
 |--------------------------------------------------------------------------
-| Shiprocket Tracking
+| Shiprocket AWB Tracking
 |--------------------------------------------------------------------------
 */
 
@@ -194,7 +231,6 @@ async function trackShiprocketByAwb(
 
   const shipmentTrack =
     tracking?.shipment_track?.[0] ||
-    tracking?.shipment_track?.[0] ||
     {};
 
   const currentStatus =
@@ -203,7 +239,8 @@ async function trackShiprocketByAwb(
       tracking?.current_status,
       tracking?.shipment_status,
       data?.status
-    ) || "Tracking information available";
+    ) ||
+    "Tracking information available";
 
   const courierName =
     firstValue(
@@ -212,7 +249,7 @@ async function trackShiprocketByAwb(
       tracking?.courier
     ) || null;
 
-  const etd =
+  const estimatedDelivery =
     firstValue(
       shipmentTrack?.edd,
       tracking?.edd,
@@ -234,27 +271,18 @@ async function trackShiprocketByAwb(
     status:
       currentStatus,
 
-    estimatedDelivery:
-      etd,
+    estimatedDelivery,
 
     trackingUrl:
       `https://shiprocket.co/tracking/${encodeURIComponent(
         awb
       )}`,
-
-    raw:
-      data,
   };
 }
 
 /*
 |--------------------------------------------------------------------------
-| Try to find Shiprocket order
-|--------------------------------------------------------------------------
-|
-| The website sends the Razorpay order ID as the order ID.
-| Shiprocket order ID is normally the same value that was
-| submitted during /orders/create/adhoc.
+| Shiprocket Order Lookup
 |--------------------------------------------------------------------------
 */
 
@@ -276,7 +304,12 @@ async function findShiprocketOrder(
           method: "GET",
         }
       );
-  } catch {
+  } catch (error) {
+    console.error(
+      "Shiprocket order lookup failed:",
+      error?.message || error
+    );
+
     return null;
   }
 
@@ -285,14 +318,19 @@ async function findShiprocketOrder(
     data?.order ||
     data;
 
-  if (!order) {
+  if (
+    !order ||
+    typeof order !== "object"
+  ) {
     return null;
   }
 
   /*
-   * Security check:
-   * Customer must provide the same mobile number
-   * used on the order.
+   * Mobile verification.
+   *
+   * If Shiprocket does not return a stored
+   * phone number, we cannot securely verify
+   * the customer's mobile number.
    */
 
   const storedPhone =
@@ -303,22 +341,29 @@ async function findShiprocketOrder(
       order?.phone
     );
 
+  const normalizedStoredPhone =
+    normalizePhone(storedPhone);
+
+  const normalizedMobile =
+    normalizePhone(mobile);
+
   if (
-    storedPhone &&
-    mobile &&
-    normalizePhone(storedPhone) !==
-      normalizePhone(mobile)
+    !normalizedStoredPhone ||
+    !normalizedMobile ||
+    normalizedStoredPhone !==
+      normalizedMobile
   ) {
     return null;
   }
 
   const shipments =
-    order?.shipments ||
-    data?.shipments ||
-    [];
+    Array.isArray(order?.shipments)
+      ? order.shipments
+      : Array.isArray(data?.shipments)
+      ? data.shipments
+      : [];
 
-  let shipment =
-    Array.isArray(shipments) &&
+  const shipment =
     shipments.length
       ? shipments[0]
       : null;
@@ -328,7 +373,9 @@ async function findShiprocketOrder(
       shipment?.awb_code,
       shipment?.awb,
       order?.awb_code,
-      data?.awb_code
+      order?.awb,
+      data?.awb_code,
+      data?.awb
     );
 
   const shipmentId =
@@ -339,9 +386,6 @@ async function findShiprocketOrder(
     );
 
   return {
-    order,
-    shipment,
-
     shipmentId:
       shipmentId || null,
 
@@ -352,10 +396,7 @@ async function findShiprocketOrder(
 
 /*
 |--------------------------------------------------------------------------
-| iThink Tracking
-|--------------------------------------------------------------------------
-|
-| iThink official tracking API accepts AWB number.
+| iThink AWB Tracking
 |--------------------------------------------------------------------------
 */
 
@@ -397,19 +438,18 @@ async function trackIThinkByAwb(
             "no-cache",
         },
 
-        body:
-          JSON.stringify({
-            data: {
-              awb_number_list:
-                String(awb),
+        body: JSON.stringify({
+          data: {
+            awb_number_list:
+              String(awb),
 
-              access_token:
-                accessToken,
+            access_token:
+              accessToken,
 
-              secret_key:
-                secretKey,
-            },
-          }),
+            secret_key:
+              secretKey,
+          },
+        }),
       }
     );
 
@@ -444,11 +484,6 @@ async function trackIThinkByAwb(
         "iThink tracking failed."
     );
   }
-
-  /*
-   * iThink responses can contain tracking
-   * information inside data.
-   */
 
   const trackingData =
     data?.data ||
@@ -492,7 +527,8 @@ async function trackIThinkByAwb(
       firstShipment?.current_status,
       firstShipment?.status_name,
       firstShipment?.tracking_status
-    ) || "Tracking information available";
+    ) ||
+    "Tracking information available";
 
   const courier =
     firstValue(
@@ -522,21 +558,12 @@ async function trackIThinkByAwb(
       currentStatus,
 
     trackingUrl,
-
-    raw:
-      data,
   };
 }
 
 /*
 |--------------------------------------------------------------------------
 | iThink Order Lookup
-|--------------------------------------------------------------------------
-|
-| Used when the order was created through iThink.
-|
-| NOTE:
-| iThink tracking itself requires AWB.
 |--------------------------------------------------------------------------
 */
 
@@ -555,18 +582,9 @@ async function findIThinkOrder(
 
   if (
     !accessToken ||
-    !secretKey
+    !secretKey ||
+    !storeId
   ) {
-    return null;
-  }
-
-  /*
-   * If store ID is not available, do not
-   * expose credentials or fail the complete
-   * tracking endpoint.
-   */
-
-  if (!storeId) {
     return null;
   }
 
@@ -585,22 +603,21 @@ async function findIThinkOrder(
               "no-cache",
           },
 
-          body:
-            JSON.stringify({
-              data: {
-                order_no_list:
-                  String(orderId),
+          body: JSON.stringify({
+            data: {
+              order_no_list:
+                String(orderId),
 
-                platform_id:
-                  Number(storeId),
+              platform_id:
+                Number(storeId),
 
-                access_token:
-                  accessToken,
+              access_token:
+                accessToken,
 
-                secret_key:
-                  secretKey,
-              },
-            }),
+              secret_key:
+                secretKey,
+            },
+          }),
         }
       );
 
@@ -616,11 +633,6 @@ async function findIThinkOrder(
     if (!response.ok) {
       return null;
     }
-
-    /*
-     * Find shipment/order information
-     * without exposing private API credentials.
-     */
 
     const raw =
       data?.data ||
@@ -670,18 +682,29 @@ async function findIThinkOrder(
         firstValue(
           item?.phone,
           item?.billing_phone,
-          item?.shipping_phone
+          item?.shipping_phone,
+          item?.customer_phone
         );
 
-      if (
-        storedPhone &&
-        mobile &&
+      const normalizedStoredPhone =
         normalizePhone(
           storedPhone
-        ) !==
-          normalizePhone(
-            mobile
-          )
+        );
+
+      const normalizedMobile =
+        normalizePhone(
+          mobile
+        );
+
+      /*
+       * Require phone verification.
+       */
+
+      if (
+        !normalizedStoredPhone ||
+        !normalizedMobile ||
+        normalizedStoredPhone !==
+          normalizedMobile
       ) {
         continue;
       }
@@ -698,9 +721,6 @@ async function findIThinkOrder(
         return {
           awb:
             String(awb),
-
-          raw:
-            item,
         };
       }
     }
@@ -709,7 +729,7 @@ async function findIThinkOrder(
   } catch (error) {
     console.error(
       "iThink order lookup error:",
-      error
+      error?.message || error
     );
 
     return null;
@@ -733,12 +753,21 @@ export default async function handler(
   if (
     req.method !== "POST"
   ) {
-    return res.status(405).json({
-      success: false,
+    res.setHeader(
+      "Allow",
+      "POST"
+    );
 
-      error:
-        "Method not allowed. Use POST.",
-    });
+    return sendJson(
+      res,
+      405,
+      {
+        success: false,
+
+        error:
+          "Method not allowed. Use POST.",
+      }
+    );
   }
 
   try {
@@ -746,8 +775,8 @@ export default async function handler(
       req.body || {};
 
     /*
-     * Accept multiple field names so the
-     * App.jsx frontend remains flexible.
+     * Accept multiple field names
+     * for frontend compatibility.
      */
 
     const orderId =
@@ -770,128 +799,58 @@ export default async function handler(
       );
 
     const provider =
-      String(
+      normalizeProvider(
         firstValue(
           body.provider,
           "auto"
         )
-      )
-        .trim()
-        .toLowerCase();
-
-    const awb =
-      String(
-        firstValue(
-          body.awb,
-          body.awb_code,
-          body.waybill
-        )
-      ).trim();
+      );
 
     /*
      * Basic validation.
      */
 
     if (!orderId) {
-      return res.status(400).json({
-        success: false,
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
 
-        error:
-          "Order ID is required.",
-      });
+          error:
+            "Order ID is required.",
+        }
+      );
     }
 
     if (
-      !mobile ||
       mobile.length !== 10
     ) {
-      return res.status(400).json({
-        success: false,
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
 
-        error:
-          "Valid 10-digit mobile number is required.",
-      });
+          error:
+            "Valid 10-digit mobile number is required.",
+        }
+      );
     }
 
     /*
      * --------------------------------------------------
-     * Direct AWB tracking
+     * SHIPROCKET
      * --------------------------------------------------
      *
-     * If frontend already knows AWB and provider,
-     * we can track directly.
-     */
-
-    if (
-      awb &&
-      provider === "shiprocket"
-    ) {
-      const token =
-        await getShiprocketToken();
-
-      const tracking =
-        await trackShiprocketByAwb(
-          awb,
-          token
-        );
-
-      return res.status(200).json({
-        success: true,
-
-        verified: true,
-
-        provider:
-          "shiprocket",
-
-        orderId,
-
-        mobile:
-          `******${mobile.slice(-4)}`,
-
-        tracking,
-      });
-    }
-
-    if (
-      awb &&
-      (
-        provider === "ithink" ||
-        provider ===
-          "ithink logistics"
-      )
-    ) {
-      const tracking =
-        await trackIThinkByAwb(
-          awb
-        );
-
-      return res.status(200).json({
-        success: true,
-
-        verified: true,
-
-        provider:
-          "ithink",
-
-        orderId,
-
-        mobile:
-          `******${mobile.slice(-4)}`,
-
-        tracking,
-      });
-    }
-
-    /*
-     * --------------------------------------------------
-     * Shiprocket lookup
-     * --------------------------------------------------
+     * Important:
+     * We ALWAYS verify Order ID + Mobile
+     * before returning tracking information.
      */
 
     if (
       provider === "auto" ||
-      provider ===
-        "shiprocket"
+      provider === "shiprocket"
     ) {
       try {
         const token =
@@ -914,82 +873,101 @@ export default async function handler(
               token
             );
 
-          return res.status(200).json({
-            success: true,
+          return sendJson(
+            res,
+            200,
+            {
+              success: true,
 
-            verified: true,
+              verified: true,
 
-            provider:
-              "shiprocket",
+              provider:
+                "shiprocket",
 
-            orderId,
+              orderId,
 
-            mobile:
-              `******${mobile.slice(-4)}`,
+              mobile:
+                maskMobile(
+                  mobile
+                ),
 
-            shipment: {
-              shipmentId:
-                found.shipmentId,
+              shipment: {
+                shipmentId:
+                  found.shipmentId,
 
-              awb:
-                found.awb,
-            },
+                awb:
+                  found.awb,
+              },
 
-            tracking,
-          });
+              tracking,
+            }
+          );
         }
 
         /*
-         * If Shiprocket order exists but
-         * AWB has not been assigned yet.
+         * Order is verified but AWB
+         * has not been assigned yet.
          */
 
         if (found) {
-          return res.status(200).json({
-            success: true,
+          return sendJson(
+            res,
+            200,
+            {
+              success: true,
 
-            verified: true,
+              verified: true,
 
-            provider:
-              "shiprocket",
+              provider:
+                "shiprocket",
 
-            orderId,
+              orderId,
 
-            mobile:
-              `******${mobile.slice(-4)}`,
+              mobile:
+                maskMobile(
+                  mobile
+                ),
 
-            shipment: {
-              shipmentId:
-                found.shipmentId ||
-                null,
+              shipment: {
+                shipmentId:
+                  found.shipmentId,
 
-              awb:
-                null,
-            },
+                awb:
+                  null,
+              },
 
-            tracking: {
-              status:
-                "Shipment created. AWB is not assigned yet.",
+              tracking: {
+                success: true,
 
-              courier:
-                null,
+                provider:
+                  "shiprocket",
 
-              trackingUrl:
-                null,
-            },
-          });
+                awb:
+                  null,
+
+                status:
+                  "Shipment created. AWB is not assigned yet.",
+
+                courier:
+                  null,
+
+                estimatedDelivery:
+                  null,
+
+                trackingUrl:
+                  null,
+              },
+            }
+          );
         }
       } catch (error) {
         console.error(
-          "Shiprocket tracking lookup failed:",
-          error
+          "Shiprocket tracking error:",
+          error?.message || error
         );
 
         /*
-         * In auto mode we can try iThink next.
-         *
-         * In explicit Shiprocket mode, return
-         * the actual error.
+         * In auto mode, continue to iThink.
          */
 
         if (
@@ -1003,7 +981,7 @@ export default async function handler(
 
     /*
      * --------------------------------------------------
-     * iThink lookup
+     * ITHINK
      * --------------------------------------------------
      */
 
@@ -1013,71 +991,99 @@ export default async function handler(
       provider ===
         "ithink logistics"
     ) {
-      const found =
-        await findIThinkOrder(
-          orderId,
-          mobile
-        );
-
-      if (
-        found &&
-        found.awb
-      ) {
-        const tracking =
-          await trackIThinkByAwb(
-            found.awb
+      try {
+        const found =
+          await findIThinkOrder(
+            orderId,
+            mobile
           );
 
-        return res.status(200).json({
-          success: true,
+        if (
+          found &&
+          found.awb
+        ) {
+          const tracking =
+            await trackIThinkByAwb(
+              found.awb
+            );
 
-          verified: true,
+          return sendJson(
+            res,
+            200,
+            {
+              success: true,
 
-          provider:
-            "ithink",
+              verified: true,
 
-          orderId,
+              provider:
+                "ithink",
 
-          mobile:
-            `******${mobile.slice(-4)}`,
+              orderId,
 
-          shipment: {
-            awb:
-              found.awb,
-          },
+              mobile:
+                maskMobile(
+                  mobile
+                ),
 
-          tracking,
-        });
+              shipment: {
+                awb:
+                  found.awb,
+              },
+
+              tracking,
+            }
+          );
+        }
+      } catch (error) {
+        console.error(
+          "iThink tracking error:",
+          error?.message || error
+        );
+
+        if (
+          provider === "ithink" ||
+          provider ===
+            "ithink logistics"
+        ) {
+          throw error;
+        }
       }
     }
 
     /*
-     * Do NOT reveal whether the order exists
+     * Do not reveal whether an order exists
      * when mobile verification fails.
      */
 
-    return res.status(404).json({
-      success: false,
+    return sendJson(
+      res,
+      404,
+      {
+        success: false,
 
-      verified: false,
+        verified: false,
 
-      error:
-        "Order not found or the mobile number does not match.",
-    });
+        error:
+          "Order not found or the mobile number does not match.",
+      }
+    );
   } catch (error) {
     console.error(
       "Track order error:",
-      error
+      error?.message || error
     );
 
-    return res.status(500).json({
-      success: false,
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
 
-      verified: false,
+        verified: false,
 
-      error:
-        error?.message ||
-        "Unable to track order at this time.",
-    });
+        error:
+          "Unable to track order at this time.",
+      }
+    );
   }
-                }
+    }
