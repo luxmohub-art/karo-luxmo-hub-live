@@ -4561,63 +4561,91 @@ const handleAdminVerifyOtp = async (e) => {
     </div>
   </footer>
 
-  {/* ADMIN AUTH MODAL — EMAIL + MOBILE + OTP */}
-  {showAdminModal && (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[80]">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center">
-          <h3 className="font-bold text-sm flex items-center gap-2 text-slate-900">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
+{/* ADMIN AUTH MODAL — GOOGLE AUTHENTICATOR ONLY */}
+{showAdminModal && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
+    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-6 w-6 text-blue-600" />
+
+          <h3 className="text-xl font-bold text-slate-800">
             Secure Admin Authentication
           </h3>
-          <button type="button" onClick={() => setShowAdminModal(false)} className="text-slate-500 hover:text-slate-900" disabled={adminAuthLoading}>✕</button>
         </div>
 
-        <p className="text-xs text-slate-500">
-          Admin access is verified by the server using your registered email, mobile number and one-time password.
-        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setShowAdminModal(false);
+            setAdminOtp("");
+            setAuthError("");
+            setAuthMessage("");
+          }}
+          className="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100"
+        >
+          ✕
+        </button>
+      </div>
 
-        {authError && <p className="text-xs text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl">{authError}</p>}
-        {authMessage && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl">{authMessage}</p>}
+      <p className="mt-4 text-sm text-slate-600">
+        Enter the 6-digit code currently shown in your
+        Google Authenticator app.
+      </p>
 
-        {!adminOtpSent ? (
-          <form onSubmit={handleAdminSendOtp} className="space-y-3">
-            <label className="block">
-              <span className="text-xs font-bold text-slate-700">Admin Email</span>
-              <input type="email" required autoComplete="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="Registered admin email" className="mt-1 w-full px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <label className="block">
-              <span className="text-xs font-bold text-slate-700">Admin Mobile</span>
-              <input type="tel" required inputMode="numeric" autoComplete="tel" maxLength={10} value={adminMobile} onChange={e => setAdminMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit registered mobile" className="mt-1 w-full px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <button type="submit" disabled={adminAuthLoading} className="w-full bg-slate-900 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
-              {adminAuthLoading ? "Sending OTP…" : "Send OTP"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleAdminVerifyOtp} className="space-y-3">
-            <div className="rounded-xl bg-slate-50 border p-3 text-xs text-slate-600">
-              OTP requested for <strong>{adminEmail}</strong> and mobile ending in <strong>{adminMobile.slice(-4)}</strong>.
-            </div>
-            <label className="block">
-              <span className="text-xs font-bold text-slate-700">One-Time Password</span>
-              <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={adminOtp} onChange={e => setAdminOtp(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="Enter OTP" className="mt-1 w-full px-3 py-3 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-center tracking-[0.35em] font-black focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <button type="submit" disabled={adminAuthLoading} className="w-full bg-blue-600 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
-              {adminAuthLoading ? "Verifying…" : "Verify OTP & Open Dashboard"}
-            </button>
-            <button type="button" disabled={adminAuthLoading} onClick={() => { setAdminOtp(""); setAdminOtpSent(false); setAuthError(""); setAuthMessage(""); }} className="w-full bg-slate-100 text-slate-800 text-xs font-bold py-2.5 rounded-xl">
-              Change Email / Mobile
-            </button>
-          </form>
+      <form
+        onSubmit={handleAdminVerifyOtp}
+        className="mt-6 space-y-4"
+      >
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-slate-700">
+            Google Authenticator Code
+          </span>
+
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            required
+            value={adminOtp}
+            onChange={(e) =>
+              setAdminOtp(
+                e.target.value.replace(/\D/g, "").slice(0, 6)
+              )
+            }
+            placeholder="000000"
+            className="w-full rounded-xl border border-slate-300 px-4 py-4 text-center text-2xl font-bold tracking-[0.5em] text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+          />
+        </label>
+
+        {authError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {authError}
+          </div>
         )}
 
-        <p className="text-[10px] text-slate-400 text-center">
-          Authentication is server-side. No admin password or session flag is stored in browser storage.
-        </p>
-      </div>
+        <button
+          type="submit"
+          disabled={adminAuthLoading || adminOtp.length !== 6}
+          className="w-full rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {adminAuthLoading
+            ? "Verifying..."
+            : "Verify & Open Admin"}
+        </button>
+      </form>
+
+      <p className="mt-5 text-center text-xs text-slate-500">
+        Admin access is protected by Google Authenticator.
+        <br />
+        No email or mobile OTP is required.
+      </p>
+
     </div>
-  )}
+  </div>
+)}
 
       {/* GLOBAL CUSTOMER TOOLS */}
       {showTrackingModal && (
