@@ -1,20 +1,34 @@
 // api/admin-verify-otp.js
 // LUXMO HUB - Google Authenticator Admin Login
+// Server-side TOTP verification + secure HTTP-only admin session
 
 import crypto from "crypto";
 
 const COOKIE_NAME = "luxmo_admin_session";
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours
+const TOTP_PERIOD = 30; // Google Authenticator default
+const TOTP_DIGITS = 6;
+
+// ---------------------------------------------------------
+// JSON RESPONSE
+// ---------------------------------------------------------
 
 function sendJson(res, status, data) {
   return res.status(status).json(data);
 }
 
+// ---------------------------------------------------------
+// BASE64URL
+// ---------------------------------------------------------
+
 function base64UrlEncode(value) {
   return Buffer.from(value).toString("base64url");
 }
 
-// Constant-time string comparison
+// ---------------------------------------------------------
+// CONSTANT-TIME COMPARISON
+// ---------------------------------------------------------
+
 function safeEqual(a, b) {
   try {
     const aBuffer = Buffer.from(String(a));
@@ -24,15 +38,23 @@ function safeEqual(a, b) {
       return false;
     }
 
-    return crypto.timingSafeEqual(aBuffer, bBuffer);
+    return crypto.timingSafeEqual(
+      aBuffer,
+      bBuffer
+    );
   } catch {
     return false;
   }
 }
 
-// Base32 decoder for Google Authenticator secret
+// ---------------------------------------------------------
+// BASE32 DECODER
+// Google Authenticator secrets normally use Base32.
+// ---------------------------------------------------------
+
 function base32Decode(input) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
   const value = String(input || "")
     .toUpperCase()
@@ -43,32 +65,46 @@ function base32Decode(input) {
   }
 
   let bits = "";
-  const output = [];
+  const bytes = [];
 
-  for (const char of value) {
-    const index = alphabet.indexOf(char);
+  for (const character of value) {
+    const index =
+      alphabet.indexOf(character);
 
     if (index === -1) {
       return null;
     }
 
-    bits += index.toString(2).padStart(5, "0");
+    bits += index
+      .toString(2)
+      .padStart(5, "0");
   }
 
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    output.push(
-      parseInt(bits.slice(i, i + 8), 2)
+  for (
+    let i = 0;
+    i + 8 <= bits.length;
+    i += 8
+  ) {
+    bytes.push(
+      parseInt(
+        bits.slice(i, i + 8),
+        2
+      )
     );
   }
 
-  if (output.length === 0) {
+  if (!bytes.length) {
     return null;
   }
 
-  return Buffer.from(output);
+  return Buffer.from(bytes);
 }
 
-// Generate 6-digit TOTP
+// ---------------------------------------------------------
+// GENERATE TOTP
+// RFC 6238 / Google Authenticator compatible
+// ---------------------------------------------------------
+
 function generateTotp(secret, counter) {
   const key = base32Decode(secret);
 
@@ -76,15 +112,24 @@ function generateTotp(secret, counter) {
     return null;
   }
 
-  const counterBuffer = Buffer.alloc(8);
+  const counterBuffer =
+    Buffer.alloc(8);
+
+  const high =
+    Math.floor(
+      counter / 0x100000000
+    );
+
+  const low =
+    counter >>> 0;
 
   counterBuffer.writeUInt32BE(
-    Math.floor(counter / 0x100000000),
+    high,
     0
   );
 
   counterBuffer.writeUInt32BE(
-    counter >>> 0,
+    low,
     4
   );
 
@@ -102,10 +147,16 @@ function generateTotp(secret, counter) {
     ((hmac[offset + 2] & 0xff) << 8) |
     (hmac[offset + 3] & 0xff);
 
-  return String(binary % 1000000).padStart(6, "0");
+  return String(
+    binary % 1000000
+  ).padStart(6, "0");
 }
 
-// Verify Google Authenticator TOTP
+// ---------------------------------------------------------
+// VERIFY GOOGLE AUTHENTICATOR CODE
+// Accept previous/current/next 30-second window.
+// ---------------------------------------------------------
+
 function verifyTotp(otp, secret) {
   if (!/^\d{6}$/.test(otp)) {
     return false;
@@ -116,18 +167,27 @@ function verifyTotp(otp, secret) {
   }
 
   const currentCounter =
-    Math.floor(Date.now() / 1000 / 30);
-
-  // Previous / current / next 30-second window
-  for (let offset = -1; offset <= 1; offset++) {
-    const expected = generateTotp(
-      secret,
-      currentCounter + offset
+    Math.floor(
+      Date.now() / 1000 / TOTP_PERIOD
     );
+
+  for (
+    let window = -1;
+    window <= 1;
+    window++
+  ) {
+    const expected =
+      generateTotp(
+        secret,
+        currentCounter + window
+      );
 
     if (
       expected &&
-      safeEqual(otp, expected)
+      safeEqual(
+        otp,
+        expected
+      )
     ) {
       return true;
     }
@@ -136,13 +196,20 @@ function verifyTotp(otp, secret) {
   return false;
 }
 
-// Create secure admin session
-function createSessionToken(secret) {
+// ---------------------------------------------------------
+// CREATE SIGNED ADMIN SESSION
+// ---------------------------------------------------------
+
+function createSessionToken(
+  sessionSecret
+) {
   const expiresAt =
-    Date.now() + SESSION_MAX_AGE * 1000;
+    Date.now() +
+    SESSION_MAX_AGE * 1000;
 
   const payload = {
     role: "admin",
+    authenticated: true,
     expiresAt,
   };
 
@@ -151,15 +218,26 @@ function createSessionToken(secret) {
       JSON.stringify(payload)
     );
 
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(
-      `${encodedPayload}.${expiresAt}`
-    )
-    .digest("base64url");
+  const signingData =
+    `${encodedPayload}.${expiresAt}`;
 
-  return `${encodedPayload}.${expiresAt}.${signature}`;
+  const signature =
+    crypto
+      .createHmac(
+        "sha256",
+        sessionSecret
+      )
+      .update(signingData)
+      .digest("base64url");
+
+  return (
+    `${encodedPayload}.${expiresAt}.${signature}`
+  );
 }
+
+// ---------------------------------------------------------
+// REQUEST BODY
+// ---------------------------------------------------------
 
 function getRequestBody(req) {
   if (
@@ -172,16 +250,37 @@ function getRequestBody(req) {
   return {};
 }
 
-export default async function handler(req, res) {
-  // Only POST is allowed
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+// ---------------------------------------------------------
+// MAIN HANDLER
+// ---------------------------------------------------------
 
-    return sendJson(res, 405, {
-      success: false,
-      error: "Method not allowed",
-    });
+export default async function handler(
+  req,
+  res
+) {
+  // -------------------------------------------------------
+  // POST ONLY
+  // -------------------------------------------------------
+
+  if (req.method !== "POST") {
+    res.setHeader(
+      "Allow",
+      "POST"
+    );
+
+    return sendJson(
+      res,
+      405,
+      {
+        success: false,
+        error: "Method not allowed",
+      }
+    );
   }
+
+  // -------------------------------------------------------
+  // SERVER ENVIRONMENT VARIABLES
+  // -------------------------------------------------------
 
   const sessionSecret =
     process.env.ADMIN_SESSION_SECRET;
@@ -189,92 +288,154 @@ export default async function handler(req, res) {
   const totpSecret =
     process.env.ADMIN_TOTP_SECRET;
 
-  // Check session secret
+  // -------------------------------------------------------
+  // SESSION SECRET CHECK
+  // -------------------------------------------------------
+
   if (!sessionSecret) {
     console.error(
       "ADMIN_SESSION_SECRET is not configured."
     );
 
-    return sendJson(res, 500, {
-      success: false,
-      error: "Server configuration error",
-    });
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
+        error:
+          "Admin session configuration error.",
+      }
+    );
   }
 
-  // Check TOTP secret
+  // -------------------------------------------------------
+  // TOTP SECRET CHECK
+  // -------------------------------------------------------
+
   if (!totpSecret) {
     console.error(
       "ADMIN_TOTP_SECRET is not configured."
     );
 
-    return sendJson(res, 500, {
-      success: false,
-      error:
-        "Google Authenticator is not configured.",
-    });
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
+        error:
+          "Google Authenticator is not configured.",
+      }
+    );
   }
 
   try {
-    const body = getRequestBody(req);
+    // -----------------------------------------------------
+    // READ REQUEST
+    // -----------------------------------------------------
 
-    const otp = String(
-      body.otp || ""
-    ).trim();
+    const body =
+      getRequestBody(req);
 
-    // OTP must be exactly 6 digits
+    const otp =
+      String(
+        body.otp || ""
+      ).trim();
+
+    // -----------------------------------------------------
+    // VALIDATE OTP FORMAT
+    // -----------------------------------------------------
+
     if (!/^\d{6}$/.test(otp)) {
-      return sendJson(res, 400, {
-        success: false,
-        error:
-          "Please enter a valid 6-digit OTP.",
-      });
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
+          authenticated: false,
+          error:
+            "Please enter the current 6-digit Google Authenticator code.",
+        }
+      );
     }
 
-    // Verify TOTP
-    const valid = verifyTotp(
-      otp,
-      totpSecret
-    );
+    // -----------------------------------------------------
+    // VERIFY GOOGLE AUTHENTICATOR
+    // -----------------------------------------------------
+
+    const valid =
+      verifyTotp(
+        otp,
+        totpSecret
+      );
 
     if (!valid) {
-      return sendJson(res, 401, {
-        success: false,
-        authenticated: false,
-        error:
-          "Incorrect or expired OTP.",
-      });
+      return sendJson(
+        res,
+        401,
+        {
+          success: false,
+          authenticated: false,
+          error:
+            "Incorrect or expired Google Authenticator code.",
+        }
+      );
     }
 
-    // Create admin session
+    // -----------------------------------------------------
+    // CREATE ADMIN SESSION
+    // -----------------------------------------------------
+
     const sessionToken =
       createSessionToken(
         sessionSecret
       );
 
-    // Set secure HTTP-only cookie
-    res.setHeader(
-      "Set-Cookie",
+    // -----------------------------------------------------
+    // SECURE HTTP-ONLY COOKIE
+    // -----------------------------------------------------
+
+    const cookie =
       `${COOKIE_NAME}=${encodeURIComponent(
         sessionToken
-      )}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}`
+      )}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}`;
+
+    res.setHeader(
+      "Set-Cookie",
+      cookie
     );
 
-    return sendJson(res, 200, {
-      success: true,
-      authenticated: true,
-      user: {
-        role: "admin",
-      },
-    });
+    // -----------------------------------------------------
+    // SUCCESS
+    // -----------------------------------------------------
+
+    return sendJson(
+      res,
+      200,
+      {
+        success: true,
+        authenticated: true,
+        user: {
+          role: "admin",
+        },
+        expiresIn:
+          SESSION_MAX_AGE,
+      }
+    );
   } catch (error) {
     console.error(
-      "Admin OTP verification error:",
+      "Admin Google Authenticator verification error:",
       error
     );
 
-    return sendJson(res, 500, {
-      success: false,
-      error: "Internal server error.",
-    });
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
+        authenticated: false,
+        error:
+          "Internal server error.",
+      }
+    );
   }
 }
