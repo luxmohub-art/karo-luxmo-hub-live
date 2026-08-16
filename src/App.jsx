@@ -2416,58 +2416,77 @@ export default function LuxmoHubApp() {
       setAdminAuthLoading(false);
     }
   };
+const handleAdminVerifyOtp = async (e) => {
+  e.preventDefault();
 
-  const handleAdminVerifyOtp = async (e) => {
-    e.preventDefault();
-    setAuthError("");
+  setAuthError("");
+  setAuthMessage("");
+
+  const otp = String(adminOtp || "").replace(/\D/g, "");
+
+  if (!/^\d{6}$/.test(otp)) {
+    setAuthError(
+      "Please enter the 6-digit Google Authenticator code."
+    );
+    return;
+  }
+
+  setAdminAuthLoading(true);
+
+  try {
+    const response = await fetch("/api/admin-verify-otp", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        otp: otp,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data.success !== true) {
+      throw new Error(
+        data.error ||
+          data.message ||
+          "Incorrect or expired Google Authenticator code."
+      );
+    }
+
+    const authenticated = await verifyAdminSession();
+
+    if (!authenticated) {
+      throw new Error(
+        "Google Authenticator verified, but the admin session could not be established."
+      );
+    }
+
+    setShowAdminModal(false);
+    setAdminOtp("");
     setAuthMessage("");
+    setAuthError("");
+    setIsAdminLoggedIn(true);
+    setActiveTab("admin");
+  } catch (error) {
+    console.error(
+      "Admin Google Authenticator verification error:",
+      error
+    );
 
-    const email = adminEmail.trim().toLowerCase();
-    const mobile = adminMobile.replace(/\D/g, "");
-    const otp = adminOtp.replace(/\D/g, "");
+    setAuthError(
+      error.message ||
+        "Google Authenticator verification failed. Please try again."
+    );
 
-    if (!adminOtpSent) {
-      setAuthError("Please request an OTP first.");
-      return;
-    }
-    if (!/^\d{4,8}$/.test(otp)) {
-      setAuthError("Please enter the OTP received from LUXMO HUB.");
-      return;
-    }
-
-    setAdminAuthLoading(true);
-    try {
-      const response = await fetch("/api/admin-verify-otp", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email, mobile, otp })
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || data.success !== true) {
-        throw new Error(data.error || data.message || "OTP verification failed.");
-      }
-
-      const authenticated = await verifyAdminSession();
-      if (!authenticated) {
-        throw new Error("OTP verified, but secure admin session could not be established.");
-      }
-
-      setShowAdminModal(false);
-      setAdminOtp("");
-      setAdminOtpSent(false);
-      setAuthMessage("");
-      setAuthError("");
-      setActiveTab("admin");
-    } catch (error) {
-      console.error("Admin OTP verification error:", error);
-      setAuthError(error.message || "OTP verification failed.");
-      setIsAdminLoggedIn(false);
-    } finally {
-      setAdminAuthLoading(false);
-    }
-  };
+    setIsAdminLoggedIn(false);
+  } finally {
+    setAdminAuthLoading(false);
+  }
+};
+  
 
   const handleAdminLogout = async () => {
     setAdminAuthLoading(true);
