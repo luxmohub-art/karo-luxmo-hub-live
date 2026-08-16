@@ -2432,11 +2432,10 @@ export default function LuxmoHubApp() {
   // + HttpOnly session cookie after successful OTP verification.
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminSessionChecking, setAdminSessionChecking] = useState(true);
+  // Google Authenticator (TOTP) is the only Admin login factor in the UI.
+  // The TOTP secret stays on the server; only the current 6-digit code is sent.
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("Luxmohub@gmail.com");
-  const [adminMobile, setAdminMobile] = useState("7565012418");
-  const [adminOtp, setAdminOtp] = useState("");
-  const [adminOtpSent, setAdminOtpSent] = useState(false);
+  const [adminTotp, setAdminTotp] = useState("");
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
@@ -2477,99 +2476,63 @@ export default function LuxmoHubApp() {
   const openAdminLogin = () => {
     setAuthError("");
     setAuthMessage("");
-    setAdminOtp("");
-    setAdminOtpSent(false);
+    setAdminTotp("");
     setShowAdminModal(true);
   };
 
-  const handleAdminSendOtp = async (e) => {
+  const handleAdminVerifyTotp = async (e) => {
     e.preventDefault();
     setAuthError("");
     setAuthMessage("");
 
-    const email = adminEmail.trim().toLowerCase();
-    const mobile = adminMobile.replace(/\D/g, "");
-
-    if (!email || !email.includes("@")) {
-      setAuthError("Please enter the registered admin email.");
-      return;
-    }
-    if (!luxmoValidateIndianMobile(mobile)) {
-      setAuthError("Please enter a valid 10-digit admin mobile number.");
+    const otp = adminTotp.replace(/\D/g, "");
+    if (!/^\d{6}$/.test(otp)) {
+      setAuthError("Google Authenticator code must be exactly 6 digits.");
       return;
     }
 
     setAdminAuthLoading(true);
     try {
-      const response = await fetch("/api/admin-send-otp", {
+      const response = await fetch("/api/admin-verify-totp", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email, mobile })
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({ otp })
       });
-      const data = await response.json().catch(() => ({}));
 
-      if (!response.ok || data.success === false) {
-        throw new Error(data.error || data.message || "Unable to send OTP.");
-      }
-
-      setAdminOtpSent(true);
-      setAuthMessage(data.message || "OTP sent successfully. Please check your registered email/mobile.");
-    } catch (error) {
-      console.error("Admin OTP send error:", error);
-      setAuthError(error.message || "Unable to send OTP. Please try again.");
-    } finally {
-      setAdminAuthLoading(false);
-    }
-  };
-
-  const handleAdminVerifyOtp = async (e) => {
-    e.preventDefault();
-    setAuthError("");
-    setAuthMessage("");
-
-    const email = adminEmail.trim().toLowerCase();
-    const mobile = adminMobile.replace(/\D/g, "");
-    const otp = adminOtp.replace(/\D/g, "");
-
-    if (!adminOtpSent) {
-      setAuthError("Please request an OTP first.");
-      return;
-    }
-    if (!/^\d{4,8}$/.test(otp)) {
-      setAuthError("Please enter the OTP received from LUXMO HUB.");
-      return;
-    }
-
-    setAdminAuthLoading(true);
-    try {
-      const response = await fetch("/api/admin-verify-otp", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email, mobile, otp })
-      });
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data.success !== true) {
-        throw new Error(data.error || data.message || "OTP verification failed.");
+        const serverMessage =
+          typeof data.error === "string"
+            ? data.error
+            : typeof data.message === "string"
+              ? data.message
+              : "Google Authenticator verification failed.";
+        throw new Error(serverMessage);
       }
 
       const authenticated = await verifyAdminSession();
       if (!authenticated) {
-        throw new Error("OTP verified, but secure admin session could not be established.");
+        throw new Error("Authenticator code verified, but the secure admin session could not be established.");
       }
 
       setShowAdminModal(false);
-      setAdminOtp("");
-      setAdminOtpSent(false);
+      setAdminTotp("");
       setAuthMessage("");
       setAuthError("");
       setActiveTab("admin");
     } catch (error) {
-      console.error("Admin OTP verification error:", error);
-      setAuthError(error.message || "OTP verification failed.");
-      setIsAdminLoggedIn(false);
+      console.error("Google Authenticator verification error:", error);
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : "Unable to verify Google Authenticator code."
+      );
+      setAdminTotp("");
     } finally {
       setAdminAuthLoading(false);
     }
@@ -2587,8 +2550,7 @@ export default function LuxmoHubApp() {
       console.error("Admin logout API error:", error);
     } finally {
       setIsAdminLoggedIn(false);
-      setAdminOtp("");
-      setAdminOtpSent(false);
+      setAdminTotp("");
       setAuthError("");
       setAuthMessage("");
       setActiveTab("home");
@@ -4665,46 +4627,40 @@ export default function LuxmoHubApp() {
         </div>
 
         <p className="text-xs text-slate-500">
-          Admin access is verified by the server using your registered email, mobile number and one-time password.
+          Admin access is protected with Google Authenticator. Enter the current 6-digit code from your authenticator app.
         </p>
 
         {authError && <p className="text-xs text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl">{authError}</p>}
         {authMessage && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl">{authMessage}</p>}
 
-        {!adminOtpSent ? (
-          <form onSubmit={handleAdminSendOtp} className="space-y-3">
-            <label className="block">
-              <span className="text-xs font-bold text-slate-700">Admin Email</span>
-              <input type="email" required autoComplete="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="Registered admin email" className="mt-1 w-full px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <label className="block">
-              <span className="text-xs font-bold text-slate-700">Admin Mobile</span>
-              <input type="tel" required inputMode="numeric" autoComplete="tel" maxLength={10} value={adminMobile} onChange={e => setAdminMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit registered mobile" className="mt-1 w-full px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <button type="submit" disabled={adminAuthLoading} className="w-full bg-slate-900 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
-              {adminAuthLoading ? "Sending OTP…" : "Send OTP"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleAdminVerifyOtp} className="space-y-3">
-            <div className="rounded-xl bg-slate-50 border p-3 text-xs text-slate-600">
-              OTP requested for <strong>{adminEmail}</strong> and mobile ending in <strong>{adminMobile.slice(-4)}</strong>.
-            </div>
-            <label className="block">
-              <span className="text-xs font-bold text-slate-700">One-Time Password</span>
-              <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={adminOtp} onChange={e => setAdminOtp(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="Enter OTP" className="mt-1 w-full px-3 py-3 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-center tracking-[0.35em] font-black focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <button type="submit" disabled={adminAuthLoading} className="w-full bg-blue-600 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
-              {adminAuthLoading ? "Verifying…" : "Verify OTP & Open Dashboard"}
-            </button>
-            <button type="button" disabled={adminAuthLoading} onClick={() => { setAdminOtp(""); setAdminOtpSent(false); setAuthError(""); setAuthMessage(""); }} className="w-full bg-slate-100 text-slate-800 text-xs font-bold py-2.5 rounded-xl">
-              Change Email / Mobile
-            </button>
-          </form>
-        )}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-700">
+          <div className="font-black text-slate-900">Google Authenticator</div>
+          <div className="mt-1">Open your authenticator app and enter the current 6-digit code.</div>
+        </div>
+
+        <form onSubmit={handleAdminVerifyTotp} className="space-y-3">
+          <label className="block">
+            <span className="text-xs font-bold text-slate-700">6-Digit Authenticator Code</span>
+            <input
+              type="text"
+              required
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={adminTotp}
+              onChange={e => setAdminTotp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              aria-label="Google Authenticator 6-digit code"
+              className="mt-1 w-full px-3 py-3 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-center tracking-[0.45em] font-black text-lg focus:ring-2 focus:ring-blue-500"
+            />
+          </label>
+          <button type="submit" disabled={adminAuthLoading} className="w-full bg-blue-600 disabled:opacity-60 text-white text-sm font-bold py-3 rounded-xl">
+            {adminAuthLoading ? "Verifying…" : "Verify & Open Admin Panel"}
+          </button>
+        </form>
 
         <p className="text-[10px] text-slate-400 text-center">
-          Authentication is server-side. No admin password or session flag is stored in browser storage.
+          Authentication is server-side. The TOTP secret and admin session are never stored in browser storage.
         </p>
       </div>
     </div>
