@@ -4,8 +4,7 @@
  * This revision is additive: no existing feature/component was intentionally removed.
  * Added/retained: Live Tracking, WhatsApp Inquiry, Solar Calculator,
  * Warranty Registration, Low Stock Alerts, Store Shipping Settings,
- * persistent Store Settings, Premium Homepage sections, 12-product promotional
- * carousel, mobile viewport fix, and Google Authenticator server-side admin login.
+ * persistent Store Settings, Premium Homepage sections, and Admin Email+Mobile+OTP.
  * Homepage inverter card text contrast was improved only.
  */
 
@@ -2327,21 +2326,26 @@ function LuxmoHomepageMasterAdmin({ products = [] }) {
   const [config,setConfig] = React.useState(() => luxmoHomepageRead(LUXMO_HOMEPAGE_DRAFT_KEY, luxmoHomepageRead(LUXMO_HOMEPAGE_MASTER_KEY, LUXMO_HOMEPAGE_DEFAULT)));
   const [message,setMessage] = React.useState("");
   const [preview,setPreview] = React.useState(false);
+  const [selectedPromoProductId,setSelectedPromoProductId] = React.useState("");
 
   const saveDraft = () => { localStorage.setItem(LUXMO_HOMEPAGE_DRAFT_KEY, JSON.stringify(config)); setMessage("Draft saved successfully."); };
   const publish = async () => {
     const next={...config,publishedAt:new Date().toISOString()};
     try {
       const r=await fetch("/api/admin/homepage/publish",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(next)});
-      if(r.ok){ localStorage.setItem(LUXMO_HOMEPAGE_PUBLISHED_KEY,JSON.stringify(next)); localStorage.setItem(LUXMO_HOMEPAGE_MASTER_KEY,JSON.stringify(next)); window.dispatchEvent(new Event("luxmo-homepage-published")); setConfig(next); setMessage("Published to backend successfully."); return; }
+      if(r.ok){ localStorage.setItem(LUXMO_HOMEPAGE_PUBLISHED_KEY,JSON.stringify(next)); localStorage.setItem(LUXMO_HOMEPAGE_MASTER_KEY,JSON.stringify(next)); setConfig(next); window.dispatchEvent(new Event("luxmo-homepage-published")); setMessage("Published to backend successfully."); return; }
     } catch {}
-    localStorage.setItem(LUXMO_HOMEPAGE_PUBLISHED_KEY,JSON.stringify(next)); localStorage.setItem(LUXMO_HOMEPAGE_MASTER_KEY,JSON.stringify(next)); window.dispatchEvent(new Event("luxmo-homepage-published")); setConfig(next); setMessage("Saved locally. Connect /api/admin/homepage/publish for database publishing.");
+    localStorage.setItem(LUXMO_HOMEPAGE_PUBLISHED_KEY,JSON.stringify(next)); localStorage.setItem(LUXMO_HOMEPAGE_MASTER_KEY,JSON.stringify(next)); setConfig(next); window.dispatchEvent(new Event("luxmo-homepage-published")); setMessage("Saved locally. Connect /api/admin/homepage/publish for database publishing.");
   };
   const addPromo=()=>{
     if(config.promotionalProducts.length>=12){setMessage("Maximum 12 promotional products allowed.");return;}
-    const p=products[0]||{};
-    const item={id:`promo-${Date.now()}`,productId:p.id||"",name:p.title||"",image:p.images?.[0]||"",mrp:Number(p.price||0),salePrice:Number(p.salePrice||p.price||0),description:"",badge:"",bestSeller:false,hotDeal:false,featured:true,enabled:true,order:config.promotionalProducts.length+1,viewDetails:p.id?`#product-${p.id}`:"",buyNow:p.id?`#buy-${p.id}`:""};
+    const selectedId=selectedPromoProductId || products.find(p=>!config.promotionalProducts.some(x=>String(x.productId)===String(p.id)))?.id || products[0]?.id || "";
+    const p=products.find(x=>String(x.id)===String(selectedId)) || products[0] || {};
+    if(!p.id){setMessage("Please add a product to the catalogue first.");return;}
+    if(config.promotionalProducts.some(x=>String(x.productId)===String(p.id))){setMessage("This product is already in Promotional Products.");return;}
+    const item={id:`promo-${Date.now()}`,productId:p.id,category:p.category||"",name:p.title||"",image:p.images?.[0]||p.image||"",mrp:Number(p.price||0),salePrice:Number(p.salePrice||p.price||0),badge:"",bestSeller:Boolean(p.bestSeller),hotDeal:false,featured:true,enabled:true,order:config.promotionalProducts.length+1,viewDetails:`#product-${p.id}`,buyNow:`#buy-${p.id}`};
     setConfig(c=>({...c,promotionalProducts:[...c.promotionalProducts,item]}));
+    setSelectedPromoProductId("");
   };
   const updatePromo=(id,key,value)=>setConfig(c=>({...c,promotionalProducts:c.promotionalProducts.map(p=>p.id===id?{...p,[key]:value}:p)}));
   const removePromo=id=>setConfig(c=>({...c,promotionalProducts:c.promotionalProducts.filter(p=>p.id!==id).map((p,i)=>({...p,order:i+1}))}));
@@ -2363,33 +2367,11 @@ function LuxmoHomepageMasterAdmin({ products = [] }) {
       <div className="rounded-2xl border p-4"><h3 className="font-black">Homepage Sections — ON/OFF + Order</h3><div className="space-y-2 mt-3">{config.sections.slice().sort((a,b)=>a.order-b.order).map((s,i)=><div key={s.id} className="flex items-center gap-2 border rounded-xl p-2"><input type="checkbox" checked={s.enabled} onChange={e=>setConfig(c=>({...c,sections:c.sections.map(x=>x.id===s.id?{...x,enabled:e.target.checked}:x)}))}/><span className="text-sm font-bold flex-1">{s.label}</span><button onClick={()=>moveSection(i,-1)} className="border rounded-lg px-2">↑</button><button onClick={()=>moveSection(i,1)} className="border rounded-lg px-2">↓</button></div>)}</div></div>
     </div>
 
-    <div className="mt-5 rounded-2xl border p-4"><div className="flex items-center justify-between gap-2"><div><h3 className="font-black">Amazon / Flipkart-style Promotional Products</h3><p className="text-xs text-slate-500">Maximum 12 • Mobile swipe • Desktop 4–5 cards • MRP + sale price + automatic discount.</p></div><button onClick={addPromo} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold">+ Add Product</button></div>
+    <div className="mt-5 rounded-2xl border p-4"><div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3"><div><h3 className="font-black">Amazon / Flipkart-style Promotional Products</h3><p className="text-xs text-slate-500">Maximum 12 • Mobile swipe • Desktop 4–5 cards • MRP + sale price + automatic discount • Admin-controlled.</p></div><div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto"><select value={selectedPromoProductId} onChange={e=>setSelectedPromoProductId(e.target.value)} className="border rounded-xl px-3 py-2 text-sm min-w-0 sm:min-w-[260px]"><option value="">Select catalogue product…</option>{products.filter(p=>!config.promotionalProducts.some(x=>String(x.productId)===String(p.id))).map(p=><option key={p.id} value={p.id}>{p.title || p.name || `Product ${p.id}`}</option>)}</select><button onClick={addPromo} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold">+ Add Product</button></div></div>
       <div className="mt-4 space-y-3">{config.promotionalProducts.map((p)=><div key={p.id} className="border rounded-2xl p-4 grid md:grid-cols-4 gap-3">
-        <div className="md:col-span-2 grid gap-2">
-          <input value={p.name} onChange={e=>updatePromo(p.id,"name",e.target.value)} placeholder="Product name" className="border rounded-xl px-3 py-2 text-sm"/>
-          <textarea value={p.description||""} onChange={e=>updatePromo(p.id,"description",e.target.value)} placeholder="Short description" rows={2} className="border rounded-xl px-3 py-2 text-sm resize-y"/>
-          <input value={p.image} onChange={e=>updatePromo(p.id,"image",e.target.value)} placeholder="Original product image URL" className="border rounded-xl px-3 py-2 text-sm"/>
-          <label className="border border-dashed border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 cursor-pointer bg-slate-50">
-            Upload promotional product photo
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={e=>{
-                const file=e.target.files?.[0];
-                if(!file) return;
-                if(file.size>2*1024*1024){setMessage("Image should be 2MB or smaller.");return;}
-                const reader=new FileReader();
-                reader.onload=()=>updatePromo(p.id,"image",String(reader.result||""));
-                reader.readAsDataURL(file);
-              }}
-            />
-          </label>
-          <input value={p.viewDetails} onChange={e=>updatePromo(p.id,"viewDetails",e.target.value)} placeholder="View Details URL" className="border rounded-xl px-3 py-2 text-sm"/>
-          <input value={p.buyNow} onChange={e=>updatePromo(p.id,"buyNow",e.target.value)} placeholder="Buy Now URL" className="border rounded-xl px-3 py-2 text-sm"/>
-        </div>
+        <div className="md:col-span-2 grid gap-2"><select value={p.productId||""} onChange={e=>{const source=products.find(x=>String(x.id)===String(e.target.value)); if(source){updatePromo(p.id,"productId",source.id);updatePromo(p.id,"category",source.category||"");updatePromo(p.id,"name",source.title||"");updatePromo(p.id,"image",source.images?.[0]||source.image||"");updatePromo(p.id,"mrp",Number(source.price||0));updatePromo(p.id,"salePrice",Number(source.salePrice||source.price||0));updatePromo(p.id,"viewDetails",`#product-${source.id}`);updatePromo(p.id,"buyNow",`#buy-${source.id}`);}}} className="border rounded-xl px-3 py-2 text-sm"><option value="">Select product</option>{products.map(source=><option key={source.id} value={source.id}>{source.title||source.name||source.id}</option>)}</select><input value={p.name} onChange={e=>updatePromo(p.id,"name",e.target.value)} placeholder="Product name" className="border rounded-xl px-3 py-2 text-sm"/><input value={p.category||""} onChange={e=>updatePromo(p.id,"category",e.target.value)} placeholder="Category tag" className="border rounded-xl px-3 py-2 text-sm"/><textarea value={p.description||""} onChange={e=>updatePromo(p.id,"description",e.target.value)} placeholder="Short description" className="border rounded-xl px-3 py-2 text-sm min-h-20"/><input value={p.image} onChange={e=>updatePromo(p.id,"image",e.target.value)} placeholder="Original product image URL" className="border rounded-xl px-3 py-2 text-sm"/><label className="border border-dashed rounded-xl px-3 py-3 text-xs font-bold bg-slate-50 cursor-pointer">Upload promotional product photo<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>4*1024*1024){setMessage("Image must be 4MB or smaller.");e.target.value="";return;}const reader=new FileReader();reader.onload=()=>updatePromo(p.id,"image",String(reader.result||""));reader.readAsDataURL(file);}}/></label><div className="grid grid-cols-2 gap-2"><input type="number" min="1" value={p.order||1} onChange={e=>updatePromo(p.id,"order",Math.max(1,Number(e.target.value)||1))} placeholder="Display order" className="border rounded-xl px-3 py-2 text-sm"/><div className="rounded-xl bg-slate-50 border px-3 py-2 text-xs font-bold flex items-center">Max 12 products</div></div><input value={p.viewDetails} onChange={e=>updatePromo(p.id,"viewDetails",e.target.value)} placeholder="View Details URL" className="border rounded-xl px-3 py-2 text-sm"/><input value={p.buyNow} onChange={e=>updatePromo(p.id,"buyNow",e.target.value)} placeholder="Buy Now URL" className="border rounded-xl px-3 py-2 text-sm"/></div>
         <div className="grid gap-2"><input type="number" value={p.mrp} onChange={e=>updatePromo(p.id,"mrp",Number(e.target.value))} placeholder="MRP" className="border rounded-xl px-3 py-2 text-sm"/><input type="number" value={p.salePrice} onChange={e=>updatePromo(p.id,"salePrice",Number(e.target.value))} placeholder="Sale Price" className="border rounded-xl px-3 py-2 text-sm"/><div className="rounded-xl bg-emerald-50 text-emerald-700 px-3 py-2 text-sm font-black">{discount(p)}% OFF</div><input value={p.badge} onChange={e=>updatePromo(p.id,"badge",e.target.value)} placeholder="Offer badge" className="border rounded-xl px-3 py-2 text-sm"/></div>
-        <div className="grid gap-2 text-xs"><label><input type="checkbox" checked={p.enabled} onChange={e=>updatePromo(p.id,"enabled",e.target.checked)}/> Show</label><label><input type="checkbox" checked={p.featured} onChange={e=>updatePromo(p.id,"featured",e.target.checked)}/> Featured</label><label><input type="checkbox" checked={p.bestSeller} onChange={e=>updatePromo(p.id,"bestSeller",e.target.checked)}/> Best Seller</label><label><input type="checkbox" checked={p.hotDeal} onChange={e=>updatePromo(p.id,"hotDeal",e.target.checked)}/> Hot Deal</label><button onClick={()=>removePromo(p.id)} className="mt-2 border border-red-200 text-red-600 rounded-xl px-3 py-2 font-bold">Delete</button></div>
+        <div className="grid gap-2 text-xs"><label><input type="checkbox" checked={p.enabled} onChange={e=>updatePromo(p.id,"enabled",e.target.checked)}/> Show</label><label><input type="checkbox" checked={p.featured} onChange={e=>updatePromo(p.id,"featured",e.target.checked)}/> Feature on Homepage</label><label><input type="checkbox" checked={p.bestSeller} onChange={e=>updatePromo(p.id,"bestSeller",e.target.checked)}/> Best Seller</label><label><input type="checkbox" checked={p.hotDeal} onChange={e=>updatePromo(p.id,"hotDeal",e.target.checked)}/> Hot Deal</label><button onClick={()=>removePromo(p.id)} className="mt-2 border border-red-200 text-red-600 rounded-xl px-3 py-2 font-bold">Delete</button></div>
       </div>)}</div>
     </div>
 
@@ -2450,115 +2432,188 @@ export default function LuxmoHubApp() {
     document.body.appendChild(script);
   }, []);
 
-  /*
-   * LUXMO HUB MOBILE VIEWPORT + OVERFLOW FIX
-   * Additive safety layer: fixes the real viewport/container sizing problem
-   * without changing the desktop layout.
-   */
+  // LUXMO HUB — additive mobile viewport / overflow repair.
+  // This uses the real viewport width instead of allowing any inherited
+  // fixed-width container to keep the site at ~420px on mobile.
   useEffect(() => {
-    let viewport = document.querySelector('meta[name="viewport"]');
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.name = "viewport";
-      document.head.appendChild(viewport);
-    }
+    const viewport = document.querySelector('meta[name="viewport"]') || (() => {
+      const el = document.createElement("meta");
+      el.name = "viewport";
+      document.head.appendChild(el);
+      return el;
+    })();
+
     viewport.setAttribute(
       "content",
-      "width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover"
+      "width=device-width, initial-scale=1, viewport-fit=cover"
     );
 
-    const styleId = "luxmo-mobile-responsive-fix-v2";
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.textContent = `
+    const styleId = "luxmo-full-mobile-viewport-v3";
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      html, body, #root {
+        width: 100%;
+        max-width: none !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0;
+      }
+
+      *, *::before, *::after {
+        box-sizing: border-box;
+        min-width: 0;
+      }
+
+      html {
+        overflow-x: hidden;
+      }
+
+      body {
+        overflow-x: hidden;
+      }
+
+      /* LUXMO HUB ADMIN VISIBILITY FIX
+         Keeps existing functionality unchanged while ensuring all admin
+         form controls remain readable in both light/dark environments. */
+      input,
+      select,
+      textarea {
+        color: #111827 !important;
+        background-color: #ffffff !important;
+        -webkit-text-fill-color: #111827 !important;
+        caret-color: #111827 !important;
+        border-color: #cbd5e1;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: #64748b !important;
+        opacity: 1 !important;
+        -webkit-text-fill-color: #64748b !important;
+      }
+
+      select option {
+        color: #111827 !important;
+        background-color: #ffffff !important;
+      }
+
+      input:disabled,
+      select:disabled,
+      textarea:disabled {
+        color: #475569 !important;
+        background-color: #f1f5f9 !important;
+        -webkit-text-fill-color: #475569 !important;
+      }
+
+      #root {
+        overflow-x: clip;
+      }
+
+      img, video, canvas, svg {
+        max-width: 100%;
+        height: auto;
+      }
+
+      @media (max-width: 767px) {
         html, body, #root {
-          width: 100%;
+          width: 100vw !important;
+          max-width: 100vw !important;
+          min-width: 0 !important;
+        }
+
+        body {
+          overflow-x: hidden !important;
+        }
+
+        .luxmo-app-shell,
+        .luxmo-mobile-full-width,
+        main,
+        header,
+        footer {
+          width: 100% !important;
+          max-width: 100vw !important;
+          min-width: 0 !important;
+        }
+
+        .luxmo-app-shell > *,
+        main > *,
+        header > *,
+        footer > * {
+          min-width: 0 !important;
+          max-width: 100% !important;
+        }
+
+        .max-w-7xl,
+        .max-w-6xl,
+        .max-w-5xl,
+        .max-w-4xl,
+        .max-w-3xl {
+          max-width: 100% !important;
+        }
+
+        .luxmo-promo-viewport {
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          overflow: hidden !important;
+        }
+
+        .luxmo-promo-track {
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          display: flex !important;
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
+          scroll-snap-type: x mandatory;
+          touch-action: pan-x;
+          scrollbar-width: none;
+        }
+
+        .luxmo-promo-track::-webkit-scrollbar {
+          display: none;
+        }
+
+        .luxmo-promo-card {
+          flex: 0 0 100% !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 100% !important;
+          scroll-snap-align: start;
+        }
+
+        .luxmo-mobile-safe-grid {
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+
+        input, select, textarea, button {
           max-width: 100%;
-          min-width: 0;
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
         }
-        *, *::before, *::after {
-          box-sizing: border-box;
+      }
+
+      @media (min-width: 768px) {
+        .luxmo-promo-card {
+          flex: 0 0 calc((100% - 3rem) / 4) !important;
+          width: calc((100% - 3rem) / 4) !important;
         }
-        img, video, canvas, svg {
-          max-width: 100%;
+      }
+
+      @media (min-width: 1280px) {
+        .luxmo-promo-card {
+          flex-basis: calc((100% - 4rem) / 5) !important;
+          width: calc((100% - 4rem) / 5) !important;
         }
-        button, input, select, textarea {
-          max-width: 100%;
-        }
-        @media (max-width: 767px) {
-          html, body, #root {
-            width: 100%;
-            min-width: 0;
-          }
-          body {
-            overflow-x: clip;
-          }
-          .luxmo-app-shell,
-          .luxmo-page-width,
-          .luxmo-main-width {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-          }
-          .luxmo-mobile-safe {
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            overflow-x: clip;
-          }
-          .luxmo-mobile-carousel {
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-          }
-          .luxmo-promo-track {
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            overflow-x: auto;
-            overflow-y: hidden;
-            overscroll-behavior-x: contain;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            scroll-snap-type: x mandatory;
-            touch-action: pan-x;
-          }
-          .luxmo-promo-track::-webkit-scrollbar {
-            display: none;
-          }
-          .luxmo-promo-card {
-            flex: 0 0 calc(100% - 0px);
-            width: calc(100% - 0px);
-            min-width: calc(100% - 0px);
-            max-width: calc(100% - 0px);
-            scroll-snap-align: start;
-          }
-        }
-        @media (min-width: 768px) {
-          .luxmo-promo-card {
-            flex: 0 0 calc((100% - 2rem) / 3);
-            width: calc((100% - 2rem) / 3);
-          }
-        }
-        @media (min-width: 1100px) {
-          .luxmo-promo-card {
-            flex-basis: calc((100% - 3rem) / 4);
-            width: calc((100% - 3rem) / 4);
-          }
-        }
-        @media (min-width: 1400px) {
-          .luxmo-promo-card {
-            flex-basis: calc((100% - 4rem) / 5);
-            width: calc((100% - 4rem) / 5);
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
+      }
+    `;
+    document.head.appendChild(style);
   }, []);
 
   // Server-side admin authentication. The browser never stores an admin
@@ -2741,7 +2796,7 @@ export default function LuxmoHubApp() {
   const [formData, setFormData] = useState({
     title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], models: [MOBILE_MODELS[0]], material: "", description: '',
     price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
-    images: [], published: true, colours: [MOBILE_COLOURS[0]], variants: []
+    images: [], published: true, featureOnHomepage: false, bestSeller: false, hotDeal: false, colours: [MOBILE_COLOURS[0]], variants: []
   });
   const [formError, setFormError] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
@@ -2895,6 +2950,9 @@ export default function LuxmoHubApp() {
       gstRate: taxInfo?.gstRate ?? null,
       images: formData.images,
       published: Boolean(formData.published),
+      featureOnHomepage: Boolean(formData.featureOnHomepage),
+      bestSeller: Boolean(formData.bestSeller),
+      hotDeal: Boolean(formData.hotDeal),
       rating: editingProduct ? editingProduct.rating : null,
       reviewsCount: editingProduct ? editingProduct.reviewsCount : 0
     };
@@ -2913,7 +2971,7 @@ export default function LuxmoHubApp() {
     setFormData({
       title: '', category: CATEGORIES[0], model: MOBILE_MODELS[0], models: [MOBILE_MODELS[0]], material: "", description: '',
       price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
-      images: [], published: true, colours: [MOBILE_COLOURS[0]], variants: []
+      images: [], published: true, featureOnHomepage: false, bestSeller: false, hotDeal: false, colours: [MOBILE_COLOURS[0]], variants: []
     });
     setFormError('');
   };
@@ -3402,7 +3460,7 @@ export default function LuxmoHubApp() {
   };
 
   return (
-    <div className="luxmo-app-shell w-full max-w-full min-w-0 min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col overflow-x-clip">
+    <div className="luxmo-app-shell luxmo-mobile-full-width w-full max-w-none min-w-0 min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col overflow-x-clip">
       {/* Top Banner */}
       <div className="bg-slate-900 text-slate-300 text-xs py-1.5 px-4 border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
@@ -3434,7 +3492,7 @@ export default function LuxmoHubApp() {
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           </div>
 
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium">
+          <div className="flex items-center gap-6 text-sm font-medium">
             <button onClick={() => setActiveTab("home")} className={activeTab === 'home' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={activeTab === 'catalog' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Products</button>
             <button onClick={() => setActiveTab("policies")} className={activeTab === 'policies' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Policies</button>
@@ -3466,24 +3524,11 @@ export default function LuxmoHubApp() {
               </button>
             )}
           </div>
-
-          {/* MOBILE NAVIGATION — full-width, no horizontal overflow */}
-          <div className="md:hidden flex items-center gap-1 shrink-0">
-            <button type="button" onClick={() => setActiveTab("home")} className="px-2.5 py-2 text-xs font-black text-slate-700 rounded-lg hover:bg-slate-100">Home</button>
-            <button type="button" onClick={() => setActiveTab("catalog")} className="px-2.5 py-2 text-xs font-black text-slate-700 rounded-lg hover:bg-slate-100">Products</button>
-            <button type="button" onClick={() => setActiveTab("cart")} className="relative p-2 text-slate-700 rounded-lg hover:bg-slate-100" aria-label="Cart">
-              <ShoppingBag className="w-5 h-5" />
-              {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">{cart.reduce((a,b)=>a+b.qty,0)}</span>}
-            </button>
-            <button type="button" onClick={() => isAdminLoggedIn ? setActiveTab("admin") : openAdminLogin()} className="p-2 text-slate-700 rounded-lg hover:bg-slate-100" aria-label="Admin Dashboard">
-              <Lock className="w-5 h-5" />
-            </button>
-          </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="luxmo-main-width flex-1 max-w-7xl w-full mx-auto px-4 py-6 min-w-0">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         {/* HOME VIEW */}
         {activeTab === "home" && (
           <div className="space-y-10">
@@ -3497,6 +3542,8 @@ export default function LuxmoHubApp() {
               setShowTrackingModal={setShowTrackingModal}
               setShowWarrantyModal={setShowWarrantyModal}
               setShowWhatsAppModal={setShowWhatsAppModal}
+              onAddToCart={addToCart}
+              onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
             />
 
             {/* ORIGINAL HOME CONTENT — PRESERVED IN SOURCE, NOT SHOWN ON THE PREMIUM HOME */}
@@ -4604,6 +4651,12 @@ export default function LuxmoHubApp() {
                   )}
                 </div>
 
+                <div className="md:col-span-2 grid sm:grid-cols-3 gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-800"><input type="checkbox" checked={Boolean(formData.featureOnHomepage)} onChange={e=>setFormData({...formData,featureOnHomepage:e.target.checked})}/> Feature on Homepage</label>
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-800"><input type="checkbox" checked={Boolean(formData.bestSeller)} onChange={e=>setFormData({...formData,bestSeller:e.target.checked})}/> Best Seller</label>
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-800"><input type="checkbox" checked={Boolean(formData.hotDeal)} onChange={e=>setFormData({...formData,hotDeal:e.target.checked})}/> Hot Deal</label>
+                </div>
+
                 <div className="md:col-span-2">
                   <label className="block font-bold mb-1 text-slate-700">Description</label>
                   <textarea 
@@ -4800,7 +4853,7 @@ export default function LuxmoHubApp() {
   </footer>
 
   {/* ADMIN AUTH MODAL — EMAIL + MOBILE + OTP */}
-  {false && showAdminModal && (
+  {showAdminModal && (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[80]">
       <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
         <div className="flex justify-between items-center">
@@ -4857,112 +4910,6 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-      {/* GOOGLE AUTHENTICATOR ADMIN MODAL — active server-side TOTP flow */}
-      {showAdminModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl border border-slate-200 p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-black text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-blue-600" />
-                Secure Admin Authentication
-              </h3>
-              <button type="button" onClick={() => setShowAdminModal(false)} className="text-slate-400 hover:text-slate-900 text-xl" disabled={adminAuthLoading}>×</button>
-            </div>
-
-            <p className="mt-3 text-sm text-slate-500">
-              Admin access is protected with Google Authenticator. Enter the current 6-digit code from your authenticator app.
-            </p>
-
-            {authError && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 p-3 text-sm font-semibold">
-                {authError}
-              </div>
-            )}
-            {authMessage && (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 p-3 text-sm font-semibold">
-                {authMessage}
-              </div>
-            )}
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setAuthError("");
-                setAuthMessage("");
-                const otp = adminOtp.replace(/\D/g, "");
-                if (!/^\d{6}$/.test(otp)) {
-                  setAuthError("Please enter the current 6-digit Google Authenticator code.");
-                  return;
-                }
-
-                setAdminAuthLoading(true);
-                try {
-                  const response = await fetch("/api/admin-verify-otp", {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Accept": "application/json",
-                    },
-                    body: JSON.stringify({ otp }),
-                  });
-
-                  const data = await response.json().catch(() => ({}));
-                  if (!response.ok || data.success !== true) {
-                    throw new Error(data.error || "Google Authenticator verification failed.");
-                  }
-
-                  const authenticated = await verifyAdminSession();
-                  if (!authenticated) {
-                    throw new Error("Authenticator verified, but secure admin session could not be established.");
-                  }
-
-                  setShowAdminModal(false);
-                  setAdminOtp("");
-                  setAuthMessage("");
-                  setAuthError("");
-                  setActiveTab("admin");
-                } catch (error) {
-                  console.error("Google Authenticator verification error:", error);
-                  setIsAdminLoggedIn(false);
-                  setAuthError(error.message || "Google Authenticator verification failed.");
-                } finally {
-                  setAdminAuthLoading(false);
-                }
-              }}
-              className="mt-5 space-y-4"
-            >
-              <label className="block">
-                <span className="text-xs font-black text-slate-700">6-Digit Authenticator Code</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  autoFocus
-                  value={adminOtp}
-                  onChange={(e) => setAdminOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="000000"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-4 text-center tracking-[0.45em] text-xl font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </label>
-
-              <button
-                type="submit"
-                disabled={adminAuthLoading}
-                className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-3.5 font-black"
-              >
-                {adminAuthLoading ? "Verifying…" : "Verify & Open Admin Panel"}
-              </button>
-            </form>
-
-            <p className="mt-4 text-[10px] leading-relaxed text-slate-400 text-center">
-              Authentication is server-side. The TOTP secret and admin session are never stored in browser localStorage.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* GLOBAL CUSTOMER TOOLS */}
       {showTrackingModal && (
         <LuxmoOrderTrackingModal onClose={() => setShowTrackingModal(false)} />
@@ -5014,11 +4961,10 @@ export default function LuxmoHubApp() {
 
 /* ============================================================================
    LUXMO HUB — AMAZON / FLIPKART STYLE PROMOTIONAL CAROUSEL
-   Additive component: maximum 12 products, admin-controlled pricing/offers,
-   mobile one-card swipe, desktop 3/4/5-card responsive grid with arrows.
+   Additive only: reads the published Homepage Master configuration.
+   Maximum 12 products. Mobile = one-card swipe. Desktop = 4/5 cards.
    ============================================================================ */
-
-function LuxmoPromotionalProductsCarousel({ products = [] }) {
+function LuxmoPromotionalProductsCarousel({ products = [], onAddToCart, onSelectProduct }) {
   const [publishedConfig, setPublishedConfig] = React.useState(() => {
     try {
       const raw = localStorage.getItem(LUXMO_HOMEPAGE_PUBLISHED_KEY);
@@ -5029,18 +4975,28 @@ function LuxmoPromotionalProductsCarousel({ products = [] }) {
   });
 
   React.useEffect(() => {
-    const sync = () => {
+    let active = true;
+    const sync = async () => {
+      try {
+        const response = await fetch("/api/homepage", { credentials: "include", headers: { Accept: "application/json" } });
+        if (response.ok) {
+          const data = await response.json();
+          const remote = data?.config || data?.homepage || data;
+          if (remote && typeof remote === "object" && active) { setPublishedConfig(remote); return; }
+        }
+      } catch {}
       try {
         const raw = localStorage.getItem(LUXMO_HOMEPAGE_PUBLISHED_KEY);
-        setPublishedConfig(raw ? JSON.parse(raw) : null);
+        if (active) setPublishedConfig(raw ? JSON.parse(raw) : null);
       } catch {}
     };
-    window.addEventListener("storage", sync);
-    window.addEventListener("luxmo-homepage-published", sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener("luxmo-homepage-published", sync);
+    sync();
+    const localSync = () => {
+      try { const raw = localStorage.getItem(LUXMO_HOMEPAGE_PUBLISHED_KEY); setPublishedConfig(raw ? JSON.parse(raw) : null); } catch {}
     };
+    window.addEventListener("storage", localSync);
+    window.addEventListener("luxmo-homepage-published", localSync);
+    return () => { active = false; window.removeEventListener("storage", localSync); window.removeEventListener("luxmo-homepage-published", localSync); };
   }, []);
 
   const productMap = React.useMemo(() => {
@@ -5051,63 +5007,80 @@ function LuxmoPromotionalProductsCarousel({ products = [] }) {
 
   const configured = Array.isArray(publishedConfig?.promotionalProducts)
     ? publishedConfig.promotionalProducts
-        .filter((p) => p && p.enabled !== false)
+        .filter((p) => p && p.enabled !== false && p.featured !== false)
         .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
         .slice(0, 12)
     : [];
 
+  const configuredIds = new Set(configured.map((p) => String(p.productId || "")));
   const fallback = products
-    .filter((p) => p && p.published !== false)
-    .slice(0, 12)
+    .filter((p) => p && p.published !== false && !configuredIds.has(String(p.id)))
+    .sort((a,b) => {
+      const featuredDiff = Number(Boolean(b.featureOnHomepage)) - Number(Boolean(a.featureOnHomepage));
+      if (featuredDiff) return featuredDiff;
+      const bestSellerDiff = Number(Boolean(b.bestSeller)) - Number(Boolean(a.bestSeller));
+      if (bestSellerDiff) return bestSellerDiff;
+      return String(b.createdAt || b.updatedAt || "").localeCompare(String(a.createdAt || a.updatedAt || ""));
+    })
+    .slice(0, Math.max(0, 12 - configured.length))
     .map((p, index) => ({
-      id: `fallback-${p.id || index}`,
+      id: `fallback-promo-${p.id || index}`,
       productId: p.id,
       name: p.title || "LUXMO HUB Product",
-      image: p.images?.[0] || "",
+      category: p.category || "",
+      description: p.description || "",
+      image: p.images?.[0] || p.image || "",
       mrp: Number(p.price || 0),
       salePrice: Number(p.salePrice || p.price || 0),
       badge: p.bestSeller ? "Best Seller" : "",
       bestSeller: Boolean(p.bestSeller),
       hotDeal: false,
       featured: true,
+      order: index + 1,
       viewDetails: `#product-${p.id || ""}`,
       buyNow: `#buy-${p.id || ""}`,
     }));
 
-  const items = (configured.length ? configured : fallback)
+  const items = [...configured, ...fallback]
     .map((promo) => {
       const source = productMap.get(String(promo.productId));
       return {
         ...promo,
+        category: promo.category || source?.category || "",
         name: promo.name || source?.title || "LUXMO HUB Product",
-        image: promo.image || source?.images?.[0] || "",
+        description: promo.description || source?.description || "",
+        image: promo.image || source?.images?.[0] || source?.image || "",
         mrp: Number(promo.mrp || source?.price || 0),
-        salePrice: Number(promo.salePrice || source?.salePrice || source?.price || 0),
+        salePrice: Number(
+          promo.salePrice || source?.salePrice || source?.price || 0
+        ),
       };
     })
     .slice(0, 12);
-
-  const scroll = (direction) => {
-    const track = document.getElementById("luxmo-promotional-products-track");
-    if (!track) return;
-    const amount = Math.max(280, Math.round(track.clientWidth * 0.82));
-    track.scrollBy({ left: direction * amount, behavior: "smooth" });
-  };
-
-  if (!items.length) return null;
 
   const discount = (p) => {
     const mrp = Number(p.mrp || 0);
     const sale = Number(p.salePrice || 0);
     return mrp > sale && mrp > 0
-      ? Math.max(0, Math.round(((mrp - sale) / mrp) * 100))
+      ? Math.round(((mrp - sale) / mrp) * 100)
       : 0;
   };
 
+  const scroll = (direction) => {
+    const track = document.getElementById("luxmo-promotional-products-track");
+    if (!track) return;
+    track.scrollBy({
+      left: direction * Math.max(280, Math.round(track.clientWidth * 0.9)),
+      behavior: "smooth",
+    });
+  };
+
+  if (!items.length) return null;
+
   return (
-    <section className="luxmo-mobile-safe luxmo-mobile-carousel rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
-        <div>
+    <section id="promotional-products" className="luxmo-promo-viewport w-full max-w-full min-w-0 rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5 min-w-0">
+        <div className="min-w-0">
           <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">
             LUXMO HUB Offers
           </p>
@@ -5118,31 +5091,19 @@ function LuxmoPromotionalProductsCarousel({ products = [] }) {
             Up to 12 products • Swipe on mobile • Amazon/Flipkart-style shopping experience
           </p>
         </div>
-
-        <div className="hidden sm:flex gap-2">
-          <button
-            type="button"
-            onClick={() => scroll(-1)}
-            aria-label="Previous promotional products"
-            className="w-10 h-10 rounded-full border border-slate-300 bg-white text-slate-900 font-black shadow-sm hover:bg-slate-50"
-          >
+        <div className="hidden sm:flex gap-2 shrink-0">
+          <button type="button" onClick={() => scroll(-1)} aria-label="Previous promotional products"
+            className="w-10 h-10 rounded-full border border-slate-300 bg-white text-slate-900 font-black shadow-sm">
             ←
           </button>
-          <button
-            type="button"
-            onClick={() => scroll(1)}
-            aria-label="Next promotional products"
-            className="w-10 h-10 rounded-full border border-slate-300 bg-white text-slate-900 font-black shadow-sm hover:bg-slate-50"
-          >
+          <button type="button" onClick={() => scroll(1)} aria-label="Next promotional products"
+            className="w-10 h-10 rounded-full border border-slate-300 bg-white text-slate-900 font-black shadow-sm">
             →
           </button>
         </div>
       </div>
 
-      <div
-        id="luxmo-promotional-products-track"
-        className="luxmo-promo-track flex gap-4"
-      >
+      <div id="luxmo-promotional-products-track" className="luxmo-promo-track flex gap-4">
         {items.map((p, index) => {
           const off = discount(p);
           const product = productMap.get(String(p.productId));
@@ -5150,42 +5111,34 @@ function LuxmoPromotionalProductsCarousel({ products = [] }) {
           const buyNow = p.buyNow || details;
 
           return (
-            <article key={p.id || `${p.productId}-${index}`} className="luxmo-promo-card shrink-0 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-xl transition">
+            <article key={p.id || `${p.productId}-${index}`}
+              onClick={() => product && onSelectProduct?.(product)}
+              role={product ? "button" : undefined}
+              tabIndex={product ? 0 : undefined}
+              onKeyDown={(e) => { if (product && (e.key === "Enter" || e.key === " ")) onSelectProduct?.(product); }}
+              className="luxmo-promo-card shrink-0 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-xl transition cursor-pointer">
               <div className="relative aspect-square bg-slate-100 overflow-hidden">
                 {p.image ? (
-                  <img
-                    src={p.image}
-                    alt={p.name}
-                    loading="lazy"
-                    className="w-full h-full object-contain"
-                  />
+                  <img src={p.image} alt={p.name || "LUXMO HUB Product"} loading="lazy"
+                    className="w-full h-full object-contain" />
                 ) : (
                   <div className="w-full h-full grid place-items-center text-6xl">🛍️</div>
                 )}
-
                 <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                  {p.badge && (
-                    <span className="rounded-full bg-amber-400 px-2.5 py-1 text-[10px] font-black text-slate-950">
-                      {p.badge}
-                    </span>
-                  )}
-                  {p.bestSeller && (
-                    <span className="rounded-full bg-slate-950 px-2.5 py-1 text-[10px] font-black text-white">
-                      Best Seller
-                    </span>
-                  )}
-                  {p.hotDeal && (
-                    <span className="rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white">
-                      Hot Deal
-                    </span>
-                  )}
+                  {p.badge && <span className="rounded-full bg-amber-400 px-2.5 py-1 text-[10px] font-black text-slate-950">{p.badge}</span>}
+                  {p.bestSeller && <span className="rounded-full bg-slate-950 px-2.5 py-1 text-[10px] font-black text-white">Best Seller</span>}
+                  {p.hotDeal && <span className="rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white">Hot Deal</span>}
                 </div>
               </div>
 
               <div className="p-4">
-                <h3 className="font-black text-slate-900 leading-snug min-h-[2.75rem]">
+                {p.category && <span className="inline-flex max-w-full rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">{p.category}</span>}
+                <h3 className="mt-2 font-black text-slate-900 leading-snug min-h-[2.75rem] line-clamp-2">
                   {p.name}
                 </h3>
+                {p.description && (
+                  <p className="mt-1 text-xs text-slate-500 line-clamp-2">{p.description}</p>
+                )}
 
                 <div className="mt-3 flex items-end gap-2 flex-wrap">
                   <span className="text-xl font-black text-slate-950">
@@ -5196,27 +5149,20 @@ function LuxmoPromotionalProductsCarousel({ products = [] }) {
                       ₹{Number(p.mrp).toLocaleString("en-IN")}
                     </span>
                   )}
-                  {off > 0 && (
-                    <span className="text-xs font-black text-emerald-700">
-                      {off}% OFF
-                    </span>
-                  )}
+                  {off > 0 && <span className="text-xs font-black text-emerald-700">{off}% OFF</span>}
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <a
-                    href={details}
-                    className="rounded-xl border border-slate-300 bg-white px-2 py-2.5 text-center text-xs font-black text-slate-900 hover:bg-slate-50"
-                  >
+                  <button type="button" onClick={(e) => { e.stopPropagation(); product && onSelectProduct?.(product); }} className="rounded-xl border border-slate-300 bg-white px-2 py-2.5 text-center text-xs font-black text-slate-900">
                     View Details
-                  </a>
-                  <a
-                    href={buyNow}
-                    className="rounded-xl bg-slate-950 px-2 py-2.5 text-center text-xs font-black text-white hover:bg-slate-800"
-                  >
-                    Buy Now
-                  </a>
+                  </button>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); product && onAddToCart?.(product); }} className="rounded-xl bg-slate-950 px-2 py-2.5 text-center text-xs font-black text-white">
+                    Add to Cart
+                  </button>
                 </div>
+                <button type="button" onClick={(e) => { e.stopPropagation(); if (product) onAddToCart?.(product); }} className="mt-2 w-full rounded-xl bg-amber-400 px-3 py-2.5 text-xs font-black text-slate-950">
+                  Buy Now
+                </button>
               </div>
             </article>
           );
@@ -5238,7 +5184,21 @@ function LuxmoPremiumHomepageSections({
   setShowTrackingModal,
   setShowWarrantyModal,
   setShowWhatsAppModal,
+  onAddToCart,
+  onSelectProduct,
 }) {
+  const homepagePublished = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem(LUXMO_HOMEPAGE_PUBLISHED_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const promotionalEnabled =
+    homepagePublished?.sections?.find((s) => s.id === "promotional")?.enabled !== false;
+
   const solarProducts = products.filter(
     (p) => p.category === "Hybrid Solar Inverter" && p.published !== false
   );
@@ -5289,6 +5249,7 @@ function LuxmoPremiumHomepageSections({
 
   return (
     <div className="space-y-12 mb-12">
+      {promotionalEnabled && <LuxmoPromotionalProductsCarousel products={products} onAddToCart={onAddToCart} onSelectProduct={onSelectProduct} />}
       {/* PREMIUM HERO */}
       <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-2xl border border-slate-800">
         <div className="absolute -top-28 -right-24 w-80 h-80 rounded-full bg-amber-400/15 blur-3xl" />
@@ -5353,9 +5314,6 @@ function LuxmoPremiumHomepageSections({
           </div>
         </div>
       </section>
-
-      {/* AMAZON / FLIPKART-STYLE PROMOTIONAL PRODUCTS — MAX 12 */}
-      <LuxmoPromotionalProductsCarousel products={products} />
 
       {/* TWO MAIN CATEGORIES */}
       <section>
