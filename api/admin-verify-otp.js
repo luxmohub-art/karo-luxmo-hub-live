@@ -14,6 +14,7 @@ function base64UrlEncode(value) {
   return Buffer.from(value).toString("base64url");
 }
 
+// Constant-time string comparison
 function safeEqual(a, b) {
   try {
     const aBuffer = Buffer.from(String(a));
@@ -37,8 +38,12 @@ function base32Decode(input) {
     .toUpperCase()
     .replace(/[\s=-]/g, "");
 
+  if (!value) {
+    return null;
+  }
+
   let bits = "";
-  let output = [];
+  const output = [];
 
   for (const char of value) {
     const index = alphabet.indexOf(char);
@@ -51,13 +56,19 @@ function base32Decode(input) {
   }
 
   for (let i = 0; i + 8 <= bits.length; i += 8) {
-    output.push(parseInt(bits.slice(i, i + 8), 2));
+    output.push(
+      parseInt(bits.slice(i, i + 8), 2)
+    );
+  }
+
+  if (output.length === 0) {
+    return null;
   }
 
   return Buffer.from(output);
 }
 
-// Generate a 6-digit Google Authenticator TOTP
+// Generate 6-digit TOTP
 function generateTotp(secret, counter) {
   const key = base32Decode(secret);
 
@@ -82,7 +93,8 @@ function generateTotp(secret, counter) {
     .update(counterBuffer)
     .digest();
 
-  const offset = hmac[hmac.length - 1] & 0x0f;
+  const offset =
+    hmac[hmac.length - 1] & 0x0f;
 
   const binary =
     ((hmac[offset] & 0x7f) << 24) |
@@ -93,6 +105,7 @@ function generateTotp(secret, counter) {
   return String(binary % 1000000).padStart(6, "0");
 }
 
+// Verify Google Authenticator TOTP
 function verifyTotp(otp, secret) {
   if (!/^\d{6}$/.test(otp)) {
     return false;
@@ -102,16 +115,20 @@ function verifyTotp(otp, secret) {
     return false;
   }
 
-  const currentCounter = Math.floor(Date.now() / 1000 / 30);
+  const currentCounter =
+    Math.floor(Date.now() / 1000 / 30);
 
-  // Allow small clock difference: previous/current/next 30-second window
+  // Previous / current / next 30-second window
   for (let offset = -1; offset <= 1; offset++) {
     const expected = generateTotp(
       secret,
       currentCounter + offset
     );
 
-    if (expected && safeEqual(otp, expected)) {
+    if (
+      expected &&
+      safeEqual(otp, expected)
+    ) {
       return true;
     }
   }
@@ -119,6 +136,7 @@ function verifyTotp(otp, secret) {
   return false;
 }
 
+// Create secure admin session
 function createSessionToken(secret) {
   const expiresAt =
     Date.now() + SESSION_MAX_AGE * 1000;
@@ -128,20 +146,26 @@ function createSessionToken(secret) {
     expiresAt,
   };
 
-  const encodedPayload = base64UrlEncode(
-    JSON.stringify(payload)
-  );
+  const encodedPayload =
+    base64UrlEncode(
+      JSON.stringify(payload)
+    );
 
   const signature = crypto
     .createHmac("sha256", secret)
-    .update(`${encodedPayload}.${expiresAt}`)
+    .update(
+      `${encodedPayload}.${expiresAt}`
+    )
     .digest("base64url");
 
   return `${encodedPayload}.${expiresAt}.${signature}`;
 }
 
 function getRequestBody(req) {
-  if (req.body && typeof req.body === "object") {
+  if (
+    req.body &&
+    typeof req.body === "object"
+  ) {
     return req.body;
   }
 
@@ -149,6 +173,7 @@ function getRequestBody(req) {
 }
 
 export default async function handler(req, res) {
+  // Only POST is allowed
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
 
@@ -164,6 +189,7 @@ export default async function handler(req, res) {
   const totpSecret =
     process.env.ADMIN_TOTP_SECRET;
 
+  // Check session secret
   if (!sessionSecret) {
     console.error(
       "ADMIN_SESSION_SECRET is not configured."
@@ -175,6 +201,7 @@ export default async function handler(req, res) {
     });
   }
 
+  // Check TOTP secret
   if (!totpSecret) {
     console.error(
       "ADMIN_TOTP_SECRET is not configured."
@@ -182,22 +209,28 @@ export default async function handler(req, res) {
 
     return sendJson(res, 500, {
       success: false,
-      error: "Google Authenticator is not configured.",
+      error:
+        "Google Authenticator is not configured.",
     });
   }
 
   try {
     const body = getRequestBody(req);
 
-    const otp = String(body.otp || "").trim();
+    const otp = String(
+      body.otp || ""
+    ).trim();
 
+    // OTP must be exactly 6 digits
     if (!/^\d{6}$/.test(otp)) {
       return sendJson(res, 400, {
         success: false,
-        error: "Please enter a valid 6-digit OTP.",
+        error:
+          "Please enter a valid 6-digit OTP.",
       });
     }
 
+    // Verify TOTP
     const valid = verifyTotp(
       otp,
       totpSecret
@@ -207,13 +240,18 @@ export default async function handler(req, res) {
       return sendJson(res, 401, {
         success: false,
         authenticated: false,
-        error: "Incorrect or expired OTP.",
+        error:
+          "Incorrect or expired OTP.",
       });
     }
 
+    // Create admin session
     const sessionToken =
-      createSessionToken(sessionSecret);
+      createSessionToken(
+        sessionSecret
+      );
 
+    // Set secure HTTP-only cookie
     res.setHeader(
       "Set-Cookie",
       `${COOKIE_NAME}=${encodeURIComponent(
