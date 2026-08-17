@@ -1069,6 +1069,26 @@ const luxmoApi = async (url, options = {}) => {
 };
 const luxmoEnsureCustomerSession = () =>
   fetch("/api/customer-session", { credentials:"include", headers:{Accept:"application/json"} }).catch(()=>null);
+const luxmoLoadRazorpay = () => {
+  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve(window.Razorpay);
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.Razorpay));
+      existing.addEventListener("error", () => reject(new Error("Razorpay checkout script failed to load.")));
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => window.Razorpay ? resolve(window.Razorpay) : reject(new Error("Razorpay checkout loaded but is unavailable."));
+    script.onerror = () => reject(new Error("Razorpay checkout script failed to load."));
+    document.body.appendChild(script);
+  });
+};
+
 const luxmoRemoteCustomerWrite = (key,value) => {
   if (!LUXMO_REMOTE_CUSTOMER_KEYS.has(key)) return;
   luxmoApi("/api/customer-data", {method:"PUT",body:JSON.stringify({key,value})})
@@ -1573,7 +1593,7 @@ function LuxmoFeatureChecklist() {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Readiness" title="Ecommerce Feature Checklist" description="A practical checklist for the Luxmo Hub storefront."/><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{LUXMO_PROTECTED_FEATURES.map((f,i)=><div key={f} className="flex gap-2 items-center border rounded-xl px-3 py-2.5 text-xs"><span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center font-black">✓</span><span>{f}</span></div>)}</div></div>;
 }
 
-function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn }) {
+function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn, onPay }) {
   const [tab,setTab]=useState("overview");
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
@@ -1625,7 +1645,7 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
     // delivery address/order data collected by Secure Checkout.
     if(order.paymentMethod === "razorpay"){
       setTimeout(()=>{
-        if(typeof handleRazorpayPayment === "function") handleRazorpayPayment();
+        if (typeof onPay === "function") onPay();
       },0);
     }else{
       alert(`Order ${order.id} created successfully.`);
@@ -2389,10 +2409,9 @@ export default function LuxmoHubApp() {
   const [homepageError, setHomepageError] = useState("");
 
   useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
+    luxmoLoadRazorpay().catch(error => {
+      console.warn("Razorpay preload:", error.message);
+    });
   }, []);
 
   useEffect(() => {
@@ -2894,8 +2913,11 @@ export default function LuxmoHubApp() {
   const displayedProduct = activeVariant ? { ...selectedProduct, ...activeVariant, images: activeVariant.images?.length ? activeVariant.images : selectedProduct.images } : selectedProduct;
 
   const handleRazorpayPayment = async () => {
-    if (!window.Razorpay) {
-      alert("Razorpay loading. Please try again.");
+    try {
+      await luxmoLoadRazorpay();
+    } catch (error) {
+      console.error("Razorpay loader error:", error);
+      alert(error?.message || "Razorpay is currently unavailable. Please try again.");
       return;
     }
 
@@ -4290,7 +4312,7 @@ export default function LuxmoHubApp() {
                   <span className="text-blue-600">₹{cartTotal}</span>
                 </div>
                 <button
-                  onClick={() => setCheckout(true)}
+                  onClick={() => setShowProCenter(true)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
                 >
                   Proceed to Secure Checkout
@@ -4646,6 +4668,7 @@ export default function LuxmoHubApp() {
                 addToCart={addToCart}
                 onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowProCenter(false); }}
                 isAdminLoggedIn={isAdminLoggedIn}
+                onPay={handleRazorpayPayment}
               />
             </div>
           </div>
