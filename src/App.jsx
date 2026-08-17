@@ -1552,7 +1552,7 @@ function LuxmoAnalytics({ products, orders, reviews, alerts }) {
   const delivered=orders.filter(o=>o.status==='Delivered').length;
   const lowStock=products.filter(p=>luxmoProductStock(p)<=5).length;
   const pendingReviews=reviews.filter(r=>r.status==='Pending').length;
-  return <div className="space-y-5"><LuxmoSectionTitle eyebrow="Business" title="Store Analytics" description="Local operational dashboard. Connect a database/analytics provider for production reporting."/><div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><LuxmoMetricCard label="Orders" value={orders.length} icon="▤"/><LuxmoMetricCard label="Gross Order Value" value={luxmoMoney(revenue)} icon="₹"/><LuxmoMetricCard label="Delivered" value={delivered} icon="✓"/><LuxmoMetricCard label="Low Stock" value={lowStock} icon="!"/></div><div className="grid grid-cols-1 md:grid-cols-2 gap-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Operational Alerts</h3><div className="mt-3 space-y-2 text-xs"><div className="flex justify-between"><span>Pending review moderation</span><b>{pendingReviews}</b></div><div className="flex justify-between"><span>Stock alert subscriptions</span><b>{alerts.length}</b></div><div className="flex justify-between"><span>Orders needing shipment assignment</span><b>{orders.filter(o=>!o.awb).length}</b></div></div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Product Categories</h3><div className="mt-3 space-y-2 text-xs">{CATEGORIES.map(c=><div key={c} className="flex justify-between"><span>{c}</span><b>{products.filter(p=>p.category===c).length}</b></div>)}</div></div></div></div>;
+  return <div className="space-y-5 min-w-0"><LuxmoSectionTitle eyebrow="Business" title="Store Analytics" description="Local operational dashboard. Connect a database/analytics provider for production reporting."/><div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><LuxmoMetricCard label="Orders" value={orders.length} icon="▤"/><LuxmoMetricCard label="Gross Order Value" value={luxmoMoney(revenue)} icon="₹"/><LuxmoMetricCard label="Delivered" value={delivered} icon="✓"/><LuxmoMetricCard label="Low Stock" value={lowStock} icon="!"/></div><div className="grid grid-cols-1 md:grid-cols-2 gap-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Operational Alerts</h3><div className="mt-3 space-y-2 text-xs"><div className="flex justify-between"><span>Pending review moderation</span><b>{pendingReviews}</b></div><div className="flex justify-between"><span>Stock alert subscriptions</span><b>{alerts.length}</b></div><div className="flex justify-between"><span>Orders needing shipment assignment</span><b>{orders.filter(o=>!o.awb).length}</b></div></div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Product Categories</h3><div className="mt-3 space-y-2 text-xs">{CATEGORIES.map(c=><div key={c} className="flex justify-between"><span>{c}</span><b>{products.filter(p=>p.category===c).length}</b></div>)}</div></div></div></div>;
 }
 
 function LuxmoSeoTools({ products }) {
@@ -2407,7 +2407,7 @@ export default function LuxmoHubApp() {
           headers: { Accept: "application/json" }
         });
         const data = await r.json().catch(() => ({}));
-        if (!r.ok || !data.success) throw new Error(data.error || "Unable to load homepage from database.");
+        if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, "Unable to load homepage from database."));
         if (!cancelled) {
           const config = { ...luxmoClone(DEFAULT_HOMEPAGE_CONFIG), ...(data.config || {}) };
           setHomepagePublished(config);
@@ -2478,14 +2478,14 @@ export default function LuxmoHubApp() {
     clean.publishedAt = new Date().toISOString();
 
     try {
-      const r = await fetch("/api/admin/homepage/publish", {
+      const r = await fetch("/api/publish", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(clean)
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data.success) throw new Error(data.error || "Homepage publish failed.");
+      if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, data.message || "Homepage publish failed."));
       const published = { ...luxmoClone(DEFAULT_HOMEPAGE_CONFIG), ...(data.config || clean) };
       setHomepagePublished(published);
       setHomepageDraft(published);
@@ -2494,7 +2494,7 @@ export default function LuxmoHubApp() {
       alert("Homepage published to database successfully.");
     } catch (e) {
       setHomepageError(e?.message || "Unable to publish homepage.");
-      alert(e?.message || "Unable to publish homepage. Database was not updated.");
+      alert(luxmoApiErrorMessage(e?.message, "Unable to publish homepage. Database was not updated."));
     }
   };
 
@@ -3337,15 +3337,15 @@ export default function LuxmoHubApp() {
       </div>
 
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab("home")}>
-            <div className="bg-slate-900 text-white font-black text-xl px-3 py-1 rounded tracking-wider border border-amber-500">
+      <header className="bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 sm:gap-4 min-w-0">
+          <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab("home")}>
+            <div className="bg-slate-950 text-white font-black text-base sm:text-xl px-2.5 sm:px-3 py-1.5 rounded-xl tracking-wider border border-amber-500 shadow-sm whitespace-nowrap">
               LUX<span className="text-amber-400">M</span>O <span className="text-amber-400">HUB</span>
             </div>
           </div>
 
-          <div className="flex-1 max-w-md relative hidden md:block">
+          <div className="flex-1 max-w-md relative hidden lg:block">
             <input
               type="text"
               placeholder="Search products..."
@@ -3356,13 +3356,13 @@ export default function LuxmoHubApp() {
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4 text-sm font-medium min-w-0">
-            <button onClick={() => setActiveTab("home")} className={activeTab === 'home' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Home</button>
-            <button onClick={() => setActiveTab("catalog")} className={activeTab === 'catalog' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Products</button>
-            <button onClick={() => setActiveTab("policies")} className={activeTab === 'policies' ? 'text-blue-600 font-semibold' : 'text-slate-600'}>Policies</button>
-            <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-md">Store Tools</button>
+          <div className="flex items-center justify-end gap-1.5 sm:gap-3 text-sm font-medium min-w-0 ml-auto">
+            <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
+            <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
+            <button onClick={() => setActiveTab("policies")} className={`hidden sm:block px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
+            <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
 
-            <button onClick={() => setActiveTab("cart")} className="relative p-1.5 hover:text-blue-600 text-slate-700">
+            <button onClick={() => setActiveTab("cart")} className="relative p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0">
               <ShoppingBag className="w-6 h-6" />
               {cart.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
@@ -3392,7 +3392,7 @@ export default function LuxmoHubApp() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 min-w-0">
         {/* HOME VIEW */}
         {activeTab === "home" && (
           <div className="space-y-10">
@@ -4657,13 +4657,17 @@ export default function LuxmoHubApp() {
 
   {/* MOBILE RESPONSIVE SAFETY — full viewport width on phones */}
   <style>{`
-    html, body, #root { width: 100%; max-width: 100%; margin: 0; padding: 0; }
+    html, body, #root { width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: 0; }
     *, *::before, *::after { box-sizing: border-box; }
-    body { overflow-x: hidden; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { overflow-x: hidden; min-width: 0; }
+    #root { min-height: 100vh; }
+    .luxmo-page-root { width: 100%; min-width: 0; max-width: 100%; overflow-x: clip; }
     img, video, canvas, svg { max-width: 100%; }
     @media (max-width: 767px) {
-      main, header, footer, section, article, nav { max-width: 100%; }
+      main, header, footer, section, article, nav { width: 100%; max-width: 100%; }
       input, select, textarea, button { max-width: 100%; }
+      .luxmo-page-root .max-w-7xl { width: 100%; max-width: 100%; }
     }
   `}</style>
 
@@ -4919,6 +4923,20 @@ const luxmoClone = (value) => {
   try { return JSON.parse(JSON.stringify(value)); } catch { return value; }
 };
 
+const luxmoApiErrorMessage = (value, fallback = "Something went wrong.") => {
+  if (typeof value === "string" && value.trim()) return value;
+  if (value && typeof value === "object") {
+    if (typeof value.message === "string" && value.message.trim()) return value.message;
+    if (typeof value.error === "string" && value.error.trim()) return value.error;
+    if (typeof value.code === "string" && value.code.trim()) return `${value.code}: ${value.message || "Request failed."}`;
+    try {
+      const json = JSON.stringify(value);
+      if (json && json !== "{}") return json;
+    } catch {}
+  }
+  return fallback;
+};
+
 const luxmoDiscount = (mrp, salePrice) => {
   const m = Number(mrp || 0);
   const s = Number(salePrice || 0);
@@ -4972,7 +4990,7 @@ function LuxmoControlledHomepageSections({
           {(() => {
             const renderPromoCard = (p, i) => {
               const price = p.salePrice || p.mrp;
-              return <article key={p.id || i} className="snap-start shrink-0 w-[84vw] sm:w-[46%] lg:w-auto lg:flex-1 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-lg transition">
+              return <article key={p.id || i} className="snap-start shrink-0 w-[82vw] max-w-[320px] sm:w-[46%] lg:w-auto lg:flex-1 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-lg transition">
                 <button type="button" className="block w-full text-left" onClick={() => { if (p.id && getProduct(p.id) && onSelectProduct) onSelectProduct(getProduct(p.id)); }}>
                   <div className="relative aspect-square bg-slate-100 overflow-hidden">
                     {p.image ? <img src={p.image} alt={p.title} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full grid place-items-center text-5xl">📦</div>}
@@ -5016,11 +5034,11 @@ function LuxmoControlledHomepageSections({
     {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 hidden md:block w-full h-full object-cover opacity-35" />}
     {cfg.hero.mobileImage && <img src={cfg.hero.mobileImage} alt="LUXMO HUB" className="absolute inset-0 md:hidden w-full h-full object-cover opacity-35" />}
     <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-950/75 to-slate-950/40" />
-    <div className="relative px-5 py-10 md:px-12 md:py-14 max-w-4xl">
+    <div className="relative px-5 py-8 sm:py-10 md:px-12 md:py-14 max-w-4xl">
       <div className="inline-flex rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-amber-300">{cfg.hero.badge}</div>
-      <h1 className="mt-5 text-4xl md:text-6xl font-black leading-tight">{cfg.hero.title}</h1>
+      <h1 className="mt-5 text-3xl sm:text-4xl md:text-6xl font-black leading-tight tracking-tight">{cfg.hero.title}</h1>
       <p className="mt-5 text-slate-300 text-base md:text-lg leading-relaxed max-w-2xl">{cfg.hero.description}</p>
-      <div className="mt-7 flex flex-wrap gap-3"><button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950">{cfg.hero.primaryText}</button><button onClick={() => goCategory(cfg.hero.secondaryLink || "Mobile Back Case")} className="rounded-xl bg-white px-5 py-3.5 font-black text-slate-950">{cfg.hero.secondaryText}</button></div>
+      <div className="mt-7 flex flex-col sm:flex-row gap-3"><button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="w-full sm:w-auto rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-amber-300 transition">{cfg.hero.primaryText}</button><button onClick={() => goCategory(cfg.hero.secondaryLink || "Mobile Back Case")} className="w-full sm:w-auto rounded-xl bg-white px-5 py-3.5 font-black text-slate-950 shadow-sm hover:bg-slate-100 transition">{cfg.hero.secondaryText}</button></div>
     </div>
   </section>;
 
@@ -5097,8 +5115,8 @@ function LuxmoHomepageAdmin({ products, homepageDraft, setHomepageDraft, onSaveD
   return <div className="space-y-5">
     <div className="flex flex-col lg:flex-row gap-2 justify-between items-start lg:items-center"><div><h2 className="text-xl font-black">🏠 Homepage Management</h2><p className="text-xs text-slate-500">Control hero, sections, up to 12 promotional products, reviews, FAQ and SEO.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => setPreviewMode(!previewMode)} className="rounded-xl border px-3 py-2 text-xs font-black">{previewMode ? "Close Preview" : "Preview Homepage"}</button><button onClick={onSaveDraft} className="rounded-xl bg-slate-900 text-white px-3 py-2 text-xs font-black">Save Draft</button><button onClick={onPublish} className="rounded-xl bg-emerald-600 text-white px-3 py-2 text-xs font-black">Publish</button></div></div>
     {previewMode ? <div className="rounded-2xl border bg-slate-50 p-4"><LuxmoControlledHomepageSections products={products} homepageConfig={cfg} setSelectedCategory={()=>{}} setActiveTab={()=>{}} setShowSolarCalculator={()=>{}} setShowTrackingModal={()=>{}} setShowWarrantyModal={()=>{}} setShowWhatsAppModal={()=>{}} onSelectProduct={()=>{}} /></div> : <div className="grid lg:grid-cols-[220px_1fr] gap-5">
-      <div className="bg-white border rounded-2xl p-3 space-y-1 h-fit lg:sticky lg:top-24">
-        {["hero","promotions","categories","sections","reviews","faq","seo"].map(x => <button key={x} onClick={()=>setActive(x)} className={`w-full text-left rounded-xl px-3 py-2.5 text-xs font-black ${active===x?'bg-slate-950 text-white':'hover:bg-slate-100'}`}>{x === "hero" ? "🔥 Hero" : x === "promotions" ? "🛍️ Promotional Products" : x === "categories" ? "🧩 Categories" : x === "sections" ? "🧩 Sections ON/OFF & Order" : x === "reviews" ? "⭐ Reviews" : x === "faq" ? "❓ FAQ" : "🔎 SEO"}</button>)}
+      <div className="bg-white border rounded-2xl p-2 sm:p-3 flex lg:block gap-2 overflow-x-auto lg:sticky lg:top-24">
+        {["hero","promotions","categories","sections","reviews","faq","seo"].map(x => <button key={x} onClick={()=>setActive(x)} className={`shrink-0 lg:w-full text-left rounded-xl px-3 py-2.5 text-xs font-black whitespace-nowrap ${active===x?'bg-slate-950 text-white':'hover:bg-slate-100'}`}>{x === "hero" ? "🔥 Hero" : x === "promotions" ? "🛍️ Promotional Products" : x === "categories" ? "🧩 Categories" : x === "sections" ? "🧩 Sections ON/OFF & Order" : x === "reviews" ? "⭐ Reviews" : x === "faq" ? "❓ FAQ" : "🔎 SEO"}</button>)}
       </div>
       <div className="space-y-4">
         {active === "hero" && <div className="bg-white border rounded-2xl p-5 space-y-4"><h3 className="font-black">Hero Section</h3><input className="admin-field" value={cfg.hero.badge} onChange={e=>update("hero.badge",e.target.value)} placeholder="Badge"/><input className="admin-field" value={cfg.hero.title} onChange={e=>update("hero.title",e.target.value)} placeholder="Heading"/><textarea className="admin-field" rows="4" value={cfg.hero.description} onChange={e=>update("hero.description",e.target.value)} placeholder="Description"/><div className="grid md:grid-cols-2 gap-3"><input className="admin-field" value={cfg.hero.primaryText} onChange={e=>update("hero.primaryText",e.target.value)} placeholder="Primary button"/><input className="admin-field" value={cfg.hero.primaryLink} onChange={e=>update("hero.primaryLink",e.target.value)} placeholder="Primary category"/><input className="admin-field" value={cfg.hero.secondaryText} onChange={e=>update("hero.secondaryText",e.target.value)} placeholder="Secondary button"/><input className="admin-field" value={cfg.hero.secondaryLink} onChange={e=>update("hero.secondaryLink",e.target.value)} placeholder="Secondary category"/></div><div className="grid md:grid-cols-2 gap-3"><label className="rounded-xl border p-3 text-xs font-bold">Desktop Hero Image<input type="file" accept="image/*" onChange={uploadImage(v=>update("hero.desktopImage",v))} className="mt-2 block w-full"/></label><label className="rounded-xl border p-3 text-xs font-bold">Mobile Hero Image<input type="file" accept="image/*" onChange={uploadImage(v=>update("hero.mobileImage",v))} className="mt-2 block w-full"/></label></div>{uploading&&<p className="text-xs text-blue-600">Optimizing image…</p>}</div>}
