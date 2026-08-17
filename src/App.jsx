@@ -4981,6 +4981,7 @@ function LuxmoControlledHomepageSections({
         ))}
       </div>
     </section>;
+  };
 
   const productGrid = (list, title, category, key) => <section key={key}><div className="flex items-end justify-between gap-3 mb-5"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p><h2 className="text-2xl md:text-3xl font-black">{title}</h2></div><button onClick={() => goCategory(category)} className="text-sm font-black text-blue-600">View All →</button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={() => {}} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}</div></section>;
 
