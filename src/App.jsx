@@ -1042,12 +1042,48 @@ const safeReadJSON = (key, fallback) => {
 const safeWriteJSON = (key, value) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    luxmoRemoteCustomerWrite(key, value);
     return true;
   } catch (e) {
     console.error("LUXMO storage error", key, e);
     return false;
   }
 };
+
+/* LUXMO HUB PRODUCTION DATA BRIDGE
+   localStorage is cache/offline convenience only.
+   Firestore through Vercel APIs is the production source of truth. */
+const LUXMO_REMOTE_CUSTOMER_KEYS = new Set([
+  "luxmo_pro_wishlist","luxmo_pro_addresses","luxmo_pro_customer",
+  "luxmo_pro_recently_viewed","luxmo_pro_compare","luxmo_pro_stock_alerts"
+]);
+const luxmoApi = async (url, options = {}) => {
+  const response = await fetch(url, {
+    credentials: "include",
+    headers: { Accept: "application/json", ...(options.body ? {"Content-Type":"application/json"} : {}), ...(options.headers || {}) },
+    ...options
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || `API ${response.status}`);
+  return data;
+};
+const luxmoEnsureCustomerSession = () =>
+  fetch("/api/customer-session", { credentials:"include", headers:{Accept:"application/json"} }).catch(()=>null);
+const luxmoRemoteCustomerWrite = (key,value) => {
+  if (!LUXMO_REMOTE_CUSTOMER_KEYS.has(key)) return;
+  luxmoApi("/api/customer-data", {method:"PUT",body:JSON.stringify({key,value})})
+    .catch(error=>console.warn("Remote customer sync:",key,error.message));
+};
+const luxmoServerFirstProducts = async () => {
+  try {
+    const data = await luxmoApi("/api/products");
+    return Array.isArray(data.products) && data.products.length ? data.products : null;
+  } catch (error) {
+    console.warn("Product API unavailable; using cached catalogue:",error.message);
+    return null;
+  }
+};
+
 
 const luxmoMoney = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 
@@ -1549,6 +1585,31 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
   const [couriers,setCouriers]=useState(()=>safeReadJSON("luxmo_pro_couriers",LUXMO_COURIER_PROVIDERS));
   const [storeSettings,setStoreSettings]=useState(()=>luxmoNormalizeStoreSettings(safeReadJSON(LUXMO_STORE_SETTINGS_KEY,LUXMO_DEFAULT_STORE_SETTINGS)));
+
+  useEffect(() => {
+    let cancelled = false;
+    luxmoApi("/api/customer-data").then(data => {
+      if (cancelled) return;
+      const d = data.data || {};
+      if (Array.isArray(d.wishlist)) setWishlist(d.wishlist);
+      if (Array.isArray(d.addresses)) setAddresses(d.addresses);
+      if (d.customer && typeof d.customer === "object") setCustomer(d.customer);
+      if (Array.isArray(d.recentlyViewed)) setRecent(d.recentlyViewed);
+      if (Array.isArray(d.compare)) setCompare(d.compare);
+      if (Array.isArray(d.stockAlerts)) setAlerts(d.stockAlerts);
+    }).catch(error => console.warn("Customer Firestore load unavailable:",error.message));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      luxmoApi("/api/orders").catch(()=>({orders:[]})),
+      luxmoApi("/api/reviews").catch(()=>({reviews:[]}))
+    ]).then(([o,r]) => {
+      if (Array.isArray(o.orders) && o.orders.length) setOrders(o.orders);
+      if (Array.isArray(r.reviews) && r.reviews.length) setReviews(r.reviews);
+    });
+  }, []);
   const [checkout,setCheckout]=useState(false);
   const [discount,setDiscount]=useState(0);
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
@@ -2290,25 +2351,14 @@ function LuxmoLowStockBadge({ products = [], isAdmin = false, onClick }) {
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(() => {
     try {
-      const saved = localStorage.getItem('luxmo_products');
+      const saved = localStorage.getItem("luxmo_products");
       const loaded = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-      return loaded.map(product => {
-        const materialOptions = MATERIAL_OPTIONS[product.category] || [];
-        const material = materialOptions.includes(product.material) ? product.material : (product.category === "Hybrid Solar Inverter" ? "Not Applicable" : "");
-        const taxInfo = getTaxInfo(product.category, material);
-        const isMobileWithoutMaterial = product.category === "Mobile Back Case" && !material;
-        return {
-          ...product,
-          material,
-          hsn: isMobileWithoutMaterial ? "" : (taxInfo?.hsn || product.hsn || ""),
-          gstRate: isMobileWithoutMaterial ? null : (taxInfo?.gstRate ?? product.gstRate ?? null)
-        };
-      });
+      return Array.isArray(loaded) && loaded.length ? loaded : INITIAL_PRODUCTS;
     } catch (err) {
       console.error("Storage load error:", err);
       return INITIAL_PRODUCTS;
     }
-  });
+  });;
 
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -2324,7 +2374,7 @@ export default function LuxmoHubApp() {
   const [showSolarCalculator, setShowSolarCalculator] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
-  // Production homepage: published content comes from the database API.
+  // Production homepage: published content comes from the Firestore-backed database API.
   // localStorage may hold an unsaved admin draft, but it is never the published source of truth.
   const [homepageDraft, setHomepageDraft] = useState(() => {
     try {
@@ -2492,6 +2542,18 @@ export default function LuxmoHubApp() {
     verifyAdminSession();
   }, []);
 
+  useEffect(() => {
+    luxmoEnsureCustomerSession();
+    let cancelled = false;
+    luxmoServerFirstProducts().then(remote => {
+      if (!cancelled && remote) {
+        setProducts(remote);
+        try { localStorage.setItem("luxmo_products", JSON.stringify(remote)); } catch {}
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const openAdminLogin = () => {
     setAuthError("");
     setAuthMessage("");
@@ -2620,13 +2682,14 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    try {
-      localStorage.setItem('luxmo_products', JSON.stringify(products));
-    } catch (e) {
-      console.error("Storage Limit Reached!", e);
-      alert("Browser storage limit full!");
-    }
-  }, [products]);
+    try { localStorage.setItem("luxmo_products", JSON.stringify(products)); } catch {}
+    if (!isAdminLoggedIn) return;
+    const timer = setTimeout(() => {
+      luxmoApi("/api/products", {method:"PUT",body:JSON.stringify({products})})
+        .catch(error => console.error("Firestore product sync failed:", error));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [products, isAdminLoggedIn]);
 
   useEffect(() => {
     const availableModels = MODEL_MAP[formData.category] || [];
