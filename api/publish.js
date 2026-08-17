@@ -1,5 +1,5 @@
 import { getFirestore } from "firebase-admin/firestore";
-import { getFirebaseAdmin } from "../../../lib/firebase-admin.js";
+import { getFirebaseAdmin } from "../lib/firebase-admin.js";
 
 export default async function handler(req, res) {
   try {
@@ -12,14 +12,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // Firebase Admin / Firestore
-    const db = getFirestore(getFirebaseAdmin());
+    // Firebase Admin
+    const adminApp = getFirebaseAdmin();
+    const db = getFirestore(adminApp);
 
     // Request body
-    const body = req.body || {};
+    const homepage = req.body || {};
 
-    // Homepage data must be an object
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (
+      !homepage ||
+      typeof homepage !== "object" ||
+      Array.isArray(homepage)
+    ) {
       return res.status(400).json({
         success: false,
         error: "InvalidBody",
@@ -27,23 +31,27 @@ export default async function handler(req, res) {
       });
     }
 
-    // Remove undefined values because Firestore does not accept them
-    const cleanData = JSON.parse(
-      JSON.stringify(body, (_, value) =>
+    // Clean undefined values
+    const cleanHomepage = JSON.parse(
+      JSON.stringify(homepage, (_, value) =>
         value === undefined ? null : value
       )
     );
 
-    // Save published homepage
-    const homepageRef = db.collection("_system").doc("homepage");
+    // Firestore document
+    const homepageRef = db
+      .collection("_system")
+      .doc("homepage");
 
     await homepageRef.set(
       {
-        ...cleanData,
+        ...cleanHomepage,
         published: true,
         updatedAt: new Date().toISOString(),
       },
-      { merge: true }
+      {
+        merge: true,
+      }
     );
 
     return res.status(200).json({
@@ -57,7 +65,8 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       error: error?.code || "HomepagePublishError",
-      message: error?.message || "Failed to publish homepage.",
+      message:
+        error?.message || "Failed to publish homepage.",
     });
   }
 }
