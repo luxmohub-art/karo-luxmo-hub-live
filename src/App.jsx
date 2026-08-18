@@ -1863,7 +1863,7 @@ function LuxmoOrderTrackingModal({ onClose }) {
   };
 
   return (
-    <div className="luxmo-solar-estimator fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="luxmo-tracking-modal fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200">
         <div className="sticky top-0 bg-white border-b p-5 flex items-center justify-between">
           <div>
@@ -2089,7 +2089,7 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="luxmo-warranty-modal fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200">
         <div className="sticky top-0 z-10 bg-white border-b p-5 flex items-center justify-between">
           <div>
@@ -2242,7 +2242,7 @@ function LuxmoSolarCalculator({ products = [], onClose }) {
   }, [products, totals.recommendedKw]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="luxmo-solar-estimator fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200">
         <div className="sticky top-0 z-10 bg-white border-b p-5 flex items-center justify-between">
           <div>
@@ -2343,7 +2343,7 @@ function LuxmoQuickWhatsAppModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="luxmo-whatsapp-modal fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200">
         <div className="p-5 border-b flex items-center justify-between">
           <div>
@@ -4755,42 +4755,63 @@ export default function LuxmoHubApp() {
 
       </main>
 
-  {/* FORM TEXT CONTRAST FIX — Store Tools + Solar Load Estimator */}
+  {/* FORM TEXT CONTRAST FIX — ALL PUBLIC MODALS + STORE TOOLS */}
   <style>{`
     .luxmo-pro-suite,
-    .luxmo-solar-estimator {
-      color-scheme: light;
+    .luxmo-tracking-modal,
+    .luxmo-warranty-modal,
+    .luxmo-solar-estimator,
+    .luxmo-whatsapp-modal {
+      color-scheme: light !important;
     }
 
     .luxmo-pro-suite input,
     .luxmo-pro-suite textarea,
     .luxmo-pro-suite select,
+    .luxmo-tracking-modal input,
+    .luxmo-tracking-modal textarea,
+    .luxmo-tracking-modal select,
+    .luxmo-warranty-modal input,
+    .luxmo-warranty-modal textarea,
+    .luxmo-warranty-modal select,
     .luxmo-solar-estimator input,
     .luxmo-solar-estimator textarea,
-    .luxmo-solar-estimator select {
+    .luxmo-solar-estimator select,
+    .luxmo-whatsapp-modal input,
+    .luxmo-whatsapp-modal textarea,
+    .luxmo-whatsapp-modal select {
       color: #0f172a !important;
       -webkit-text-fill-color: #0f172a !important;
       background-color: #ffffff !important;
       color-scheme: light !important;
+      opacity: 1 !important;
     }
 
     .luxmo-pro-suite input::placeholder,
     .luxmo-pro-suite textarea::placeholder,
+    .luxmo-tracking-modal input::placeholder,
+    .luxmo-tracking-modal textarea::placeholder,
+    .luxmo-warranty-modal input::placeholder,
+    .luxmo-warranty-modal textarea::placeholder,
     .luxmo-solar-estimator input::placeholder,
-    .luxmo-solar-estimator textarea::placeholder {
+    .luxmo-solar-estimator textarea::placeholder,
+    .luxmo-whatsapp-modal input::placeholder,
+    .luxmo-whatsapp-modal textarea::placeholder {
       color: #64748b !important;
       -webkit-text-fill-color: #64748b !important;
       opacity: 1 !important;
     }
 
     .luxmo-pro-suite select option,
-    .luxmo-solar-estimator select option {
+    .luxmo-tracking-modal select option,
+    .luxmo-warranty-modal select option,
+    .luxmo-solar-estimator select option,
+    .luxmo-whatsapp-modal select option {
       color: #0f172a !important;
       background-color: #ffffff !important;
     }
 
-    /* Newsletter has a deliberately dark background. Keep its field dark,
-       but make the entered text and placeholder readable. */
+    /* Newsletter keeps its dark field by design, but its text remains readable. */
     .luxmo-pro-suite .bg-slate-950 input {
       background-color: #3f3f46 !important;
       color: #ffffff !important;
@@ -4801,6 +4822,22 @@ export default function LuxmoHubApp() {
       color: #d4d4d8 !important;
       -webkit-text-fill-color: #d4d4d8 !important;
       opacity: 1 !important;
+    }
+
+    /* Android/Chrome forced-dark rendering guard. */
+    .luxmo-tracking-modal input,
+    .luxmo-tracking-modal textarea,
+    .luxmo-tracking-modal select,
+    .luxmo-warranty-modal input,
+    .luxmo-warranty-modal textarea,
+    .luxmo-warranty-modal select,
+    .luxmo-solar-estimator input,
+    .luxmo-solar-estimator textarea,
+    .luxmo-solar-estimator select,
+    .luxmo-whatsapp-modal input,
+    .luxmo-whatsapp-modal textarea,
+    .luxmo-whatsapp-modal select {
+      forced-color-adjust: none !important;
     }
   `}</style>
 
