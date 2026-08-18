@@ -285,14 +285,8 @@ export default async function handler(
 
     const baseUrl =
       getBaseUrl(req);
-
-    const endpoint =
-      selectedProvider ===
-      "shiprocket"
-        ? "/api/shiprocket"
-        : "/api/ithink";
-
-    const response =
+const endpoint = "/api/shiprocket";
+ const response =
       await fetch(
         `${baseUrl}${endpoint}`,
         {
