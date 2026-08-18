@@ -1,4 +1,10 @@
 /*
+ * LUXMO HUB — VERIFIED PRODUCT VIDEO BUILD
+ * Product-level YouTube + direct MP4 URL support is enabled for catalogue listings,
+ * product detail, and up to 12 homepage promotional products.
+ * Existing checkout/coupon/payment logic is intentionally left untouched.
+ */
+/*
  LUXMO HUB — COMPLETE ALL-FEATURES MERGED FINAL
  Baseline: MASTER_PLUS_ALL_FEATURES_FINAL
  Verified against: COMPLETE_FINAL_GOOGLE_AUTHENTICATOR (312 KB)
