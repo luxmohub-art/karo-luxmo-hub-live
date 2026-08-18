@@ -1637,7 +1637,9 @@ function LuxmoCheckout({
   const unique = [];
   const seen = new Set();
 
-  for (const coupon of allCoupons) {
+  // Use admin-managed coupons first, then keep built-in coupons as a
+  // safe fallback when older/empty localStorage data is present.
+  for (const coupon of [...allCoupons, ...LUXMO_COUPONS]) {
     const code = String(
       coupon.code || coupon.couponCode || ""
     )
@@ -1647,7 +1649,7 @@ function LuxmoCheckout({
     if (!code || seen.has(code)) continue;
 
     seen.add(code);
-    unique.push(coupon);
+    unique.push({ ...coupon, code });
   }
 
   return unique;
@@ -1689,6 +1691,7 @@ function LuxmoCheckout({
       matched.minOrder ??
         matched.minimumOrder ??
         matched.minAmount ??
+        matched.min ??
         0
     );
 
@@ -2368,7 +2371,6 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
     });
   }, []);
   const [checkout,setCheckout]=useState(false);
-  const [discount,setDiscount]=useState(0);
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
   const selectProduct=p=>{setRecent(prev=>{const next=[p.id,...prev.filter(id=>id!==p.id)].slice(0,12);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,next);return next;});onSelectProduct(p);};
   const createOrder=order=>{
@@ -2428,7 +2430,7 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
       {tab==="analytics"&&isAdminLoggedIn&&<LuxmoAnalytics products={products} orders={orders} reviews={reviews} alerts={alerts}/>} 
       {tab==="couriers"&&isAdminLoggedIn&&<LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/>} 
       {tab==="checklist"&&isAdminLoggedIn&&<LuxmoFeatureChecklist/>}
-      {cart.length>0&&<div className="sticky bottom-3 bg-slate-950 text-white rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-2xl"><div><div className="font-black">Ready to checkout?</div><div className="text-xs text-slate-300">{cart.length} line item(s) · {luxmoMoney(subtotal)}</div></div><div className="flex gap-2"><button onClick={()=>setCheckout(true)} className="bg-blue-600 rounded-xl px-5 py-2.5 text-sm font-black">Checkout</button><LuxmoCouponBox subtotal={subtotal} items={cart} onDiscountChange={(d,c)=>{setDiscount(d);}}/></div></div>}
+      {cart.length>0&&<div className="sticky bottom-3 bg-slate-950 text-white rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-2xl"><div><div className="font-black">Ready to checkout?</div><div className="text-xs text-slate-300">{cart.length} line item(s) · {luxmoMoney(subtotal)}</div></div><div className="flex gap-2"><button onClick={()=>setCheckout(true)} className="bg-blue-600 rounded-xl px-5 py-2.5 text-sm font-black">Checkout</button></div></div>}
     </div>
     {checkout&&<LuxmoCheckout cart={cart} subtotal={subtotal} customer={customer} addresses={addresses} storeSettings={storeSettings} onOrderCreated={createOrder} onClose={()=>setCheckout(false)}/>} 
     <LuxmoCookieConsent/>
@@ -4203,6 +4205,7 @@ export default function LuxmoHubApp() {
               setShowWarrantyModal={setShowWarrantyModal}
               setShowWhatsAppModal={setShowWhatsAppModal}
               onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p?.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
+              onAddToCart={addToCart}
             />
 
             {/* ORIGINAL HOME CONTENT — PRESERVED IN SOURCE, NOT SHOWN ON THE PREMIUM HOME */}
@@ -5793,15 +5796,17 @@ export default function LuxmoHubApp() {
       )}
 
       {/* Floating WhatsApp quick contact */}
-      <button
-        type="button"
-        onClick={() => setShowWhatsAppModal(true)}
-        aria-label="WhatsApp quick inquiry"
-        title="WhatsApp Quick Inquiry"
-        className="fixed bottom-20 right-4 z-[70] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl flex items-center justify-center text-2xl border-4 border-white"
-      >
-        💬
-      </button>
+      {!checkout && (
+        <button
+          type="button"
+          onClick={() => setShowWhatsAppModal(true)}
+          aria-label="WhatsApp quick inquiry"
+          title="WhatsApp Quick Inquiry"
+          className="fixed bottom-20 right-4 z-[70] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl flex items-center justify-center text-2xl border-4 border-white"
+        >
+          💬
+        </button>
+      )}
 
     </div>
   );
@@ -5885,7 +5890,7 @@ const luxmoDiscount = (mrp, salePrice) => {
 function LuxmoControlledHomepageSections({
   products = [], homepageConfig = DEFAULT_HOMEPAGE_CONFIG, setSelectedCategory, setActiveTab,
   setShowSolarCalculator, setShowTrackingModal, setShowWarrantyModal, setShowWhatsAppModal,
-  onSelectProduct
+  onSelectProduct, onAddToCart = () => {}
 }) {
   const [promoIndex, setPromoIndex] = React.useState(0);
   const cfg = homepageConfig || DEFAULT_HOMEPAGE_CONFIG;
@@ -6002,7 +6007,7 @@ function LuxmoControlledHomepageSections({
     </section>;
   };
 
-  const productGrid = (list, title, category, key) => <section key={key}><div className="flex items-end justify-between gap-3 mb-5"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p><h2 className="text-2xl md:text-3xl font-black">{title}</h2></div><button onClick={() => goCategory(category)} className="text-sm font-black text-blue-600">View All →</button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={() => {}} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}</div></section>;
+  const productGrid = (list, title, category, key) => <section key={key}><div className="flex items-end justify-between gap-3 mb-5"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p><h2 className="text-2xl md:text-3xl font-black">{title}</h2></div><button onClick={() => goCategory(category)} className="text-sm font-black text-blue-600">View All →</button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}</div></section>;
 
   const renderSection = (key) => {
     if (enabled[key] === false) return null;
