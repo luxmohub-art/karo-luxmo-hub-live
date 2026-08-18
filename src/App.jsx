@@ -5795,18 +5795,16 @@ export default function LuxmoHubApp() {
         <LuxmoQuickWhatsAppModal onClose={() => setShowWhatsAppModal(false)} />
       )}
 
-      {/* Floating WhatsApp quick contact */}
-      {!checkout && (
-        <button
-          type="button"
-          onClick={() => setShowWhatsAppModal(true)}
-          aria-label="WhatsApp quick inquiry"
-          title="WhatsApp Quick Inquiry"
-          className="fixed bottom-20 right-4 z-[70] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl flex items-center justify-center text-2xl border-4 border-white"
-        >
-          💬
-        </button>
-      )}
+      {/* Floating WhatsApp quick contact — stays below Secure Checkout modal */}
+      <button
+        type="button"
+        onClick={() => setShowWhatsAppModal(true)}
+        aria-label="WhatsApp quick inquiry"
+        title="WhatsApp Quick Inquiry"
+        className="fixed bottom-20 right-4 z-[60] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl flex items-center justify-center text-2xl border-4 border-white"
+      >
+        💬
+      </button>
 
     </div>
   );
