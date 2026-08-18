@@ -1588,63 +1588,70 @@ function LuxmoCheckout({
    * changing the Admin Coupon section.
    */
   const getManagedCoupons = () => {
-    const candidates = [
-      "luxmo_master_coupons",
-      "luxmo_coupons",
-      "luxmo_coupon_rules",
-      "luxmo_admin_coupons",
-      "luxmo_master_admin_settings_v2",
-    ];
+  const candidates = [
+    "luxmo_master_coupons",
+    "luxmo_coupons",
+    "luxmo_coupon_rules",
+    "luxmo_admin_coupons",
+    "luxmo_master_admin_settings_v2",
+  ];
 
-    for (const key of candidates) {
-      try {
-        const raw = localStorage.getItem(key);
-        if (!raw) continue;
+  const allCoupons = [];
 
-        const parsed = JSON.parse(raw);
+  for (const key of candidates) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
 
-        if (Array.isArray(parsed)) {
-          const usable = parsed.filter(
-            item =>
-              item &&
-              typeof item === "object" &&
-              (item.code || item.couponCode)
-          );
+      const parsed = JSON.parse(raw);
 
-          if (usable.length) return usable;
-        }
+      const addCoupons = (list) => {
+        if (!Array.isArray(list)) return;
 
-        if (
-          parsed &&
-          typeof parsed === "object"
-        ) {
-          const possibleArrays = [
-            parsed.coupons,
-            parsed.couponRules,
-            parsed.couponCodes,
-            parsed.promotions,
-          ];
-
-          for (const list of possibleArrays) {
-            if (!Array.isArray(list)) continue;
-
-            const usable = list.filter(
-              item =>
-                item &&
-                typeof item === "object" &&
-                (item.code || item.couponCode)
-            );
-
-            if (usable.length) return usable;
+        list.forEach((item) => {
+          if (
+            item &&
+            typeof item === "object" &&
+            (item.code || item.couponCode)
+          ) {
+            allCoupons.push(item);
           }
-        }
-      } catch {
-        // Ignore invalid localStorage entries.
-      }
-    }
+        });
+      };
 
-    return [];
-  };
+      if (Array.isArray(parsed)) {
+        addCoupons(parsed);
+      }
+
+      if (parsed && typeof parsed === "object") {
+        addCoupons(parsed.coupons);
+        addCoupons(parsed.couponRules);
+        addCoupons(parsed.couponCodes);
+        addCoupons(parsed.promotions);
+      }
+    } catch {
+      // Ignore invalid localStorage entries.
+    }
+  }
+
+  const unique = [];
+  const seen = new Set();
+
+  for (const coupon of allCoupons) {
+    const code = String(
+      coupon.code || coupon.couponCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!code || seen.has(code)) continue;
+
+    seen.add(code);
+    unique.push(coupon);
+  }
+
+  return unique;
+};
 
   const applyCoupon = () => {
     const enteredCode = coupon.trim().toUpperCase();
