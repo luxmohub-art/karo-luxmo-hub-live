@@ -38,6 +38,25 @@ function getBaseUrl(req) {
   return `https://${host}`;
 }
 
+function normalizeProvider(value) {
+  const provider = String(
+    value || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    provider === "ithink" ||
+    provider === "i-think" ||
+    provider === "i think" ||
+    provider === "ithink logistics"
+  ) {
+    return "ithink";
+  }
+
+  return "shiprocket";
+}
+
 export default async function handler(
   req,
   res
@@ -63,32 +82,19 @@ export default async function handler(
       razorpay_payment_id,
     } = body;
 
+    /*
+     * Provider:
+     * Shiprocket OR iThink Logistics
+     */
     const selectedProvider =
-      String(
+      normalizeProvider(
         provider ||
+          order?.provider ||
+          order?.courierProvider ||
           process.env
             .DEFAULT_LOGISTICS_PROVIDER ||
           "shiprocket"
-      )
-        .trim()
-        .toLowerCase();
-
-    if (
-      ![
-        "shiprocket",
-        "ithink",
-      ].includes(selectedProvider)
-    ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Invalid logistics provider",
-        allowedProviders: [
-          "shiprocket",
-          "ithink",
-        ],
-      });
-    }
+      );
 
     if (
       !razorpay_order_id ||
@@ -97,13 +103,13 @@ export default async function handler(
       return res.status(400).json({
         success: false,
         error:
-          "Verified Razorpay order and payment IDs are required",
+          "Verified Razorpay order and payment IDs are required.",
       });
     }
 
-    // IMPORTANT:
-    // Do not trust order data coming from browser.
-    // Read the verified order from Firebase.
+    /*
+     * Firebase Admin
+     */
     const db =
       getFirestore(
         getFirebaseAdmin()
@@ -112,8 +118,12 @@ export default async function handler(
     const ordersCollection =
       db.collection("orders");
 
-    let orderSnapshot = null;
+    let orderSnapshot =
+      null;
 
+    /*
+     * Find order using website order ID
+     */
     const suppliedWebsiteOrderId =
       String(
         order?.id ||
@@ -122,7 +132,9 @@ export default async function handler(
           ""
       ).trim();
 
-    if (suppliedWebsiteOrderId) {
+    if (
+      suppliedWebsiteOrderId
+    ) {
       const ref =
         ordersCollection.doc(
           cleanDocId(
@@ -136,12 +148,16 @@ export default async function handler(
       if (snapshot.exists) {
         orderSnapshot = {
           ref,
-          data: snapshot.data(),
+          data:
+            snapshot.data(),
         };
       }
     }
 
-    // Fallback — find by Razorpay order ID
+    /*
+     * Fallback:
+     * Find using Razorpay Order ID
+     */
     if (!orderSnapshot) {
       const querySnapshot =
         await ordersCollection
@@ -163,7 +179,8 @@ export default async function handler(
 
         orderSnapshot = {
           ref: doc.ref,
-          data: doc.data(),
+          data:
+            doc.data(),
         };
       }
     }
@@ -172,15 +189,19 @@ export default async function handler(
       return res.status(409).json({
         success: false,
         error:
-          "Verified payment order was not found in the database. Do not create a shipment manually.",
+          "Verified payment order was not found in Firebase.",
       });
     }
 
     const dbOrder =
-      orderSnapshot.data ||
-      {};
+      orderSnapshot.data || {};
 
-    // SECURITY CHECK
+    /*
+     * SECURITY:
+     * Shipment is allowed ONLY
+     * after successful server-side
+     * payment verification.
+     */
     if (
       dbOrder.paymentVerified !==
         true ||
@@ -198,7 +219,9 @@ export default async function handler(
       });
     }
 
-    // DUPLICATE SHIPMENT PROTECTION
+    /*
+     * Prevent duplicate shipment
+     */
     if (
       dbOrder.shipmentStatus ===
         "Created" ||
@@ -216,11 +239,6 @@ export default async function handler(
           dbOrder.shipmentId ||
           null,
 
-        orderId:
-          dbOrder.websiteOrderId ||
-          dbOrder.id ||
-          razorpay_order_id,
-
         awb:
           dbOrder.awb ||
           null,
@@ -233,15 +251,23 @@ export default async function handler(
           dbOrder.trackingUrl ||
           null,
 
+        orderId:
+          dbOrder.websiteOrderId ||
+          dbOrder.id ||
+          razorpay_order_id,
+
         message:
-          "Shipment already created for this order",
+          "Shipment already created for this order.",
 
         alreadyProcessed:
           true,
       });
     }
 
-    // Firebase data is the trusted shipment source
+    /*
+     * Firebase is the trusted
+     * source for customer/order data.
+     */
     const trustedOrder = {
       ...(dbOrder.order &&
       typeof dbOrder.order ===
@@ -252,14 +278,19 @@ export default async function handler(
       id:
         dbOrder.websiteOrderId ||
         dbOrder.id ||
-        orderId ||
+        suppliedWebsiteOrderId ||
         razorpay_order_id,
 
       orderId:
         dbOrder.websiteOrderId ||
         dbOrder.id ||
-        orderId ||
+        suppliedWebsiteOrderId ||
         razorpay_order_id,
+
+      websiteOrderId:
+        dbOrder.websiteOrderId ||
+        dbOrder.id ||
+        suppliedWebsiteOrderId,
 
       razorpayOrderId:
         razorpay_order_id,
@@ -283,10 +314,25 @@ export default async function handler(
         selectedProvider,
     };
 
+    /*
+     * IMPORTANT:
+     *
+     * Shiprocket:
+     * /api/shiprocket
+     *
+     * iThink Logistics:
+     * /api/ithink
+     */
+    const endpoint =
+      selectedProvider ===
+      "ithink"
+        ? "/api/ithink"
+        : "/api/shiprocket";
+
     const baseUrl =
       getBaseUrl(req);
-const endpoint = "/api/shiprocket";
- const response =
+
+    const response =
       await fetch(
         `${baseUrl}${endpoint}`,
         {
@@ -295,18 +341,25 @@ const endpoint = "/api/shiprocket";
           headers: {
             "Content-Type":
               "application/json",
+
+            Accept:
+              "application/json",
           },
 
-          body: JSON.stringify({
-            order:
-              trustedOrder,
+          body:
+            JSON.stringify({
+              order:
+                trustedOrder,
 
-            orderId:
-              trustedOrder.orderId,
+              orderId:
+                trustedOrder.orderId,
 
-            paymentId:
-              razorpay_payment_id,
-          }),
+              paymentId:
+                razorpay_payment_id,
+
+              provider:
+                selectedProvider,
+            }),
         }
       );
 
@@ -322,7 +375,7 @@ const endpoint = "/api/shiprocket";
       const errorMessage =
         data?.error ||
         data?.message ||
-        `${selectedProvider} shipment creation failed`;
+        `${selectedProvider} shipment creation failed.`;
 
       await orderSnapshot.ref.set(
         {
@@ -338,13 +391,16 @@ const endpoint = "/api/shiprocket";
           updatedAt:
             new Date().toISOString(),
         },
-        { merge: true }
+        {
+          merge: true,
+        }
       );
 
       return res.status(
         response.status || 500
       ).json({
         success: false,
+
         provider:
           selectedProvider,
 
@@ -356,9 +412,15 @@ const endpoint = "/api/shiprocket";
       });
     }
 
+    /*
+     * Normalize both providers'
+     * responses.
+     */
     const shipmentId =
       data.shipmentId ||
       data.shipment_id ||
+      data.referenceNumber ||
+      data.refnum ||
       data.orderId ||
       data.order_id ||
       null;
@@ -367,11 +429,13 @@ const endpoint = "/api/shiprocket";
       data.awb ||
       data.awbCode ||
       data.awb_code ||
+      data.waybill ||
       null;
 
     const courier =
       data.courier ||
       data.courier_name ||
+      data.logistic_name ||
       null;
 
     const trackingUrl =
@@ -382,7 +446,9 @@ const endpoint = "/api/shiprocket";
     const now =
       new Date().toISOString();
 
-    // Update SAME Firebase order
+    /*
+     * Update the SAME Firebase order.
+     */
     await orderSnapshot.ref.set(
       {
         paymentStatus:
@@ -417,7 +483,9 @@ const endpoint = "/api/shiprocket";
         updatedAt:
           now,
       },
-      { merge: true }
+      {
+        merge: true,
+      }
     );
 
     return res.status(200).json({
@@ -439,7 +507,7 @@ const endpoint = "/api/shiprocket";
 
       message:
         data.message ||
-        `${selectedProvider} shipment created successfully`,
+        `${selectedProvider} shipment created successfully.`,
 
       alreadyProcessed:
         false,
@@ -452,9 +520,10 @@ const endpoint = "/api/shiprocket";
 
     return res.status(500).json({
       success: false,
+
       error:
         error?.message ||
         "Internal server error",
     });
   }
-}
+          }
