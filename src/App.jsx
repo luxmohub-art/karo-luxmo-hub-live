@@ -1507,53 +1507,752 @@ function LuxmoStoreSettingsPanel({ settings, setSettings }) {
   </div>;
 }
 
-function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, onClose, storeSettings }) {
-  const [selectedAddress, setSelectedAddress] = useState(addresses[0]?.id || "");
+function LuxmoCheckout({
+  cart,
+  subtotal,
+  customer,
+  addresses,
+  onOrderCreated,
+  onClose,
+  storeSettings,
+}) {
+  const [selectedAddress, setSelectedAddress] = useState(
+    addresses[0]?.id || ""
+  );
+
   const [draft, setDraft] = useState(() => {
-    const initial = addresses[0] || { name: customer?.name || "", phone: customer?.phone || "", line1: "", line2: "", city: "", state: "Uttar Pradesh", pincode: "" };
-    return { ...initial, pincode: luxmoNormalizePincode(initial.pincode) };
+    const initial =
+      addresses[0] || {
+        name: customer?.name || "",
+        phone: customer?.phone || "",
+        line1: "",
+        line2: "",
+        city: "",
+        state: "Uttar Pradesh",
+        pincode: "",
+      };
+
+    return {
+      ...initial,
+      pincode: luxmoNormalizePincode(initial.pincode),
+    };
   });
-  const [payment, setPayment] = useState(storeSettings.onlinePaymentEnabled ? "razorpay" : "cod");
-  const [shippingMode, setShippingMode] = useState(storeSettings.standardDeliveryEnabled ? "standard" : "express");
+
+  const [payment, setPayment] = useState(
+    storeSettings.onlinePaymentEnabled ? "razorpay" : "cod"
+  );
+
+  const [shippingMode, setShippingMode] = useState(
+    storeSettings.standardDeliveryEnabled ? "standard" : "express"
+  );
+
   const [discount, setDiscount] = useState(0);
   const [coupon, setCoupon] = useState("");
-  const managedPaymentMethods = safeReadJSON("luxmo_master_admin_settings_v2", { paymentMethods: LUXMO_PAYMENT_METHODS })?.paymentMethods || LUXMO_PAYMENT_METHODS;
+  const [couponMessage, setCouponMessage] = useState("");
+  const [couponError, setCouponError] = useState("");
+
+  const managedPaymentMethods =
+    safeReadJSON("luxmo_master_admin_settings_v2", {
+      paymentMethods: LUXMO_PAYMENT_METHODS,
+    })?.paymentMethods || LUXMO_PAYMENT_METHODS;
+
   const effectiveShippingMode =
-    shippingMode === "express" && storeSettings.expressDeliveryEnabled
+    shippingMode === "express" &&
+    storeSettings.expressDeliveryEnabled
       ? "express"
       : storeSettings.standardDeliveryEnabled
         ? "standard"
         : "express";
-  const shipping = luxmoShippingEstimate(cart, effectiveShippingMode, storeSettings);
-  const total = Math.max(0, subtotal - discount + shipping.fee);
-  const cod = luxmoCodEligibility(cart, subtotal, draft.pincode, storeSettings);
-  const submit = () => {
-    if (!draft.name.trim() || !luxmoValidateIndianMobile(draft.phone) || !draft.line1.trim() || !draft.city.trim() || !luxmoValidatePincode(draft.pincode)) return alert("Please complete valid delivery details.");
-    if (payment === "cod" && !cod.allowed) return alert(cod.reason);
-    if (!storeSettings.standardDeliveryEnabled && !storeSettings.expressDeliveryEnabled) {
-      return alert("Delivery is currently unavailable. Please contact LUXMO HUB support.");
+
+  const shipping = luxmoShippingEstimate(
+    cart,
+    effectiveShippingMode,
+    storeSettings
+  );
+
+  const total = Math.max(
+    0,
+    subtotal - discount + shipping.fee
+  );
+
+  const cod = luxmoCodEligibility(
+    cart,
+    subtotal,
+    draft.pincode,
+    storeSettings
+  );
+
+  /*
+   * Read coupon rules from localStorage.
+   * This also supports existing coupon data without
+   * changing the Admin Coupon section.
+   */
+  const getManagedCoupons = () => {
+    const candidates = [
+      "luxmo_master_coupons",
+      "luxmo_coupons",
+      "luxmo_coupon_rules",
+      "luxmo_admin_coupons",
+      "luxmo_master_admin_settings_v2",
+    ];
+
+    for (const key of candidates) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+
+        const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed)) {
+          const usable = parsed.filter(
+            item =>
+              item &&
+              typeof item === "object" &&
+              (item.code || item.couponCode)
+          );
+
+          if (usable.length) return usable;
+        }
+
+        if (
+          parsed &&
+          typeof parsed === "object"
+        ) {
+          const possibleArrays = [
+            parsed.coupons,
+            parsed.couponRules,
+            parsed.couponCodes,
+            parsed.promotions,
+          ];
+
+          for (const list of possibleArrays) {
+            if (!Array.isArray(list)) continue;
+
+            const usable = list.filter(
+              item =>
+                item &&
+                typeof item === "object" &&
+                (item.code || item.couponCode)
+            );
+
+            if (usable.length) return usable;
+          }
+        }
+      } catch {
+        // Ignore invalid localStorage entries.
+      }
     }
+
+    return [];
+  };
+
+  const applyCoupon = () => {
+    const enteredCode = coupon.trim().toUpperCase();
+
+    setCouponError("");
+    setCouponMessage("");
+    setDiscount(0);
+
+    if (!enteredCode) {
+      setCouponError("Please enter a coupon code.");
+      return;
+    }
+
+    const coupons = getManagedCoupons();
+
+    const matched = coupons.find(item => {
+      const code = String(
+        item.code || item.couponCode || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      return (
+        code === enteredCode &&
+        item.enabled !== false
+      );
+    });
+
+    if (!matched) {
+      setCouponError("Invalid or inactive coupon code.");
+      return;
+    }
+
+    const minOrder = Number(
+      matched.minOrder ??
+        matched.minimumOrder ??
+        matched.minAmount ??
+        0
+    );
+
+    if (subtotal < minOrder) {
+      setCouponError(
+        `Minimum order value for this coupon is ${luxmoMoney(
+          minOrder
+        )}.`
+      );
+      return;
+    }
+
+    const type = String(
+      matched.type || matched.discountType || "Percent"
+    ).toLowerCase();
+
+    const value = Number(
+      matched.value ??
+        matched.amount ??
+        matched.discount ??
+        0
+    );
+
+    const maxDiscount = Number(
+      matched.maxDiscount ??
+        matched.maximumDiscount ??
+        0
+    );
+
+    if (!Number.isFinite(value) || value <= 0) {
+      setCouponError("This coupon has an invalid discount.");
+      return;
+    }
+
+    let calculatedDiscount = 0;
+
+    if (
+      type.includes("percent") ||
+      type.includes("%")
+    ) {
+      calculatedDiscount =
+        (subtotal * value) / 100;
+
+      if (
+        maxDiscount > 0 &&
+        calculatedDiscount > maxDiscount
+      ) {
+        calculatedDiscount = maxDiscount;
+      }
+    } else {
+      calculatedDiscount = value;
+    }
+
+    calculatedDiscount = Math.min(
+      Math.max(0, calculatedDiscount),
+      subtotal
+    );
+
+    setDiscount(calculatedDiscount);
+
+    setCouponMessage(
+      `${enteredCode} applied — ${luxmoMoney(
+        calculatedDiscount
+      )} discount.`
+    );
+  };
+
+  const removeCoupon = () => {
+    setCoupon("");
+    setDiscount(0);
+    setCouponMessage("");
+    setCouponError("");
+  };
+
+  const submit = () => {
+    if (
+      !draft.name.trim() ||
+      !luxmoValidateIndianMobile(draft.phone) ||
+      !draft.line1.trim() ||
+      !draft.city.trim() ||
+      !luxmoValidatePincode(draft.pincode)
+    ) {
+      return alert(
+        "Please complete valid delivery details."
+      );
+    }
+
+    if (
+      payment === "cod" &&
+      !cod.allowed
+    ) {
+      return alert(cod.reason);
+    }
+
+    if (
+      !storeSettings.standardDeliveryEnabled &&
+      !storeSettings.expressDeliveryEnabled
+    ) {
+      return alert(
+        "Delivery is currently unavailable. Please contact LUXMO HUB support."
+      );
+    }
+
     const order = {
       id: luxmoOrderNumber(),
-      createdAt: new Date().toISOString(),
-      status: payment === "razorpay" ? "Pending Payment" : "Confirmed",
+
+      createdAt:
+        new Date().toISOString(),
+
+      status:
+        payment === "razorpay"
+          ? "Pending Payment"
+          : "Confirmed",
+
       paymentMethod: payment,
-      paymentStatus: payment === "razorpay" ? "Pending" : "Pending Collection",
-      items: cart.map(item => ({ id: item.id, title: item.title, qty: item.qty, price: luxmoProductPrice(item), model: item.model, colour: item.colour, sku: item.sku })),
+
+      paymentStatus:
+        payment === "razorpay"
+          ? "Pending"
+          : "Pending Collection",
+
+      items: cart.map(item => ({
+        id: item.id,
+        title: item.title,
+        qty: item.qty,
+        price: luxmoProductPrice(item),
+        model: item.model,
+        colour: item.colour,
+        sku: item.sku,
+      })),
+
       subtotal,
+
       discount,
+
       coupon,
+
       shippingFee: shipping.fee,
+
       total,
-      shippingMode,
+
+      shippingMode:
+        effectiveShippingMode,
+
       address: draft,
-      courierProvider: "Pending Assignment",
+
+      courierProvider:
+        "Pending Assignment",
+
       awb: "",
-      trackingUrl: ""
+
+      trackingUrl: "",
     };
+
     onOrderCreated(order);
   };
-  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft({ ...a, pincode: luxmoNormalizePincode(a.pincode) }); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />)}<input key="pincode" type="text" inputMode="numeric" autoComplete="postal-code" maxLength={6} value={draft.pincode || ""} onChange={e => setDraft({ ...draft, pincode: luxmoNormalizePincode(e.target.value) })} placeholder="6-digit Pincode" aria-label="6-digit Pincode" className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery",storeSettings.standardDeliveryEnabled],["express","Express Delivery",storeSettings.expressDeliveryEnabled]].filter(([, ,enabled]) => enabled).map(([id,label]) => { const estimate = luxmoShippingEstimate(cart,id,storeSettings); return <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${effectiveShippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{estimate.fee ? luxmoMoney(estimate.fee) : "FREE"} · {estimate.minDays}–{estimate.maxDays} business days</div></button>; })}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{managedPaymentMethods.filter(m => m.enabled !== false && (m.id === "razorpay" ? storeSettings.onlinePaymentEnabled : m.id === "cod" ? storeSettings.codEnabled : false)).map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : "COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto">
+      <div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden">
+
+        {/* HEADER */}
+        <div className="bg-slate-950 text-white p-5 flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-widest text-slate-400">
+              LUXMO HUB
+            </div>
+
+            <h2 className="text-xl font-black">
+              Secure Checkout
+            </h2>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="text-white text-2xl"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          {/* LEFT */}
+          <div className="lg:col-span-2 space-y-5">
+
+            {/* DELIVERY ADDRESS */}
+            <div className="bg-white border rounded-2xl p-5">
+              <h3 className="font-black">
+                Delivery Address
+              </h3>
+
+              {addresses.length > 0 && (
+                <select
+                  value={selectedAddress}
+                  onChange={e => {
+                    setSelectedAddress(
+                      e.target.value
+                    );
+
+                    const address =
+                      addresses.find(
+                        x =>
+                          x.id ===
+                          e.target.value
+                      );
+
+                    if (address) {
+                      setDraft({
+                        ...address,
+                        pincode:
+                          luxmoNormalizePincode(
+                            address.pincode
+                          ),
+                      });
+                    }
+                  }}
+                  className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"
+                >
+                  <option value="">
+                    Enter new address
+                  </option>
+
+                  {addresses.map(a => (
+                    <option
+                      key={a.id}
+                      value={a.id}
+                    >
+                      {a.label} — {a.name},{" "}
+                      {a.pincode}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+
+                {[
+                  ["name", "Full name"],
+                  ["phone", "Mobile"],
+                  ["line1", "Address"],
+                  ["line2", "Address line 2"],
+                  ["city", "City"],
+                  ["state", "State"],
+                ].map(([key, label]) => (
+                  <input
+                    key={key}
+                    value={draft[key] || ""}
+                    onChange={e =>
+                      setDraft({
+                        ...draft,
+                        [key]: e.target.value,
+                      })
+                    }
+                    placeholder={label}
+                    className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                ))}
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  maxLength={6}
+                  value={draft.pincode || ""}
+                  onChange={e =>
+                    setDraft({
+                      ...draft,
+                      pincode:
+                        luxmoNormalizePincode(
+                          e.target.value
+                        ),
+                    })
+                  }
+                  placeholder="6-digit Pincode"
+                  aria-label="6-digit Pincode"
+                  className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+
+              </div>
+            </div>
+
+            {/* SHIPPING */}
+            <div className="bg-white border rounded-2xl p-5">
+              <h3 className="font-black">
+                Shipping Method
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+
+                {[
+                  [
+                    "standard",
+                    "Standard Delivery",
+                    storeSettings.standardDeliveryEnabled,
+                  ],
+                  [
+                    "express",
+                    "Express Delivery",
+                    storeSettings.expressDeliveryEnabled,
+                  ],
+                ]
+                  .filter(
+                    ([, , enabled]) => enabled
+                  )
+                  .map(
+                    ([
+                      id,
+                      label,
+                    ]) => {
+                      const estimate =
+                        luxmoShippingEstimate(
+                          cart,
+                          id,
+                          storeSettings
+                        );
+
+                      return (
+                        <button
+                          key={id}
+                          onClick={() =>
+                            setShippingMode(id)
+                          }
+                          className={`text-left border rounded-xl p-3 ${
+                            effectiveShippingMode ===
+                            id
+                              ? "border-blue-600 bg-blue-50"
+                              : ""
+                          }`}
+                        >
+                          <div className="font-bold text-sm">
+                            {label}
+                          </div>
+
+                          <div className="text-xs text-slate-500 mt-1">
+                            {estimate.fee
+                              ? luxmoMoney(
+                                  estimate.fee
+                                )
+                              : "FREE"}{" "}
+                            · {estimate.minDays}–
+                            {estimate.maxDays}{" "}
+                            business days
+                          </div>
+                        </button>
+                      );
+                    }
+                  )}
+
+              </div>
+            </div>
+
+            {/* PAYMENT */}
+            <div className="bg-white border rounded-2xl p-5">
+              <h3 className="font-black">
+                Payment Method
+              </h3>
+
+              <div className="space-y-2 mt-3">
+
+                {managedPaymentMethods
+                  .filter(
+                    m =>
+                      m.enabled !== false &&
+                      (
+                        m.id === "razorpay"
+                          ? storeSettings.onlinePaymentEnabled
+                          : m.id === "cod"
+                            ? storeSettings.codEnabled
+                            : false
+                      )
+                  )
+                  .map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() =>
+                        setPayment(m.id)
+                      }
+                      className={`w-full text-left border rounded-xl p-3 ${
+                        payment === m.id
+                          ? "border-blue-600 bg-blue-50"
+                          : ""
+                      }`}
+                    >
+                      <div className="font-bold text-sm">
+                        {m.label}
+                      </div>
+
+                      <div className="text-xs text-slate-500">
+                        {m.description}
+                      </div>
+                    </button>
+                  ))}
+
+              </div>
+
+              {payment === "cod" && (
+                <div
+                  className={`mt-3 rounded-xl p-3 text-xs ${
+                    cod.allowed
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {cod.reason}
+                </div>
+              )}
+
+              {payment === "partial_cod" && (
+                <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">
+                  Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* RIGHT SUMMARY */}
+          <div className="bg-white border rounded-2xl p-5 h-fit sticky top-3">
+
+            <h3 className="font-black">
+              Order Summary
+            </h3>
+
+            <div className="space-y-2 mt-4">
+
+              {cart.map(item => (
+                <div
+                  key={
+                    item.cartKey ||
+                    item.id
+                  }
+                  className="flex justify-between gap-3 text-xs"
+                >
+                  <span>
+                    {item.title} × {item.qty}
+
+                    {item.model
+                      ? ` · ${item.model}`
+                      : ""}
+
+                    {item.colour
+                      ? ` · ${item.colour}`
+                      : ""}
+                  </span>
+
+                  <b>
+                    {luxmoMoney(
+                      luxmoProductPrice(item) *
+                        item.qty
+                    )}
+                  </b>
+                </div>
+              ))}
+
+            </div>
+
+            {/* COUPON */}
+            <div className="border-t mt-4 pt-4">
+
+              <div className="text-sm font-black mb-2">
+                Coupon Code
+              </div>
+
+              <div className="flex gap-2">
+
+                <input
+                  value={coupon}
+                  onChange={e => {
+                    setCoupon(
+                      e.target.value.toUpperCase()
+                    );
+                    setCouponMessage("");
+                    setCouponError("");
+                  }}
+                  placeholder="Enter coupon code"
+                  className="flex-1 border rounded-xl px-3 py-2.5 text-sm"
+                />
+
+                {discount > 0 ? (
+                  <button
+                    onClick={removeCoupon}
+                    className="bg-slate-900 text-white rounded-xl px-4 py-2.5 text-sm font-bold"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={applyCoupon}
+                    className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold"
+                  >
+                    Apply
+                  </button>
+                )}
+
+              </div>
+
+              {couponMessage && (
+                <div className="mt-2 text-xs font-semibold text-emerald-600">
+                  {couponMessage}
+                </div>
+              )}
+
+              {couponError && (
+                <div className="mt-2 text-xs font-semibold text-red-600">
+                  {couponError}
+                </div>
+              )}
+
+            </div>
+
+            <div className="border-t mt-4 pt-4 space-y-2 text-sm">
+
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <b>
+                  {luxmoMoney(subtotal)}
+                </b>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Discount</span>
+                <b className="text-emerald-600">
+                  -{luxmoMoney(discount)}
+                </b>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Shipping</span>
+                <b>
+                  {shipping.fee
+                    ? luxmoMoney(
+                        shipping.fee
+                      )
+                    : "FREE"}
+                </b>
+              </div>
+
+              <div className="flex justify-between text-lg font-black pt-2">
+                <span>Total</span>
+                <b className="text-blue-600">
+                  {luxmoMoney(total)}
+                </b>
+              </div>
+
+            </div>
+
+            <LuxmoPincodeChecker
+              cartItems={cart}
+            />
+
+            <button
+              onClick={submit}
+              className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black"
+            >
+              Place{" "}
+              {payment === "razorpay"
+                ? "Online"
+                : "COD"}{" "}
+              Order
+            </button>
+
+            <p className="text-[10px] text-slate-500 mt-3">
+              Production payment and courier operations must be verified server-side before dispatch.
+            </p>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function LuxmoOrderCenter({ orders, setOrders }) {
