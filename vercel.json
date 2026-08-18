@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/admin-logout",
+      "destination": "/api/admin-session?logout=1"
+    }
+  ]
+}
