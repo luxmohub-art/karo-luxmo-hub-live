@@ -5435,6 +5435,41 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
     phone: BUSINESS_INFO.phones[0]
   }));
   const [orders, setOrders] = React.useState(() => safeReadJSON(LUXMO_PRO_STORAGE.orders, []));
+ React.useEffect(() => {
+  fetch("/api/orders", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      Accept: "application/json"
+    }
+  })
+    .then(async (response) => {
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "Unable to load orders"
+        );
+      }
+
+      if (Array.isArray(data.orders)) {
+        setOrders(data.orders);
+
+        safeWriteJSON(
+          LUXMO_PRO_STORAGE.orders,
+          data.orders
+        );
+      }
+    })
+    .catch((error) => {
+      console.warn(
+        "Firebase orders load unavailable:",
+        error.message
+      );
+    });
+}, []);
   const [saved, setSaved] = React.useState("");
   const [loadingSettings, setLoadingSettings] = React.useState(true);
 
