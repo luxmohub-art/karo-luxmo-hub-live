@@ -963,6 +963,7 @@ const LUXMO_PRO_STORAGE = {
   contacts: "luxmo_pro_contacts",
   cookie: "luxmo_pro_cookie_consent",
   theme: "luxmo_pro_theme",
+  recentSearches: "luxmo_pro_recent_searches",
   notifications: "luxmo_pro_notifications",
   stockAlerts: "luxmo_pro_stock_alerts"
 };
@@ -1240,10 +1241,37 @@ const LUXMO_PROTECTED_FEATURES = [
   "Default store settings system",
   "Store settings persistent storage/key system",
   "Premium homepage sections",
-  "Admin Email + Mobile + OTP authentication",
+  "Google Authenticator 6-digit TOTP admin authentication",
   "Secure HttpOnly admin session",
   "Secure admin logout"
 ];
+
+function LuxmoRecentSearches({ terms = [], onSelect, onClear }) {
+  if (!terms.length) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-black">Search History</p>
+          <h3 className="text-sm font-black text-slate-900">Recently searched terms</h3>
+        </div>
+        <button type="button" onClick={onClear} className="text-xs font-black text-red-600">Clear</button>
+      </div>
+      <div className="flex flex-wrap gap-2 mt-3">
+        {terms.map(term => (
+          <button
+            type="button"
+            key={term}
+            onClick={() => onSelect(term)}
+            className="rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700"
+          >
+            {term}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function LuxmoProBadge({ children, tone = "blue" }) {
   const styles = {
@@ -1481,7 +1509,10 @@ function LuxmoStoreSettingsPanel({ settings, setSettings }) {
 
 function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, onClose, storeSettings }) {
   const [selectedAddress, setSelectedAddress] = useState(addresses[0]?.id || "");
-  const [draft, setDraft] = useState(addresses[0] || { name: customer?.name || "", phone: customer?.phone || "", line1: "", line2: "", city: "", state: "Uttar Pradesh", pincode: "" });
+  const [draft, setDraft] = useState(() => {
+    const initial = addresses[0] || { name: customer?.name || "", phone: customer?.phone || "", line1: "", line2: "", city: "", state: "Uttar Pradesh", pincode: "" };
+    return { ...initial, pincode: luxmoNormalizePincode(initial.pincode) };
+  });
   const [payment, setPayment] = useState(storeSettings.onlinePaymentEnabled ? "razorpay" : "cod");
   const [shippingMode, setShippingMode] = useState(storeSettings.standardDeliveryEnabled ? "standard" : "express");
   const [discount, setDiscount] = useState(0);
@@ -1522,7 +1553,7 @@ function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, on
     };
     onOrderCreated(order);
   };
-  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft(a); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"],["pincode","Pincode"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />)}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery",storeSettings.standardDeliveryEnabled],["express","Express Delivery",storeSettings.expressDeliveryEnabled]].filter(([, ,enabled]) => enabled).map(([id,label]) => { const estimate = luxmoShippingEstimate(cart,id,storeSettings); return <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${effectiveShippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{estimate.fee ? luxmoMoney(estimate.fee) : "FREE"} · {estimate.minDays}–{estimate.maxDays} business days</div></button>; })}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{managedPaymentMethods.filter(m => m.enabled !== false && (m.id === "razorpay" ? storeSettings.onlinePaymentEnabled : m.id === "cod" ? storeSettings.codEnabled : false)).map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : "COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
+  return <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto"><div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-slate-950 text-white p-5 flex items-center justify-between"><div><div className="text-xs uppercase tracking-widest text-slate-400">LUXMO HUB</div><h2 className="text-xl font-black">Secure Checkout</h2></div><button onClick={onClose} className="text-white text-2xl">×</button></div><div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5"><div className="lg:col-span-2 space-y-5"><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Delivery Address</h3>{addresses.length > 0 && <select value={selectedAddress} onChange={e => { setSelectedAddress(e.target.value); const a = addresses.find(x => x.id === e.target.value); if (a) setDraft({ ...a, pincode: luxmoNormalizePincode(a.pincode) }); }} className="w-full mt-3 border rounded-xl px-3 py-2.5 text-sm"><option value="">Enter new address</option>{addresses.map(a => <option key={a.id} value={a.id}>{a.label} — {a.name}, {a.pincode}</option>)}</select>}<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["name","Full name"],["phone","Mobile"],["line1","Address"],["line2","Address line 2"],["city","City"],["state","State"]].map(([key,label]) => <input key={key} value={draft[key] || ""} onChange={e => setDraft({ ...draft, [key]: e.target.value })} placeholder={label} className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />)}<input key="pincode" type="text" inputMode="numeric" autoComplete="postal-code" maxLength={6} value={draft.pincode || ""} onChange={e => setDraft({ ...draft, pincode: luxmoNormalizePincode(e.target.value) })} placeholder="6-digit Pincode" aria-label="6-digit Pincode" className="border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Shipping Method</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">{[["standard","Standard Delivery",storeSettings.standardDeliveryEnabled],["express","Express Delivery",storeSettings.expressDeliveryEnabled]].filter(([, ,enabled]) => enabled).map(([id,label]) => { const estimate = luxmoShippingEstimate(cart,id,storeSettings); return <button key={id} onClick={() => setShippingMode(id)} className={`text-left border rounded-xl p-3 ${effectiveShippingMode === id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{label}</div><div className="text-xs text-slate-500 mt-1">{estimate.fee ? luxmoMoney(estimate.fee) : "FREE"} · {estimate.minDays}–{estimate.maxDays} business days</div></button>; })}</div></div><div className="bg-white border rounded-2xl p-5"><h3 className="font-black">Payment Method</h3><div className="space-y-2 mt-3">{managedPaymentMethods.filter(m => m.enabled !== false && (m.id === "razorpay" ? storeSettings.onlinePaymentEnabled : m.id === "cod" ? storeSettings.codEnabled : false)).map(m => <button key={m.id} onClick={() => setPayment(m.id)} className={`w-full text-left border rounded-xl p-3 ${payment === m.id ? "border-blue-600 bg-blue-50" : ""}`}><div className="font-bold text-sm">{m.label}</div><div className="text-xs text-slate-500">{m.description}</div></button>)}</div>{payment === "cod" && <div className={`mt-3 rounded-xl p-3 text-xs ${cod.allowed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{cod.reason}</div>}{payment === "partial_cod" && <div className="mt-3 bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">Partial COD should be implemented with a verified payment gateway order and server-side balance calculation before production use.</div>}</div></div><div className="bg-white border rounded-2xl p-5 h-fit sticky top-3"><h3 className="font-black">Order Summary</h3><div className="space-y-2 mt-4">{cart.map(item => <div key={item.cartKey || item.id} className="flex justify-between gap-3 text-xs"><span>{item.title} × {item.qty}{item.model ? ` · ${item.model}` : ""}{item.colour ? ` · ${item.colour}` : ""}</span><b>{luxmoMoney(luxmoProductPrice(item)*item.qty)}</b></div>)}</div><div className="border-t mt-4 pt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div><div className="flex justify-between"><span>Discount</span><b>-{luxmoMoney(discount)}</b></div><div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div><div className="flex justify-between text-lg font-black pt-2"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div></div><LuxmoPincodeChecker cartItems={cart}/><button onClick={submit} className="w-full mt-4 bg-blue-600 text-white rounded-xl py-3 font-black">Place {payment === "razorpay" ? "Online" : "COD"} Order</button><p className="text-[10px] text-slate-500 mt-3">Production payment and courier operations must be verified server-side before dispatch.</p></div></div></div></div>;
 }
 
 function LuxmoOrderCenter({ orders, setOrders }) {
@@ -1593,7 +1624,7 @@ function LuxmoFeatureChecklist() {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Readiness" title="Ecommerce Feature Checklist" description="A practical checklist for the Luxmo Hub storefront."/><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{LUXMO_PROTECTED_FEATURES.map((f,i)=><div key={f} className="flex gap-2 items-center border rounded-xl px-3 py-2.5 text-xs"><span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center font-black">✓</span><span>{f}</span></div>)}</div></div>;
 }
 
-function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn, onPay }) {
+function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn, onPay, siteTheme, setSiteTheme }) {
   const [tab,setTab]=useState("overview");
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
@@ -1656,13 +1687,28 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   ];
   if(isAdminLoggedIn) tabs.push(["settings","Store Settings"],["analytics","Analytics"],["couriers","Couriers"],["checklist","Checklist"]);
   return <>
-    <div className="rounded-3xl bg-slate-50 border border-slate-200 p-4 md:p-6 space-y-5">
+    <div className="luxmo-pro-suite rounded-3xl bg-slate-50 border border-slate-200 p-4 md:p-6 space-y-5">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div><div className="text-[11px] uppercase tracking-[0.2em] text-blue-600 font-black">LUXMO HUB PRO</div><h2 className="text-2xl font-black text-slate-900">Ecommerce Control Center</h2><p className="text-sm text-slate-500 mt-1">Customer tools, checkout workflows, reviews, orders, shipping settings and store operations.</p></div>
         <div className="flex flex-wrap gap-2"><LuxmoProBadge tone="green">{products.length} Products</LuxmoProBadge><LuxmoProBadge>{cart.length} Cart Items</LuxmoProBadge><LuxmoProBadge tone="amber">{orders.length} Orders</LuxmoProBadge></div>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">{tabs.map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold border ${tab===id?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-700 border-slate-200"}`}>{label}</button>)}</div>
-      {tab==="overview"&&<div className="space-y-5"><div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><LuxmoMetricCard label="Wishlist" value={wishlist.length} icon="♥"/><LuxmoMetricCard label="Saved Addresses" value={addresses.length} icon="⌂"/><LuxmoMetricCard label="Orders" value={orders.length} icon="▤"/><LuxmoMetricCard label="Compare" value={compare.length} icon="⇄"/></div><LuxmoRecentlyViewed products={products} ids={recent} onSelect={selectProduct} onClear={()=>{setRecent([]);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]);}}/><LuxmoNewsletter/><LuxmoFeatureChecklist/></div>}
+      {tab==="overview"&&<div className="space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-black">Preference</p>
+            <h3 className="text-sm font-black text-slate-900">Dark / Light theme preference</h3>
+            <p className="text-xs text-slate-500 mt-1">Your preference is saved on this device.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSiteTheme(siteTheme === "dark" ? "light" : "dark")}
+            className="rounded-xl bg-slate-900 text-white px-4 py-2.5 text-xs font-black"
+          >
+            {siteTheme === "dark" ? "☀️ Light Mode" : "🌙 Dark Mode"}
+          </button>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><LuxmoMetricCard label="Wishlist" value={wishlist.length} icon="♥"/><LuxmoMetricCard label="Saved Addresses" value={addresses.length} icon="⌂"/><LuxmoMetricCard label="Orders" value={orders.length} icon="▤"/><LuxmoMetricCard label="Compare" value={compare.length} icon="⇄"/></div><LuxmoRecentlyViewed products={products} ids={recent} onSelect={selectProduct} onClear={()=>{setRecent([]);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]);}}/><LuxmoNewsletter/><LuxmoFeatureChecklist/></div>}
       {tab==="profile"&&<div className="space-y-5"><LuxmoCustomerProfile customer={customer} setCustomer={setCustomer}/><LuxmoAddressBook addresses={addresses} setAddresses={setAddresses}/></div>}
       {tab==="wishlist"&&<LuxmoWishlist products={products} wishlist={wishlist} setWishlist={setWishlist} onSelect={selectProduct} onAddToCart={addToCart}/>} 
       {tab==="compare"&&<LuxmoCompare products={products} compareIds={compare} setCompareIds={v=>{setCompare(v);safeWriteJSON(LUXMO_PRO_STORAGE.compare,v)}} onSelect={selectProduct}/>} 
@@ -1817,7 +1863,7 @@ function LuxmoOrderTrackingModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="luxmo-solar-estimator fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200">
         <div className="sticky top-0 bg-white border-b p-5 flex items-center justify-between">
           <div>
@@ -2384,6 +2430,8 @@ export default function LuxmoHubApp() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedModelFilter, setSelectedModelFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [recentSearches, setRecentSearches] = useState(() => safeReadJSON(LUXMO_PRO_STORAGE.recentSearches, []));
+  const [siteTheme, setSiteTheme] = useState(() => safeReadJSON(LUXMO_PRO_STORAGE.theme, "light") === "dark" ? "dark" : "light");
   const [activeTab, setActiveTab] = useState("home");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -2407,6 +2455,13 @@ export default function LuxmoHubApp() {
   const [homepageInitialized, setHomepageInitialized] = useState(false);
   const [homepageLoading, setHomepageLoading] = useState(true);
   const [homepageError, setHomepageError] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LUXMO_PRO_STORAGE.theme, siteTheme);
+      document.documentElement.setAttribute("data-luxmo-theme", siteTheme);
+    } catch {}
+  }, [siteTheme]);
 
   useEffect(() => {
     luxmoLoadRazorpay().catch(error => {
@@ -3373,6 +3428,17 @@ export default function LuxmoHubApp() {
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const term = String(searchQuery || "").trim();
+                  if (term) {
+                    const next = [term, ...recentSearches.filter(x => x.toLowerCase() !== term.toLowerCase())].slice(0, 8);
+                    setRecentSearches(next);
+                    safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, next);
+                    setActiveTab("catalog");
+                  }
+                }
+              }}
               className="w-full pl-9 pr-4 py-1.5 text-sm bg-white text-slate-900 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -3674,6 +3740,15 @@ export default function LuxmoHubApp() {
                 ))}
               </div>
             </div>
+
+            <LuxmoRecentSearches
+              terms={recentSearches}
+              onSelect={(term) => setSearchQuery(term)}
+              onClear={() => {
+                setRecentSearches([]);
+                safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, []);
+              }}
+            />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {filteredProducts.map(prod => (
@@ -4669,6 +4744,8 @@ export default function LuxmoHubApp() {
                 onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowProCenter(false); }}
                 isAdminLoggedIn={isAdminLoggedIn}
                 onPay={handleRazorpayPayment}
+                siteTheme={siteTheme}
+                setSiteTheme={setSiteTheme}
               />
             </div>
           </div>
@@ -4677,6 +4754,100 @@ export default function LuxmoHubApp() {
         <LuxmoAccessibilityTools />
 
       </main>
+
+  {/* FORM TEXT CONTRAST FIX — Store Tools + Solar Load Estimator */}
+  <style>{`
+    .luxmo-pro-suite,
+    .luxmo-solar-estimator {
+      color-scheme: light;
+    }
+
+    .luxmo-pro-suite input,
+    .luxmo-pro-suite textarea,
+    .luxmo-pro-suite select,
+    .luxmo-solar-estimator input,
+    .luxmo-solar-estimator textarea,
+    .luxmo-solar-estimator select {
+      color: #0f172a !important;
+      -webkit-text-fill-color: #0f172a !important;
+      background-color: #ffffff !important;
+      color-scheme: light !important;
+    }
+
+    .luxmo-pro-suite input::placeholder,
+    .luxmo-pro-suite textarea::placeholder,
+    .luxmo-solar-estimator input::placeholder,
+    .luxmo-solar-estimator textarea::placeholder {
+      color: #64748b !important;
+      -webkit-text-fill-color: #64748b !important;
+      opacity: 1 !important;
+    }
+
+    .luxmo-pro-suite select option,
+    .luxmo-solar-estimator select option {
+      color: #0f172a !important;
+      background-color: #ffffff !important;
+    }
+
+    /* Newsletter has a deliberately dark background. Keep its field dark,
+       but make the entered text and placeholder readable. */
+    .luxmo-pro-suite .bg-slate-950 input {
+      background-color: #3f3f46 !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+    }
+
+    .luxmo-pro-suite .bg-slate-950 input::placeholder {
+      color: #d4d4d8 !important;
+      -webkit-text-fill-color: #d4d4d8 !important;
+      opacity: 1 !important;
+    }
+  `}</style>
+
+  {/* DARK/LIGHT THEME PREFERENCE */}
+  <style>{`
+    html[data-luxmo-theme="dark"] .luxmo-page-root {
+      background: #0f172a !important;
+      color: #e2e8f0 !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .bg-white {
+      background-color: #111827 !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .bg-slate-50 {
+      background-color: #0f172a !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .bg-slate-100 {
+      background-color: #1e293b !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .text-slate-900,
+    html[data-luxmo-theme="dark"] .luxmo-page-root .text-slate-800 {
+      color: #f8fafc !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .text-slate-700 {
+      color: #e2e8f0 !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .text-slate-600,
+    html[data-luxmo-theme="dark"] .luxmo-page-root .text-slate-500 {
+      color: #cbd5e1 !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root .border-slate-200,
+    html[data-luxmo-theme="dark"] .luxmo-page-root .border-slate-300 {
+      border-color: #334155 !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root input,
+    html[data-luxmo-theme="dark"] .luxmo-page-root textarea,
+    html[data-luxmo-theme="dark"] .luxmo-page-root select {
+      background-color: #1e293b !important;
+      color: #f8fafc !important;
+      -webkit-text-fill-color: #f8fafc !important;
+      border-color: #475569 !important;
+    }
+    html[data-luxmo-theme="dark"] .luxmo-page-root input::placeholder,
+    html[data-luxmo-theme="dark"] .luxmo-page-root textarea::placeholder {
+      color: #94a3b8 !important;
+      -webkit-text-fill-color: #94a3b8 !important;
+    }
+  `}</style>
 
   {/* MOBILE RESPONSIVE SAFETY — full viewport width on phones */}
   <style>{`
