@@ -1667,7 +1667,13 @@ function LuxmoCheckout({
       return;
     }
 
+    // Always keep the built-in production coupons as a fallback.
+    // This prevents an empty/malformed Admin localStorage record from
+    // disabling WELCOME5 on the customer checkout.
     const coupons = getManagedCoupons();
+    const fallbackCoupon = LUXMO_COUPONS.find(
+      item => String(item.code || "").trim().toUpperCase() === enteredCode
+    );
 
     const matched = coupons.find(item => {
       const code = String(
@@ -1682,16 +1688,18 @@ function LuxmoCheckout({
       );
     });
 
-    if (!matched) {
+    const activeCoupon = matched || fallbackCoupon;
+
+    if (!activeCoupon || activeCoupon.enabled === false) {
       setCouponError("Invalid or inactive coupon code.");
       return;
     }
 
     const minOrder = Number(
-      matched.minOrder ??
-        matched.minimumOrder ??
-        matched.minAmount ??
-        matched.min ??
+      activeCoupon.minOrder ??
+        activeCoupon.minimumOrder ??
+        activeCoupon.minAmount ??
+        activeCoupon.min ??
         0
     );
 
@@ -1705,19 +1713,19 @@ function LuxmoCheckout({
     }
 
     const type = String(
-      matched.type || matched.discountType || "Percent"
+      activeCoupon.type || activeCoupon.discountType || "Percent"
     ).toLowerCase();
 
     const value = Number(
-      matched.value ??
-        matched.amount ??
-        matched.discount ??
+      activeCoupon.value ??
+        activeCoupon.amount ??
+        activeCoupon.discount ??
         0
     );
 
     const maxDiscount = Number(
-      matched.maxDiscount ??
-        matched.maximumDiscount ??
+      activeCoupon.maxDiscount ??
+        activeCoupon.maximumDiscount ??
         0
     );
 
@@ -2159,20 +2167,24 @@ function LuxmoCheckout({
               <div className="flex gap-2">
 
                 <input
+                  type="text"
                   value={coupon}
                   onChange={e => {
-                    setCoupon(
-                      e.target.value.toUpperCase()
-                    );
+                    const value = String(e.target.value || "").toUpperCase();
+                    setCoupon(value);
                     setCouponMessage("");
                     setCouponError("");
                   }}
                   placeholder="Enter coupon code"
-                  className="flex-1 border rounded-xl px-3 py-2.5 text-sm"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="flex-1 min-w-0 border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 caret-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  style={{ color: "#0f172a", backgroundColor: "#ffffff", WebkitTextFillColor: "#0f172a", opacity: 1 }}
                 />
 
                 {discount > 0 ? (
                   <button
+                    type="button"
                     onClick={removeCoupon}
                     className="bg-slate-900 text-white rounded-xl px-4 py-2.5 text-sm font-bold"
                   >
@@ -2180,6 +2192,7 @@ function LuxmoCheckout({
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={applyCoupon}
                     className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold"
                   >
@@ -5796,15 +5809,17 @@ export default function LuxmoHubApp() {
       )}
 
       {/* Floating WhatsApp quick contact — stays below Secure Checkout modal */}
-      <button
-        type="button"
-        onClick={() => setShowWhatsAppModal(true)}
-        aria-label="WhatsApp quick inquiry"
-        title="WhatsApp Quick Inquiry"
-        className="fixed bottom-20 right-4 z-[60] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl flex items-center justify-center text-2xl border-4 border-white"
-      >
-        💬
-      </button>
+      {!showProCenter && (
+        <button
+          type="button"
+          onClick={() => setShowWhatsAppModal(true)}
+          aria-label="WhatsApp quick inquiry"
+          title="WhatsApp Quick Inquiry"
+          className="fixed bottom-20 right-4 z-[60] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl flex items-center justify-center text-2xl border-4 border-white"
+        >
+          💬
+        </button>
+      )}
 
     </div>
   );
@@ -6757,8 +6772,9 @@ function ProductCard({ product, onSelect, onAddToCart }) {
         </div>
       </div>
       <div className="p-4 pt-0">
-        <button 
-          onClick={() => product.variants?.length ? onSelect(product) : onAddToCart(product)} 
+        <button
+          type="button"
+          onClick={() => product.variants?.length ? onSelect(product) : onAddToCart(product)}
           className="w-full bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-800 text-xs font-bold py-2 rounded-lg transition"
         >
           {product.variants?.length ? "Select Model & Colour" : "Add to Cart"}
