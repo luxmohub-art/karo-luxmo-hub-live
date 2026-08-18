@@ -3087,7 +3087,8 @@ export default function LuxmoHubApp() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          amount: total
+          amount: total,
+         websiteOrderId: pendingOrder.id
         })
       });
 
