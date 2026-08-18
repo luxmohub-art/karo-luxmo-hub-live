@@ -1240,6 +1240,143 @@ async function createIThink(
       "iThink Logistics shipment created successfully.",
   };
 }
+/* =====================================================
+   MAIN API HANDLER
+===================================================== */
 
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
 
-/* ==========
+    return res.status(405).json({
+      success: false,
+      error: "Method not allowed",
+    });
+  }
+
+  try {
+    const body = req.body || {};
+
+    const order =
+      body.order &&
+      typeof body.order === "object"
+        ? body.order
+        : {};
+
+    const provider = normalizeProvider(
+      firstValue(
+        body.provider,
+        order.provider,
+        order.courierProvider,
+        process.env.DEFAULT_LOGISTICS_PROVIDER,
+        "shiprocket"
+      )
+    );
+
+    if (
+      !["shiprocket", "ithink"].includes(provider)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid logistics provider.",
+        allowedProviders: [
+          "shiprocket",
+          "ithink",
+        ],
+      });
+    }
+
+    const orderId = getOrderId(
+      order,
+      body.orderId
+    );
+
+    let result;
+
+    if (provider === "ithink") {
+      result = await createIThink(
+        order,
+        orderId
+      );
+
+      return res.status(200).json({
+        success: true,
+
+        provider: "ithink",
+
+        orderId:
+          result.orderId ||
+          orderId,
+
+        shipmentId:
+          result.referenceNumber ||
+          result.waybill ||
+          null,
+
+        awb:
+          result.waybill ||
+          null,
+
+        courier:
+          result.courier ||
+          null,
+
+        trackingUrl:
+          result.trackingUrl ||
+          null,
+
+        message:
+          result.message ||
+          "iThink Logistics shipment created successfully.",
+      });
+    }
+
+    result = await createShiprocket(
+      order,
+      orderId
+    );
+
+    return res.status(200).json({
+      success: true,
+
+      provider: "shiprocket",
+
+      orderId:
+        result.orderId ||
+        orderId,
+
+      shipmentId:
+        result.shipmentId ||
+        null,
+
+      awb:
+        result.awb ||
+        null,
+
+      courier:
+        result.courier ||
+        null,
+
+      trackingUrl:
+        result.trackingUrl ||
+        null,
+
+      message:
+        result.message ||
+        "Shiprocket shipment created successfully.",
+    });
+  } catch (error) {
+    console.error(
+      "Logistics shipment error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      error:
+        error?.message ||
+        "Shipment creation failed.",
+    });
+  }
+}
