@@ -1,18 +1,30 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
     return res.status(405).json({
       success: false,
-      error: "Method not allowed"
+      error: "Method not allowed",
     });
   }
 
   try {
-    const { amount } = req.body;
+    const body = req.body || {};
+    const amount = Number(body.amount);
+    const websiteOrderId = String(body.websiteOrderId || "").trim();
 
-    if (!amount || Number(amount) <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({
         success: false,
-        error: "Invalid amount"
+        error: "Invalid amount",
+      });
+    }
+
+    const amountPaise = Math.round(amount * 100);
+
+    if (amountPaise < 100) {
+      return res.status(400).json({
+        success: false,
+        error: "Minimum payment amount is ₹1",
       });
     }
 
@@ -22,7 +34,7 @@ export default async function handler(req, res) {
     if (!razorpayKeyId || !razorpayKeySecret) {
       return res.status(500).json({
         success: false,
-        error: "Razorpay server configuration missing"
+        error: "Razorpay server configuration missing",
       });
     }
 
@@ -30,23 +42,36 @@ export default async function handler(req, res) {
       `${razorpayKeyId}:${razorpayKeySecret}`
     ).toString("base64");
 
+    const receiptBase = websiteOrderId
+      ? `luxmo_${websiteOrderId}`
+      : `luxmo_${Date.now()}`;
+
+    const receipt = receiptBase
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .slice(0, 40);
+
     const response = await fetch(
       "https://api.razorpay.com/v1/orders",
       {
         method: "POST",
         headers: {
-          "Authorization": `Basic ${auth}`,
-          "Content-Type": "application/json"
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify({
-          amount: Math.round(Number(amount) * 100),
+          amount: amountPaise,
           currency: "INR",
-          receipt: `luxmo_${Date.now()}`
-        })
+          receipt,
+          notes: {
+            website_order_id: websiteOrderId || receipt,
+            source: "luxmo-website",
+          },
+        }),
       }
     );
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       console.error("Razorpay order error:", data);
@@ -54,8 +79,9 @@ export default async function handler(req, res) {
       return res.status(response.status).json({
         success: false,
         error:
-          data.error?.description ||
-          "Razorpay order creation failed"
+          data?.error?.description ||
+          data?.error?.code ||
+          "Razorpay order creation failed",
       });
     }
 
@@ -63,15 +89,15 @@ export default async function handler(req, res) {
       success: true,
       orderId: data.id,
       amount: data.amount,
-      currency: data.currency
+      currency: data.currency,
+      receipt: data.receipt,
     });
-
   } catch (error) {
     console.error("Create order error:", error);
 
     return res.status(500).json({
       success: false,
-      error: "Internal server error"
+      error: error?.message || "Internal server error",
     });
   }
 }
