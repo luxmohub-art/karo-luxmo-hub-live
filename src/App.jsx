@@ -904,6 +904,39 @@ const PolicyDocument = ({ text }) => (
   </div>
 );
 
+const getYouTubeEmbedUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, '').toLowerCase();
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      if (url.pathname === '/watch') {
+        const id = url.searchParams.get('v');
+        return id ? `https://www.youtube.com/embed/${encodeURIComponent(id)}` : '';
+      }
+      const match = url.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/);
+      return match?.[1] ? `https://www.youtube.com/embed/${encodeURIComponent(match[1])}` : '';
+    }
+    if (host === 'youtu.be') {
+      const id = url.pathname.replace(/^\//, '').split('/')[0];
+      return id ? `https://www.youtube.com/embed/${encodeURIComponent(id)}` : '';
+    }
+  } catch {}
+  return '';
+};
+
+const isSafeVideoUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+};
+
 const compressImage = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3436,6 +3469,7 @@ export default function LuxmoHubApp() {
     price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
     images: [], published: true, colours: [MOBILE_COLOURS[0]], variants: [],
     badge: '', bestSeller: false, hotDeal: false, featured: false, buyNowUrl: '', detailsUrl: '',
+    youtubeUrl: '', videoUrl: '',
     seoTitle: '', seoDescription: '', seoCanonical: '', seoOgImage: '', specs: '',
     inverterSpecs: { ratedPower: '', batteryVoltage: '', mpptCurrent: '', pvInput: '', mpptVoltage: '', acInput: '', acOutput: '', batteryType: '', bms: '', wifi: '', parallel: '', ipRating: '', weight: '', warranty: '' },
     mobileSpecs: { brand: '', phoneModel: MOBILE_MODELS[0], material: '', magsafe: '', cameraProtection: '', colour: '' }
@@ -3563,6 +3597,16 @@ export default function LuxmoHubApp() {
       return;
     }
 
+    if (formData.youtubeUrl?.trim() && !getYouTubeEmbedUrl(formData.youtubeUrl)) {
+      setFormError('Please enter a valid YouTube video URL.');
+      return;
+    }
+
+    if (formData.videoUrl?.trim() && !isSafeVideoUrl(formData.videoUrl)) {
+      setFormError('Please enter a valid HTTP/HTTPS Full HD / 4K video URL.');
+      return;
+    }
+
     const taxInfo = getTaxInfo(formData.category, formData.material);
     if (formData.category === "Mobile Back Case" && !formData.material) {
       setFormError('Please select the correct mobile case material so the correct HSN code can be applied.');
@@ -3601,6 +3645,8 @@ export default function LuxmoHubApp() {
       featured: Boolean(formData.featured),
       buyNowUrl: formData.buyNowUrl?.trim() || '',
       detailsUrl: formData.detailsUrl?.trim() || '',
+      youtubeUrl: formData.youtubeUrl?.trim() || '',
+      videoUrl: formData.videoUrl?.trim() || '',
       seoTitle: formData.seoTitle?.trim() || '',
       seoDescription: formData.seoDescription?.trim() || '',
       seoCanonical: formData.seoCanonical?.trim() || '',
@@ -3626,6 +3672,7 @@ export default function LuxmoHubApp() {
       price: '', salePrice: '', stock: '', sku: '', hsn: '42029900', gstRate: '18',
       images: [], published: true, colours: [MOBILE_COLOURS[0]], variants: [],
       badge: '', bestSeller: false, hotDeal: false, featured: false, buyNowUrl: '', detailsUrl: '',
+      youtubeUrl: '', videoUrl: '',
       seoTitle: '', seoDescription: '', seoCanonical: '', seoOgImage: '', specs: '',
     inverterSpecs: { ratedPower: '', batteryVoltage: '', mpptCurrent: '', pvInput: '', mpptVoltage: '', acInput: '', acOutput: '', batteryType: '', bms: '', wifi: '', parallel: '', ipRating: '', weight: '', warranty: '' },
     mobileSpecs: { brand: '', phoneModel: MOBILE_MODELS[0], material: '', magsafe: '', cameraProtection: '', colour: '' }
@@ -3648,6 +3695,8 @@ export default function LuxmoHubApp() {
       gstRate: taxInfo?.gstRate ?? '',
       salePrice: prod.salePrice || '',
       images: prod.images || (prod.image ? [prod.image] : []),
+      youtubeUrl: prod.youtubeUrl || '',
+      videoUrl: prod.videoUrl || '',
       seoCanonical: prod.seoCanonical || '',
       seoOgImage: prod.seoOgImage || '',
       inverterSpecs: { ratedPower: '', batteryVoltage: '', mpptCurrent: '', pvInput: '', mpptVoltage: '', acInput: '', acOutput: '', batteryType: '', bms: '', wifi: '', parallel: '', ipRating: '', weight: '', warranty: '', ...(prod.inverterSpecs || {}) },
@@ -4998,6 +5047,41 @@ export default function LuxmoHubApp() {
                   ))}
                 </div>
               )}
+
+              {(selectedProduct.youtubeUrl || selectedProduct.videoUrl) && (
+                <div className="rounded-2xl border bg-slate-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-black text-slate-900">🎬 Product Video</h3>
+                    {selectedProduct.videoUrl && <span className="text-[10px] font-bold text-slate-500">Full HD / 4K</span>}
+                  </div>
+
+                  {getYouTubeEmbedUrl(selectedProduct.youtubeUrl) && (
+                    <div className="relative w-full aspect-video overflow-hidden rounded-xl bg-black">
+                      <iframe
+                        src={getYouTubeEmbedUrl(selectedProduct.youtubeUrl)}
+                        title={`${selectedProduct.title} product video`}
+                        className="absolute inset-0 w-full h-full"
+                        loading="lazy"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+
+                  {isSafeVideoUrl(selectedProduct.videoUrl) && (
+                    <video
+                      className="w-full max-h-[560px] rounded-xl bg-black object-contain"
+                      controls
+                      playsInline
+                      preload="metadata"
+                      poster={(displayedProduct.images && displayedProduct.images[0]) || displayedProduct.image || ''}
+                      src={selectedProduct.videoUrl}
+                    >
+                      Your browser does not support HTML5 video.
+                    </video>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -5365,6 +5449,27 @@ export default function LuxmoHubApp() {
                     <input className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.buyNowUrl || ''} onChange={e=>setFormData({...formData,buyNowUrl:e.target.value})} placeholder="Buy Now URL (optional)" />
                     <input className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.detailsUrl || ''} onChange={e=>setFormData({...formData,detailsUrl:e.target.value})} placeholder="View Details URL (optional)" />
                     <input className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.seoTitle || ''} onChange={e=>setFormData({...formData,seoTitle:e.target.value})} placeholder="Product SEO Title" />
+                  </div>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+                    <div>
+                      <div className="font-black text-slate-900">🎬 Product Video</div>
+                      <p className="text-[11px] text-slate-600 mt-1">Add a YouTube video and/or a direct Full HD / 4K video URL. Large MP4 files are not stored inside App.jsx.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">YouTube Video URL</label>
+                        <input type="url" className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.youtubeUrl || ''} onChange={e=>setFormData({...formData,youtubeUrl:e.target.value})} placeholder="https://www.youtube.com/watch?v=..." />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Full HD / 4K Video URL</label>
+                        <input type="url" className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.videoUrl || ''} onChange={e=>setFormData({...formData,videoUrl:e.target.value})} placeholder="https://cdn.example.com/product-video.mp4" />
+                      </div>
+                    </div>
+                    {(formData.youtubeUrl || formData.videoUrl) && (
+                      <div className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                        Video link saved with this product. The customer product page will show the available video(s).
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-4 text-xs font-bold">
                     <label><input type="checkbox" checked={!!formData.featured} onChange={e=>setFormData({...formData,featured:e.target.checked})}/> Featured</label>
@@ -5906,6 +6011,7 @@ function LuxmoControlledHomepageSections({
   onSelectProduct, onAddToCart = () => {}
 }) {
   const [promoIndex, setPromoIndex] = React.useState(0);
+  const [promoVideo, setPromoVideo] = React.useState(null);
   const cfg = homepageConfig || DEFAULT_HOMEPAGE_CONFIG;
   const enabled = cfg.sectionEnabled || DEFAULT_HOMEPAGE_CONFIG.sectionEnabled;
   const publishedProducts = products.filter(p => p.published !== false);
@@ -5927,6 +6033,8 @@ function LuxmoControlledHomepageSections({
       image: slot.image || p?.images?.[0] || p?.image || "",
       mrp: Number(slot.mrp ?? p?.price ?? 0),
       salePrice: Number(slot.salePrice ?? p?.salePrice ?? p?.price ?? 0),
+      youtubeUrl: slot.youtubeUrl || p?.youtubeUrl || "",
+      videoUrl: slot.videoUrl || p?.videoUrl || "",
       discount: luxmoDiscount(slot.mrp ?? p?.price, slot.salePrice ?? p?.salePrice ?? p?.price)
     };
   });
@@ -5946,10 +6054,13 @@ function LuxmoControlledHomepageSections({
           {(() => {
             const renderPromoCard = (p, i) => {
               const price = p.salePrice || p.mrp;
+              const hasVideo = Boolean(getYouTubeEmbedUrl(p.youtubeUrl) || isSafeVideoUrl(p.videoUrl));
               return <article key={p.id || i} className="snap-start shrink-0 w-[82vw] max-w-[320px] sm:w-[46%] lg:w-auto lg:flex-1 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-lg transition">
-                <button type="button" className="block w-full text-left" onClick={() => { if (p.id && getProduct(p.id) && onSelectProduct) onSelectProduct(getProduct(p.id)); }}>
+                <div className="block w-full text-left cursor-pointer" onClick={() => { if (p.id && getProduct(p.id) && onSelectProduct) onSelectProduct(getProduct(p.id)); }}>
                   <div className="relative aspect-square bg-slate-100 overflow-hidden">
                     {p.image ? <img src={p.image} alt={p.title} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full grid place-items-center text-5xl">📦</div>}
+                    {hasVideo && <button type="button" aria-label={`Play ${p.title} video`} onClick={(e) => { e.stopPropagation(); setPromoVideo(p); }} className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-slate-950/85 text-white grid place-items-center shadow-xl ring-4 ring-white/70 hover:scale-105 transition" title="Watch product video">▶</button>}
+                    {hasVideo && <span className="absolute right-2 bottom-2 rounded-full bg-white/95 text-slate-950 text-[9px] font-black px-2 py-1 shadow">🎬 VIDEO</span>}
                     {p.badge && <span className="absolute left-2 top-2 rounded-full bg-red-600 text-white text-[10px] font-black px-2.5 py-1">{p.badge}</span>}
                     {p.bestSeller && <span className="absolute right-2 top-2 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-1">BEST SELLER</span>}
                     {p.hotDeal && <span className="absolute left-2 bottom-2 rounded-full bg-slate-950 text-white text-[9px] font-black px-2 py-1">HOT DEAL</span>}
@@ -5960,7 +6071,7 @@ function LuxmoControlledHomepageSections({
                     <div className="mt-2 flex items-baseline gap-2 flex-wrap"><span className="text-lg font-black text-slate-950">₹{price.toLocaleString("en-IN")}</span>{p.mrp > price && <span className="text-xs text-slate-400 line-through">₹{p.mrp.toLocaleString("en-IN")}</span>}</div>
                     {p.discount > 0 && <div className="mt-1 text-xs font-black text-emerald-700">🔥 {p.discount}% OFF</div>}
                   </div>
-                </button>
+                </div>
                 <div className="p-3 pt-0 grid grid-cols-2 gap-2"><button type="button" onClick={() => { if (p.detailsUrl) { window.location.href = p.detailsUrl; return; } if (p.id && getProduct(p.id) && onSelectProduct) onSelectProduct(getProduct(p.id)); }} className="rounded-xl border border-slate-300 py-2 text-[11px] font-black">View Details</button><button type="button" onClick={() => { if (p.buyNowUrl) { window.location.href = p.buyNowUrl; return; } if (p.id && getProduct(p.id)) { setActiveTab("catalog"); if (onSelectProduct) onSelectProduct(getProduct(p.id)); } }} className="rounded-xl bg-slate-950 text-white py-2 text-[11px] font-black">Buy Now</button></div>
               </article>;
             };
@@ -6041,7 +6152,26 @@ function LuxmoControlledHomepageSections({
     return null;
   };
 
-  return <div className="space-y-10 min-w-0 w-full">{visibleSections.map(renderSection)}</div>;
+  return <>
+    <div className="space-y-10 min-w-0 w-full">{visibleSections.map(renderSection)}</div>
+    {promoVideo && (
+      <div className="fixed inset-0 z-[95] bg-black/80 p-4 sm:p-6 grid place-items-center" role="dialog" aria-modal="true" aria-label="Product video">
+        <div className="w-full max-w-4xl rounded-2xl bg-white overflow-hidden shadow-2xl">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b">
+            <div className="min-w-0"><div className="font-black text-sm truncate">{promoVideo.title}</div><div className="text-[10px] text-slate-500">Product Video</div></div>
+            <button type="button" onClick={() => setPromoVideo(null)} className="shrink-0 w-9 h-9 rounded-full border font-black" aria-label="Close video">×</button>
+          </div>
+          <div className="bg-black aspect-video">
+            {getYouTubeEmbedUrl(promoVideo.youtubeUrl) ? (
+              <iframe title={`${promoVideo.title} product video`} src={`${getYouTubeEmbedUrl(promoVideo.youtubeUrl)}?autoplay=1&rel=0`} className="w-full h-full" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen />
+            ) : isSafeVideoUrl(promoVideo.videoUrl) ? (
+              <video src={promoVideo.videoUrl} className="w-full h-full object-contain" controls autoPlay playsInline preload="metadata" />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    )}
+  </>;
 }
 
 function LuxmoHomepageAdmin({ products, homepageDraft, setHomepageDraft, onSaveDraft, onPublish, previewMode, setPreviewMode }) {
@@ -6059,7 +6189,7 @@ function LuxmoHomepageAdmin({ products, homepageDraft, setHomepageDraft, onSaveD
     if ((cfg.promos || []).length >= 12) return alert("Maximum 12 promotional products allowed.");
     const available = products.find(p => !(cfg.promos || []).some(x => x.productId === p.id));
     if (!available) return alert("All available products are already added.");
-    setHomepageDraft(prev => ({ ...prev, promos: [...(prev.promos || []), { id: `promo-${Date.now()}`, productId: available.id, title: available.title, image: available.images?.[0] || "", images: Array.isArray(available.images) ? available.images.slice(0, 5) : [], mrp: available.price || 0, salePrice: available.salePrice || available.price || 0, badge: "HOT DEAL", bestSeller: false, hotDeal: true, featured: true, show: true, order: (prev.promos || []).length + 1, detailsUrl: "", buyNowUrl: "" }] }));
+    setHomepageDraft(prev => ({ ...prev, promos: [...(prev.promos || []), { id: `promo-${Date.now()}`, productId: available.id, title: available.title, image: available.images?.[0] || "", images: Array.isArray(available.images) ? available.images.slice(0, 5) : [], mrp: available.price || 0, salePrice: available.salePrice || available.price || 0, youtubeUrl: available.youtubeUrl || "", videoUrl: available.videoUrl || "", badge: "HOT DEAL", bestSeller: false, hotDeal: true, featured: true, show: true, order: (prev.promos || []).length + 1, detailsUrl: "", buyNowUrl: "" }] }));
   };
   const updatePromo = (id, patch) => setHomepageDraft(prev => ({ ...prev, promos: (prev.promos || []).map(x => x.id === id ? { ...x, ...patch } : x) }));
   const removePromo = id => setHomepageDraft(prev => ({ ...prev, promos: (prev.promos || []).filter(x => x.id !== id).map((x,i) => ({...x,order:i+1})) }));
@@ -6077,9 +6207,9 @@ function LuxmoHomepageAdmin({ products, homepageDraft, setHomepageDraft, onSaveD
       </div>
       <div className="space-y-4">
         {active === "hero" && <div className="bg-white border rounded-2xl p-5 space-y-4"><h3 className="font-black">Hero Section</h3><input className="admin-field" value={cfg.hero.badge} onChange={e=>update("hero.badge",e.target.value)} placeholder="Badge"/><input className="admin-field" value={cfg.hero.title} onChange={e=>update("hero.title",e.target.value)} placeholder="Heading"/><textarea className="admin-field" rows="4" value={cfg.hero.description} onChange={e=>update("hero.description",e.target.value)} placeholder="Description"/><div className="grid md:grid-cols-2 gap-3"><input className="admin-field" value={cfg.hero.primaryText} onChange={e=>update("hero.primaryText",e.target.value)} placeholder="Primary button"/><input className="admin-field" value={cfg.hero.primaryLink} onChange={e=>update("hero.primaryLink",e.target.value)} placeholder="Primary category"/><input className="admin-field" value={cfg.hero.secondaryText} onChange={e=>update("hero.secondaryText",e.target.value)} placeholder="Secondary button"/><input className="admin-field" value={cfg.hero.secondaryLink} onChange={e=>update("hero.secondaryLink",e.target.value)} placeholder="Secondary category"/></div><div className="grid md:grid-cols-2 gap-3"><label className="rounded-xl border p-3 text-xs font-bold">Desktop Hero Image<input type="file" accept="image/*" onChange={uploadImage(v=>update("hero.desktopImage",v))} className="mt-2 block w-full"/></label><label className="rounded-xl border p-3 text-xs font-bold">Mobile Hero Image<input type="file" accept="image/*" onChange={uploadImage(v=>update("hero.mobileImage",v))} className="mt-2 block w-full"/></label></div>{uploading&&<p className="text-xs text-blue-600">Optimizing image…</p>}</div>}
-        {active === "promotions" && <div className="bg-white border rounded-2xl p-5 space-y-4"><div className="flex justify-between items-center"><div><h3 className="font-black">🛍️ Promotional Products</h3><p className="text-xs text-slate-500">Amazon/Flipkart-style carousel. Maximum 12 products.</p></div><button onClick={addPromo} disabled={(cfg.promos||[]).length>=12} className="rounded-xl bg-blue-600 disabled:bg-slate-300 text-white px-3 py-2 text-xs font-black">+ Add Product</button></div>{(cfg.promos||[]).map((slot,i)=>{const p=products.find(x=>x.id===slot.productId);const discount=luxmoDiscount(slot.mrp,slot.salePrice);return <div key={slot.id} className="rounded-2xl border p-4 space-y-3"><div className="flex justify-between gap-2"><div className="font-black text-sm">#{i+1} {slot.title || p?.title}</div><div className="flex gap-1"><button onClick={()=>movePromo(slot.id,-1)} className="border rounded-lg px-2">↑</button><button onClick={()=>movePromo(slot.id,1)} className="border rounded-lg px-2">↓</button><button onClick={()=>removePromo(slot.id)} className="border border-red-200 text-red-600 rounded-lg px-2">Delete</button></div></div><select className="admin-field" value={slot.productId||""} onChange={e=>{const np=products.find(x=>x.id===e.target.value);updatePromo(slot.id,{productId:e.target.value,title:np?.title||slot.title,image:np?.images?.[0]||slot.image,images:Array.isArray(np?.images)?np.images.slice(0,5):(slot.images||[]),mrp:np?.price??slot.mrp,salePrice:np?.salePrice??np?.price??slot.salePrice});}}><option value="">Select product</option>{products.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select><div className="grid md:grid-cols-2 gap-3"><input className="admin-field" value={slot.title||""} onChange={e=>updatePromo(slot.id,{title:e.target.value})} placeholder="Promotional title"/><input className="admin-field" value={slot.badge||""} onChange={e=>updatePromo(slot.id,{badge:e.target.value})} placeholder="Offer badge e.g. 20% OFF"/><input type="number" className="admin-field" value={slot.mrp??""} onChange={e=>updatePromo(slot.id,{mrp:e.target.value})} placeholder="MRP"/><input type="number" className="admin-field" value={slot.salePrice??""} onChange={e=>updatePromo(slot.id,{salePrice:e.target.value})} placeholder="Sale price"/></div><div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm font-black text-emerald-700">Automatic Discount: {discount}%</div><div className="flex flex-wrap gap-4 text-xs font-bold"><label><input type="checkbox" checked={slot.show!==false} onChange={e=>updatePromo(slot.id,{show:e.target.checked})}/> Show</label><label><input type="checkbox" checked={!!slot.bestSeller} onChange={e=>updatePromo(slot.id,{bestSeller:e.target.checked})}/> Best Seller</label><label><input type="checkbox" checked={!!slot.hotDeal} onChange={e=>updatePromo(slot.id,{hotDeal:e.target.checked})}/> Hot Deal</label><label><input type="checkbox" checked={!!slot.featured} onChange={e=>updatePromo(slot.id,{featured:e.target.checked})}/> Featured</label></div><label className="block rounded-xl border p-3 text-xs font-bold">Change Main Promotional Photo<input type="file" accept="image/*" onChange={uploadImage(v=>updatePromo(slot.id,{image:v,images:[v,...(slot.images||[]).filter(x=>x!==v)].slice(0,5)}))} className="mt-2 block w-full"/></label>
+        {active === "promotions" && <div className="bg-white border rounded-2xl p-5 space-y-4"><div className="flex justify-between items-center"><div><h3 className="font-black">🛍️ Promotional Products</h3><p className="text-xs text-slate-500">Amazon/Flipkart-style carousel. Maximum 12 products.</p></div><button onClick={addPromo} disabled={(cfg.promos||[]).length>=12} className="rounded-xl bg-blue-600 disabled:bg-slate-300 text-white px-3 py-2 text-xs font-black">+ Add Product</button></div>{(cfg.promos||[]).map((slot,i)=>{const p=products.find(x=>x.id===slot.productId);const discount=luxmoDiscount(slot.mrp,slot.salePrice);return <div key={slot.id} className="rounded-2xl border p-4 space-y-3"><div className="flex justify-between gap-2"><div className="font-black text-sm">#{i+1} {slot.title || p?.title}</div><div className="flex gap-1"><button onClick={()=>movePromo(slot.id,-1)} className="border rounded-lg px-2">↑</button><button onClick={()=>movePromo(slot.id,1)} className="border rounded-lg px-2">↓</button><button onClick={()=>removePromo(slot.id)} className="border border-red-200 text-red-600 rounded-lg px-2">Delete</button></div></div><select className="admin-field" value={slot.productId||""} onChange={e=>{const np=products.find(x=>x.id===e.target.value);updatePromo(slot.id,{productId:e.target.value,title:np?.title||slot.title,image:np?.images?.[0]||slot.image,images:Array.isArray(np?.images)?np.images.slice(0,5):(slot.images||[]),mrp:np?.price??slot.mrp,salePrice:np?.salePrice??np?.price??slot.salePrice,youtubeUrl:np?.youtubeUrl||slot.youtubeUrl||"",videoUrl:np?.videoUrl||slot.videoUrl||""});}}><option value="">Select product</option>{products.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select><div className="grid md:grid-cols-2 gap-3"><input className="admin-field" value={slot.title||""} onChange={e=>updatePromo(slot.id,{title:e.target.value})} placeholder="Promotional title"/><input className="admin-field" value={slot.badge||""} onChange={e=>updatePromo(slot.id,{badge:e.target.value})} placeholder="Offer badge e.g. 20% OFF"/><input type="number" className="admin-field" value={slot.mrp??""} onChange={e=>updatePromo(slot.id,{mrp:e.target.value})} placeholder="MRP"/><input type="number" className="admin-field" value={slot.salePrice??""} onChange={e=>updatePromo(slot.id,{salePrice:e.target.value})} placeholder="Sale price"/></div><div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm font-black text-emerald-700">Automatic Discount: {discount}%</div><div className="flex flex-wrap gap-4 text-xs font-bold"><label><input type="checkbox" checked={slot.show!==false} onChange={e=>updatePromo(slot.id,{show:e.target.checked})}/> Show</label><label><input type="checkbox" checked={!!slot.bestSeller} onChange={e=>updatePromo(slot.id,{bestSeller:e.target.checked})}/> Best Seller</label><label><input type="checkbox" checked={!!slot.hotDeal} onChange={e=>updatePromo(slot.id,{hotDeal:e.target.checked})}/> Hot Deal</label><label><input type="checkbox" checked={!!slot.featured} onChange={e=>updatePromo(slot.id,{featured:e.target.checked})}/> Featured</label></div><label className="block rounded-xl border p-3 text-xs font-bold">Change Main Promotional Photo<input type="file" accept="image/*" onChange={uploadImage(v=>updatePromo(slot.id,{image:v,images:[v,...(slot.images||[]).filter(x=>x!==v)].slice(0,5)}))} className="mt-2 block w-full"/></label>
 <label className="block rounded-xl border p-3 text-xs font-bold">Product Photo Gallery (up to 5)<input type="file" accept="image/*" multiple onChange={async e=>{const files=Array.from(e.target.files||[]).slice(0,5); if(!files.length)return; setUploading(true); try{const imgs=[]; for(const f of files){imgs.push(await compressImage(f));} updatePromo(slot.id,{images:imgs,image:imgs[0]||slot.image});}catch{alert("Gallery upload failed.");}finally{setUploading(false);}}} className="mt-2 block w-full"/>{(slot.images||[]).length>0&&<div className="mt-2 grid grid-cols-5 gap-2">{(slot.images||[]).map((img,gi)=><div key={gi} className="relative"><img src={img} alt={`Promo ${gi+1}`} className="w-full aspect-square object-cover rounded-lg border"/><button type="button" onClick={()=>{const imgs=(slot.images||[]).filter((_,idx)=>idx!==gi); updatePromo(slot.id,{images:imgs,image:imgs[0]||""});}} className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white text-[10px] font-black">×</button></div>)}</div>}</label>
-<div className="grid md:grid-cols-2 gap-3"><input className="admin-field" value={slot.detailsUrl||""} onChange={e=>updatePromo(slot.id,{detailsUrl:e.target.value})} placeholder="View Details URL"/><input className="admin-field" value={slot.buyNowUrl||""} onChange={e=>updatePromo(slot.id,{buyNowUrl:e.target.value})} placeholder="Buy Now URL"/></div></div>})}</div>}
+<div className="grid md:grid-cols-2 gap-3"><input type="url" className="admin-field" value={slot.youtubeUrl||""} onChange={e=>updatePromo(slot.id,{youtubeUrl:e.target.value})} placeholder="YouTube Video URL (optional)"/><input type="url" className="admin-field" value={slot.videoUrl||""} onChange={e=>updatePromo(slot.id,{videoUrl:e.target.value})} placeholder="Full HD / 4K MP4 Video URL (optional)"/><input className="admin-field" value={slot.detailsUrl||""} onChange={e=>updatePromo(slot.id,{detailsUrl:e.target.value})} placeholder="View Details URL"/><input className="admin-field" value={slot.buyNowUrl||""} onChange={e=>updatePromo(slot.id,{buyNowUrl:e.target.value})} placeholder="Buy Now URL"/></div></div>})}</div>}
                  {active === "categories" && <div className="bg-white border rounded-2xl p-5 space-y-4">
            <div><h3 className="font-black">Homepage Categories</h3><p className="text-xs text-slate-500">Edit category title, icon, description, button, link, visibility and order without touching code.</p></div>
            {(cfg.categories || []).slice().sort((a,b)=>Number(a.order||0)-Number(b.order||0)).map((c,i) => (
@@ -6750,37 +6880,159 @@ function LuxmoPremiumHomepageSections({
 }
 
 
-function ProductCard({ product, onSelect, onAddToCart }) {
-  const displayImage =
-    (product.images && product.images[0]) || product.image;
+function LuxmoProductListingVideo({ product, onClose }) {
+  const youtubeUrl = getYouTubeEmbedUrl(product?.youtubeUrl);
+  const directVideoUrl = isSafeVideoUrl(product?.videoUrl) ? String(product.videoUrl).trim() : "";
+
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   return (
-    <div className="bg-white border rounded-xl overflow-hidden hover:shadow-md transition flex flex-col justify-between">
-      <div
-        className="cursor-pointer"
-        onClick={() => onSelect(product)}
-      >
-        <img src={displayImage} alt={product.title} className="w-full aspect-square object-cover" />
-        <div className="p-4 space-y-1">
-          <span className="text-[10px] font-bold text-blue-600 uppercase">{product.category}</span>
-          <h3 className="font-semibold text-sm line-clamp-1">{product.title}</h3>
-          <p className="text-xs text-slate-500">{product.models?.length ? `${product.models.length} models` : `Model: ${product.model}`}{product.colours?.length ? ` · ${product.colours.length} colours` : ""}</p>
-          <div className="font-extrabold text-base pt-1">₹{product.salePrice || product.price}</div>
-          {product.hsn && product.gstRate != null && (
-            <div className="text-[10px] text-slate-500 pt-1">HSN: {product.hsn} · GST: {product.gstRate}%</div>
+    <div
+      className="fixed inset-0 z-[100] bg-black/85 p-3 sm:p-6 grid place-items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${product?.title || "Product"} video`}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-black text-slate-900">{product?.title || "Product Video"}</div>
+            <div className="text-[10px] font-bold text-slate-500">Product Video</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 w-9 h-9 rounded-full border border-slate-300 font-black text-slate-900 hover:bg-slate-100"
+            aria-label="Close product video"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="aspect-video bg-black">
+          {youtubeUrl ? (
+            <iframe
+              title={`${product?.title || "Product"} YouTube video`}
+              src={`${youtubeUrl}?autoplay=1&rel=0`}
+              className="h-full w-full"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          ) : directVideoUrl ? (
+            <video
+              src={directVideoUrl}
+              className="h-full w-full object-contain"
+              controls
+              autoPlay
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <div className="h-full grid place-items-center p-6 text-center text-sm font-bold text-white">
+              Product video is unavailable.
+            </div>
           )}
         </div>
       </div>
-      <div className="p-4 pt-0">
-        <button
-          type="button"
-          onClick={() => product.variants?.length ? onSelect(product) : onAddToCart(product)}
-          className="w-full bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-800 text-xs font-bold py-2 rounded-lg transition"
-        >
-          {product.variants?.length ? "Select Model & Colour" : "Add to Cart"}
-        </button>
-      </div>
     </div>
+  );
+}
+
+function ProductCard({ product, onSelect, onAddToCart }) {
+  const [showVideo, setShowVideo] = React.useState(false);
+  const displayImage =
+    (product.images && product.images[0]) || product.image;
+  const hasVideo =
+    Boolean(getYouTubeEmbedUrl(product?.youtubeUrl)) ||
+    isSafeVideoUrl(product?.videoUrl);
+
+  return (
+    <>
+      <div className="bg-white border rounded-xl overflow-hidden hover:shadow-md transition flex flex-col justify-between">
+        <div
+          className="cursor-pointer"
+          onClick={() => onSelect(product)}
+        >
+          <div className="relative aspect-square bg-slate-100 overflow-hidden">
+            {displayImage ? (
+              <img
+                src={displayImage}
+                alt={product.title}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full grid place-items-center text-5xl">📦</div>
+            )}
+
+            {hasVideo && (
+              <>
+                <button
+                  type="button"
+                  aria-label={`Watch ${product.title} video`}
+                  title="Watch product video"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowVideo(true);
+                  }}
+                  className="absolute left-3 bottom-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-950/90 px-3 py-2 text-[10px] font-black text-white shadow-lg ring-1 ring-white/60 hover:scale-105 transition"
+                >
+                  <span className="text-sm leading-none">▶</span>
+                  VIDEO
+                </button>
+                <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[9px] font-black text-slate-950 shadow">
+                  🎬
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="p-4 space-y-1">
+            <span className="text-[10px] font-bold text-blue-600 uppercase">{product.category}</span>
+            <h3 className="font-semibold text-sm line-clamp-1">{product.title}</h3>
+            <p className="text-xs text-slate-500">
+              {product.models?.length ? `${product.models.length} models` : `Model: ${product.model}`}
+              {product.colours?.length ? ` · ${product.colours.length} colours` : ""}
+            </p>
+            <div className="font-extrabold text-base pt-1">₹{product.salePrice || product.price}</div>
+            {product.salePrice && Number(product.price) > Number(product.salePrice) && (
+              <div className="text-[10px] text-slate-400 line-through">
+                ₹{Number(product.price).toLocaleString("en-IN")}
+              </div>
+            )}
+            {product.hsn && product.gstRate != null && (
+              <div className="text-[10px] text-slate-500 pt-1">HSN: {product.hsn} · GST: {product.gstRate}%</div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 pt-0">
+          <button
+            type="button"
+            onClick={() => product.variants?.length ? onSelect(product) : onAddToCart(product)}
+            className="w-full bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-800 text-xs font-bold py-2 rounded-lg transition"
+          >
+            {product.variants?.length ? "Select Model & Colour" : "Add to Cart"}
+          </button>
+        </div>
+      </div>
+
+      {showVideo && (
+        <LuxmoProductListingVideo
+          product={product}
+          onClose={() => setShowVideo(false)}
+        />
+      )}
+    </>
   );
 }
 
