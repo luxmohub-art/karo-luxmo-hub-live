@@ -42,7 +42,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
   AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
-  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, Menu, ChevronDown
+  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, MoreVertical, Menu, ChevronDown
 } from 'lucide-react';
 
 const BUSINESS_INFO = {
@@ -3346,6 +3346,12 @@ export default function LuxmoHubApp() {
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [openMobileNavSection, setOpenMobileNavSection] = useState("");
   const [openMobileShopSubsection, setOpenMobileShopSubsection] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 640) {
+      setShowMobileNav(false);
+    }
+  }, [activeTab]);
+
   const verifyAdminSession = async () => {
     setAdminSessionChecking(true);
     try {
@@ -3471,6 +3477,20 @@ export default function LuxmoHubApp() {
       setActiveTab("home");
     }
   }, [activeTab, adminSessionChecking, isAdminLoggedIn]);
+
+  // Admin login is intentionally not exposed in the public navigation.
+  // Open /?admin=1 directly to reach the existing secure TOTP login.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("admin") === "1") {
+      if (!adminSessionChecking) {
+        if (isAdminLoggedIn) {
+          setActiveTab("admin");
+        } else {
+          openAdminLogin();
+        }
+      }
+    }
+  }, [adminSessionChecking, isAdminLoggedIn]);
 
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
@@ -4241,20 +4261,42 @@ export default function LuxmoHubApp() {
               )}
             </button>
 
-            {/* Unified hamburger navigation — available on mobile and desktop. */}
+            {/* Mobile hamburger + desktop three-dot menu. */}
             <div className="relative shrink-0">
               <button
                 type="button"
-                aria-label="Open website navigation"
+                aria-label="Open mobile navigation"
                 aria-expanded={showMobileNav}
                 onClick={() => {
                   setShowMobileNav(v => !v);
                   setShowHeaderMenu(false);
                 }}
-                className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm"
+                className="sm:hidden p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
               >
                 <Menu className="w-6 h-6" />
               </button>
+
+              <button
+                type="button"
+                aria-label="More options"
+                aria-expanded={showHeaderMenu}
+                onClick={() => {
+                  setShowHeaderMenu(v => !v);
+                  setShowMobileNav(false);
+                }}
+                className="hidden sm:block p-2 rounded-xl hover:bg-slate-100 text-slate-700"
+              >
+                <MoreVertical className="w-6 h-6" />
+              </button>
+
+              {showHeaderMenu && isAdminLoggedIn && (
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-slate-200 bg-white shadow-2xl z-[80] overflow-hidden">
+                  <button type="button" onClick={() => { setShowHeaderMenu(false); setActiveTab("admin"); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Dashboard</button>
+                  <button type="button" onClick={() => { setShowHeaderMenu(false); setActiveTab("admin"); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Low Stock</button>
+                  <button type="button" onClick={() => { setShowHeaderMenu(false); setShowProCenter(true); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Store Tools</button>
+                  <button type="button" onClick={() => { setShowHeaderMenu(false); handleAdminLogout(); }} className="w-full text-left px-4 py-3 text-sm font-black text-red-600 hover:bg-red-50">Log Out Admin</button>
+                </div>
+              )}
             </div>
 
             {isAdminLoggedIn && (
@@ -4275,14 +4317,14 @@ export default function LuxmoHubApp() {
 
       {/* MOBILE HAMBURGER NAVIGATION — accordion/collapsible sections */}
       {showMobileNav && (
-        <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Website navigation">
+        <div className="sm:hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Mobile navigation">
           <button
             type="button"
             aria-label="Close navigation"
             onClick={() => setShowMobileNav(false)}
             className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
           />
-          <aside className="absolute right-0 top-0 h-full w-[min(94vw,440px)] bg-white shadow-2xl overflow-y-auto">
+          <aside className="absolute right-0 top-0 h-full w-[min(92vw,390px)] bg-white shadow-2xl overflow-y-auto">
             <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 bg-slate-950 text-white border-b border-slate-800">
               <div>
                 <div className="text-[10px] font-black tracking-[0.22em] text-amber-300">LUXMO HUB</div>
@@ -4377,23 +4419,6 @@ export default function LuxmoHubApp() {
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("screen protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Screen Protector</button>
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("camera protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Camera Protector</button>
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("accessories"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Other Accessories</button>
-                  {[
-                    "Hybrid Solar Inverter",
-                    "Solar Panel",
-                    "Fast Quality Hybrid Solar Inverter",
-                    "Second Quality Hybrid Solar Inverter",
-                    "Industrial Energy Storage",
-                    "Lithium Battery",
-                    "Luxmohub Premium Series",
-                    "Luxmohub ECO Series",
-                    "Solar Accessories"
-                  ].map((label) => (
-                    <button key={label} type="button"
-                      onClick={() => { setShowMobileNav(false); setSearchQuery(label); setActiveTab("catalog"); }}
-                      className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-blue-50">
-                      {label}
-                    </button>
-                  ))}
                 </div>
               )}
 
@@ -4409,20 +4434,13 @@ export default function LuxmoHubApp() {
               {openMobileNavSection === "categories" && (
                 <div className="ml-3 pl-3 border-l-2 border-blue-500 space-y-1">
                   {[
-                    "Mobile Cases & Covers",
-                    "Screen Protector",
-                    "Camera Protector",
-                    "Other Accessories",
                     "Solar Panel",
                     "Solar Inverter",
                     "Hybrid Solar Inverter",
-                    "Fast Quality Hybrid Solar Inverter",
-                    "Second Quality Hybrid Solar Inverter",
                     "Industrial Energy Storage",
                     "Lithium Battery",
                     "Luxmohub Premium Series",
-                    "Luxmohub ECO Series",
-                    "Solar Accessories"
+                    "Luxmohub ECO Series"
                   ].map((label) => (
                     <button
                       key={label}
@@ -4464,24 +4482,14 @@ export default function LuxmoHubApp() {
                 <span>Blog</span><ChevronRight className="w-4 h-4" />
               </button>
 
-              <div className="pt-3 mt-2 border-t border-slate-200">
-                <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
-                {!isAdminLoggedIn ? (
-                  <button
-                    type="button"
-                    onClick={() => { setShowMobileNav(false); openAdminLogin(); }}
-                    className="w-full flex items-center gap-2 rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-slate-50"
-                  >
-                    <Lock className="w-4 h-4" /> Admin Login
-                  </button>
-                ) : (
-                  <>
-                    <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
-                    <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Low Stock</button>
-                    <button type="button" onClick={() => { setShowMobileNav(false); setShowProCenter(true); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Store Tools</button>
-                  </>
-                )}
-              </div>
+              {isAdminLoggedIn && (
+                <div className="pt-3 mt-2 border-t border-slate-200">
+                  <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Low Stock</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setShowProCenter(true); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Store Tools</button>
+                </div>
+              )}
             </div>
           </aside>
         </div>
@@ -4807,45 +4815,6 @@ export default function LuxmoHubApp() {
                 </article>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* GALLERY VIEW */}
-        {activeTab === "gallery" && (
-          <div className="space-y-6">
-            <section className="rounded-3xl bg-slate-950 text-white p-7 md:p-10 shadow-xl">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">LUXMO HUB</p>
-              <h1 className="mt-2 text-3xl md:text-5xl font-black">Gallery</h1>
-              <p className="mt-4 text-slate-300 max-w-3xl">Explore LUXMO HUB products, solar solutions and mobile protection products.</p>
-            </section>
-            <section className="bg-white border rounded-2xl p-4 md:p-6 shadow-sm">
-              {products.filter(p => p.published !== false && Array.isArray(p.images) && p.images.length).length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-                  <div className="text-5xl">🖼️</div>
-                  <h2 className="mt-3 text-xl font-black">Gallery images will appear here</h2>
-                  <p className="mt-2 text-sm text-slate-500">Add product images from the Admin Product section and they will automatically appear in this gallery.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {products.filter(p => p.published !== false && Array.isArray(p.images) && p.images.length).flatMap(p =>
-                    p.images.slice(0, 8).map((img, idx) => ({ p, img, idx }))
-                  ).map(({ p, img, idx }) => (
-                    <button key={`${p.id}-${idx}`} type="button"
-                      onClick={() => { setSelectedProduct(p); setSelectedVariantKey(p?.variants?.[0]?.key || ""); setActiveImageIndex(idx); setActiveTab("product"); }}
-                      className="group text-left rounded-2xl overflow-hidden border border-slate-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition">
-                      <div className="aspect-square bg-slate-100 overflow-hidden">
-                        <img src={img} alt={`${p.title} gallery ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
-                      </div>
-                      <div className="p-3">
-                        <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">{p.category || "LUXMO HUB"}</p>
-                        <p className="mt-1 text-sm font-black text-slate-900 line-clamp-2">{p.title}</p>
-                      </div>
-                    </button>
-                  ))
-                  }
-                </div>
-              )}
-            </section>
           </div>
         )}
 
@@ -6164,7 +6133,7 @@ export default function LuxmoHubApp() {
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-white font-bold hover:bg-green-700 transition shadow-sm"
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-green-600 text-xs font-black">WA</span><span>WhatsApp</span>
+            🟢 WhatsApp
           </a>
 
           <a
@@ -6173,7 +6142,7 @@ export default function LuxmoHubApp() {
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-white font-bold hover:bg-red-700 transition shadow-sm"
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-red-600 text-xs font-black">▶</span><span>YouTube</span>
+            ▶️ YouTube
           </a>
 
           <a
@@ -6182,7 +6151,7 @@ export default function LuxmoHubApp() {
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 py-3 text-white font-bold hover:bg-pink-700 transition shadow-sm"
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white text-pink-600 text-xs font-black">IG</span><span>Instagram</span>
+            📸 Instagram
           </a>
 
           <a
@@ -6191,7 +6160,7 @@ export default function LuxmoHubApp() {
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-white font-bold hover:bg-blue-700 transition shadow-sm"
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-blue-600 text-xs font-black">f</span><span>Facebook Page</span>
+            🔵 Facebook Page
           </a>
 
           <a
