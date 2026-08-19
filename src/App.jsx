@@ -42,7 +42,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
   AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
-  FileText, Info, HelpCircle, RefreshCw, Truck, Scale
+  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, MoreVertical
 } from 'lucide-react';
 
 const BUSINESS_INFO = {
@@ -3342,6 +3342,7 @@ export default function LuxmoHubApp() {
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
   const verifyAdminSession = async () => {
     setAdminSessionChecking(true);
@@ -4237,6 +4238,39 @@ export default function LuxmoHubApp() {
                 </span>
               )}
             </button>
+
+            {/* Public three-dot menu: keeps Admin entry available without exposing Admin controls. */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="More options"
+                aria-expanded={showHeaderMenu}
+                onClick={() => setShowHeaderMenu(v => !v)}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-700"
+              >
+                <MoreVertical className="w-6 h-6" />
+              </button>
+              {showHeaderMenu && (
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-slate-200 bg-white shadow-2xl z-[80] overflow-hidden">
+                  {!isAdminLoggedIn ? (
+                    <button
+                      type="button"
+                      onClick={() => { setShowHeaderMenu(false); openAdminLogin(); }}
+                      className="w-full text-left px-4 py-3 text-sm font-black text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Lock className="w-4 h-4" /> Admin Login
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => { setShowHeaderMenu(false); setActiveTab("admin"); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Dashboard</button>
+                      <button type="button" onClick={() => { setShowHeaderMenu(false); setActiveTab("admin"); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Low Stock</button>
+                      <button type="button" onClick={() => { setShowHeaderMenu(false); setShowProCenter(true); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Store Tools</button>
+                      <button type="button" onClick={() => { setShowHeaderMenu(false); handleAdminLogout(); }} className="w-full text-left px-4 py-3 text-sm font-black text-red-600 hover:bg-red-50">Log Out Admin</button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
 
             {isAdminLoggedIn && (
               <>
