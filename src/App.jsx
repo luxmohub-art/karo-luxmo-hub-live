@@ -4225,7 +4225,9 @@ export default function LuxmoHubApp() {
             <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
-            <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
+            {isAdminLoggedIn && (
+              <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
+            )}
 
             <button onClick={() => setActiveTab("cart")} className="relative p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0">
               <ShoppingBag className="w-6 h-6" />
@@ -4236,7 +4238,7 @@ export default function LuxmoHubApp() {
               )}
             </button>
 
-            {isAdminLoggedIn ? (
+            {isAdminLoggedIn && (
               <>
                 <LuxmoLowStockBadge
                   products={products}
@@ -4247,10 +4249,6 @@ export default function LuxmoHubApp() {
                   <Lock className="w-3 h-3" /> Dashboard
                 </button>
               </>
-            ) : (
-              <button onClick={openAdminLogin} className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1">
-                <Lock className="w-3 h-3" /> Dashboard
-              </button>
             )}
           </div>
         </div>
@@ -4530,7 +4528,23 @@ export default function LuxmoHubApp() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {filteredProducts.map(prod => (
-                <ProductCard key={prod.id} product={prod} onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }} onAddToCart={addToCart} />
+                <ProductCard
+                key={prod.id}
+                product={prod}
+                onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
+                onAddToCart={addToCart}
+                onBuyNow={(p) => {
+                  if (p.variants?.length) {
+                    setSelectedProduct(p);
+                    setSelectedVariantKey(p.variants?.[0]?.key || "");
+                    setActiveImageIndex(0);
+                    setActiveTab("product");
+                  } else {
+                    addToCart(p);
+                    setActiveTab("cart");
+                  }
+                }}
+              />
               ))}
             </div>
           </div>
@@ -6953,82 +6967,106 @@ function LuxmoProductListingVideo({ product, onClose }) {
   );
 }
 
-function ProductCard({ product, onSelect, onAddToCart }) {
+function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
   const [showVideo, setShowVideo] = React.useState(false);
-  const displayImage =
-    (product.images && product.images[0]) || product.image;
+  const [showMenu, setShowMenu] = React.useState(false);
+  const displayImage = (product.images && product.images[0]) || product.image;
   const hasVideo =
     Boolean(getYouTubeEmbedUrl(product?.youtubeUrl)) ||
     isSafeVideoUrl(product?.videoUrl);
 
+  const handleBuyNow = (e) => {
+    e.stopPropagation();
+    setShowMenu(false);
+    if (onBuyNow) onBuyNow(product);
+    else if (product.variants?.length) onSelect(product);
+    else onAddToCart(product);
+  };
+
   return (
     <>
-      <div className="bg-white border rounded-xl overflow-hidden hover:shadow-md transition flex flex-col justify-between">
-        <div
-          className="cursor-pointer"
-          onClick={() => onSelect(product)}
-        >
-          <div className="relative aspect-square bg-slate-100 overflow-hidden">
+      <div className="bg-white border rounded-xl overflow-visible hover:shadow-md transition flex flex-col justify-between">
+        <div className="cursor-pointer" onClick={() => onSelect(product)}>
+          <div className="relative aspect-square bg-slate-100 overflow-hidden rounded-t-xl">
             {displayImage ? (
-              <img
-                src={displayImage}
-                alt={product.title}
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
+              <img src={displayImage} alt={product.title} className="w-full h-full object-cover" loading="lazy" />
             ) : (
               <div className="w-full h-full grid place-items-center text-5xl">📦</div>
             )}
 
             {hasVideo && (
               <>
-                <button
-                  type="button"
-                  aria-label={`Watch ${product.title} video`}
-                  title="Watch product video"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowVideo(true);
-                  }}
-                  className="absolute left-3 bottom-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-950/90 px-3 py-2 text-[10px] font-black text-white shadow-lg ring-1 ring-white/60 hover:scale-105 transition"
-                >
-                  <span className="text-sm leading-none">▶</span>
-                  VIDEO
+                <button type="button" aria-label={`Watch ${product.title} video`} title="Watch product video"
+                  onClick={(e) => { e.stopPropagation(); setShowVideo(true); }}
+                  className="absolute left-3 bottom-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-950/90 px-3 py-2 text-[10px] font-black text-white shadow-lg ring-1 ring-white/60 hover:scale-105 transition">
+                  <span className="text-sm leading-none">▶</span> VIDEO
                 </button>
-                <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[9px] font-black text-slate-950 shadow">
-                  🎬
-                </span>
+                <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[9px] font-black text-slate-950 shadow">🎬</span>
               </>
             )}
           </div>
 
           <div className="p-4 space-y-1">
             <span className="text-[10px] font-bold text-blue-600 uppercase">{product.category}</span>
-            <h3 className="font-semibold text-sm line-clamp-1">{product.title}</h3>
+            <h3 className="font-semibold text-sm line-clamp-2">{product.title}</h3>
             <p className="text-xs text-slate-500">
               {product.models?.length ? `${product.models.length} models` : `Model: ${product.model}`}
               {product.colours?.length ? ` · ${product.colours.length} colours` : ""}
             </p>
-            <div className="font-extrabold text-base pt-1">₹{product.salePrice || product.price}</div>
+            <div className="font-extrabold text-base pt-1">₹{Number(product.salePrice || product.price || 0).toLocaleString("en-IN")}</div>
             {product.salePrice && Number(product.price) > Number(product.salePrice) && (
-              <div className="text-[10px] text-slate-400 line-through">
-                ₹{Number(product.price).toLocaleString("en-IN")}
-              </div>
+              <div className="text-[10px] text-slate-400 line-through">₹{Number(product.price).toLocaleString("en-IN")}</div>
             )}
+            {product.discount > 0 && <div className="text-[10px] text-emerald-700 font-black">{product.discount}% OFF</div>}
             {product.hsn && product.gstRate != null && (
               <div className="text-[10px] text-slate-500 pt-1">HSN: {product.hsn} · GST: {product.gstRate}%</div>
             )}
           </div>
         </div>
 
-        <div className="p-4 pt-0">
-          <button
-            type="button"
-            onClick={() => product.variants?.length ? onSelect(product) : onAddToCart(product)}
-            className="w-full bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-800 text-xs font-bold py-2 rounded-lg transition"
-          >
-            {product.variants?.length ? "Select Model & Colour" : "Add to Cart"}
-          </button>
+        <div className="p-4 pt-0 relative">
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+            <button type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (product.variants?.length) onSelect(product);
+                else onAddToCart(product);
+              }}
+              className="min-w-0 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black py-2.5 rounded-lg transition">
+              {product.variants?.length ? "Select Options" : "Add to Cart"}
+            </button>
+
+            <button type="button" onClick={handleBuyNow}
+              className="min-w-0 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-black py-2.5 rounded-lg transition">
+              Buy Now
+            </button>
+
+            <button type="button" aria-label="More product options" title="More options"
+              onClick={(e) => { e.stopPropagation(); setShowMenu(v => !v); }}
+              className="w-10 rounded-lg border border-slate-300 bg-white text-slate-700 text-xl font-black leading-none hover:bg-slate-100 transition">
+              ⋮
+            </button>
+          </div>
+
+          {showMenu && (
+            <div className="absolute right-4 bottom-14 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => { setShowMenu(false); onSelect(product); }}
+                className="w-full text-left rounded-lg px-3 py-2 text-xs font-bold hover:bg-slate-100">
+                View Details
+              </button>
+              {hasVideo && (
+                <button type="button" onClick={() => { setShowMenu(false); setShowVideo(true); }}
+                  className="w-full text-left rounded-lg px-3 py-2 text-xs font-bold hover:bg-slate-100">
+                  ▶ Watch Video
+                </button>
+              )}
+              <button type="button" onClick={handleBuyNow}
+                className="w-full text-left rounded-lg px-3 py-2 text-xs font-bold hover:bg-slate-100">
+                Buy Now
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -7041,4 +7079,3 @@ function ProductCard({ product, onSelect, onAddToCart }) {
     </>
   );
 }
-
