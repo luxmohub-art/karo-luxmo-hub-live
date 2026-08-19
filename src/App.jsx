@@ -42,7 +42,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
   AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
-  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, MoreVertical
+  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, MoreVertical, Menu, ChevronDown
 } from 'lucide-react';
 
 const BUSINESS_INFO = {
@@ -3343,6 +3343,14 @@ export default function LuxmoHubApp() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showMobileNav, setShowMobileNav] = useState(false);
+  const [openMobileNavSection, setOpenMobileNavSection] = useState("");
+  const [openMobileShopSubsection, setOpenMobileShopSubsection] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 640) {
+      setShowMobileNav(false);
+    }
+  }, [activeTab]);
 
   const verifyAdminSession = async () => {
     setAdminSessionChecking(true);
@@ -4239,17 +4247,34 @@ export default function LuxmoHubApp() {
               )}
             </button>
 
-            {/* Public three-dot menu: keeps Admin entry available without exposing Admin controls. */}
+            {/* Mobile hamburger + desktop three-dot menu. */}
             <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="Open mobile navigation"
+                aria-expanded={showMobileNav}
+                onClick={() => {
+                  setShowMobileNav(v => !v);
+                  setShowHeaderMenu(false);
+                }}
+                className="sm:hidden p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+
               <button
                 type="button"
                 aria-label="More options"
                 aria-expanded={showHeaderMenu}
-                onClick={() => setShowHeaderMenu(v => !v)}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-700"
+                onClick={() => {
+                  setShowHeaderMenu(v => !v);
+                  setShowMobileNav(false);
+                }}
+                className="hidden sm:block p-2 rounded-xl hover:bg-slate-100 text-slate-700"
               >
                 <MoreVertical className="w-6 h-6" />
               </button>
+
               {showHeaderMenu && (
                 <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-slate-200 bg-white shadow-2xl z-[80] overflow-hidden">
                   {!isAdminLoggedIn ? (
@@ -4287,6 +4312,196 @@ export default function LuxmoHubApp() {
           </div>
         </div>
       </header>
+
+      {/* MOBILE HAMBURGER NAVIGATION — accordion/collapsible sections */}
+      {showMobileNav && (
+        <div className="sm:hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setShowMobileNav(false)}
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
+          />
+          <aside className="absolute right-0 top-0 h-full w-[min(92vw,390px)] bg-white shadow-2xl overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 bg-slate-950 text-white border-b border-slate-800">
+              <div>
+                <div className="text-[10px] font-black tracking-[0.22em] text-amber-300">LUXMO HUB</div>
+                <div className="text-lg font-black">Menu</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMobileNav(false)}
+                className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-xl"
+                aria-label="Close menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("home"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>Home</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("about"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>About</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("media"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>Media Coverage</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("catalog"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>Products</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOpenMobileNavSection(v => v === "shop" ? "" : "shop")}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-slate-50"
+              >
+                <span>Shop</span>
+                <ChevronDown className={`w-5 h-5 transition-transform ${openMobileNavSection === "shop" ? "rotate-180" : ""}`} />
+              </button>
+
+              {openMobileNavSection === "shop" && (
+                <div className="ml-3 pl-3 border-l-2 border-amber-400 space-y-1">
+                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("sale"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-black text-red-600 hover:bg-red-50">SALE</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("new arrivals"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">New Arrivals</button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOpenMobileShopSubsection(v => v === "mobile-cases" ? "" : "mobile-cases")}
+                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-left text-sm font-black hover:bg-slate-50"
+                  >
+                    <span>Mobile Cases &amp; Covers</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${openMobileShopSubsection === "mobile-cases" ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {openMobileShopSubsection === "mobile-cases" && (
+                    <div className="ml-3 pl-3 border-l border-slate-200 space-y-1">
+                      {[
+                        ["APPLE / IPHONE", "iphone"],
+                        ["SAMSUNG", "samsung"],
+                        ["GOOGLE", "google"],
+                        ["NAT GEO Series", "nat geo"]
+                      ].map(([label, term]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => { setShowMobileNav(false); setSearchQuery(term); setActiveTab("catalog"); }}
+                          className="w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold text-slate-700 hover:bg-blue-50"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("screen protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Screen Protector</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("camera protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Camera Protector</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("accessories"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Other Accessories</button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setOpenMobileNavSection(v => v === "categories" ? "" : "categories")}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-slate-50"
+              >
+                <span>Categories</span>
+                <ChevronDown className={`w-5 h-5 transition-transform ${openMobileNavSection === "categories" ? "rotate-180" : ""}`} />
+              </button>
+
+              {openMobileNavSection === "categories" && (
+                <div className="ml-3 pl-3 border-l-2 border-blue-500 space-y-1">
+                  {[
+                    "Solar Panel",
+                    "Solar Inverter",
+                    "Hybrid Solar Inverter",
+                    "Industrial Energy Storage",
+                    "Lithium Battery",
+                    "Luxmohub Premium Series",
+                    "Luxmohub ECO Series"
+                  ].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        setShowMobileNav(false);
+                        setSearchQuery(label);
+                        setActiveTab("catalog");
+                      }}
+                      className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-blue-50"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("catalog"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>Gallery</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("contact"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>Contact</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowMobileNav(false); setActiveTab("blog"); }}
+                className="w-full flex items-center justify-between rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-blue-50"
+              >
+                <span>Blog</span><ChevronRight className="w-4 h-4" />
+              </button>
+
+              <div className="pt-3 mt-2 border-t border-slate-200">
+                <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
+                {!isAdminLoggedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); openAdminLogin(); }}
+                    className="w-full flex items-center gap-2 rounded-xl px-4 py-3.5 text-left font-black text-slate-900 hover:bg-slate-50"
+                  >
+                    <Lock className="w-4 h-4" /> Admin Login
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
+                    <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Low Stock</button>
+                    <button type="button" onClick={() => { setShowMobileNav(false); setShowProCenter(true); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Store Tools</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 min-w-0">
@@ -4534,6 +4749,79 @@ export default function LuxmoHubApp() {
               </div>
             </section>
 
+            </div>
+          </div>
+        )}
+
+        {/* DEDICATED CUSTOMER PAGES */}
+        {activeTab === "about" && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <section className="rounded-3xl bg-slate-950 text-white p-7 md:p-10 shadow-xl">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">LUXMO HUB</p>
+              <h1 className="mt-2 text-3xl md:text-5xl font-black">About LUXMO HUB</h1>
+              <p className="mt-4 text-slate-300 max-w-3xl">Quality products, practical technology solutions and customer-focused support for modern homes, businesses and smartphones.</p>
+            </section>
+            <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm space-y-5">
+              <h2 className="text-2xl font-black">Who We Are</h2>
+              <p className="text-slate-600 leading-7">LUXMO HUB is an online retail brand focused on hybrid solar inverters, solar accessories and premium mobile phone back case covers. We aim to keep product information clear, ordering simple and customer support accessible.</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">☀️ Solar Solutions</h3><p className="mt-2 text-sm text-slate-600">Hybrid solar inverters, solar accessories, lithium battery and energy-storage related products.</p></div>
+                <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">📱 Mobile Protection</h3><p className="mt-2 text-sm text-slate-600">Premium mobile cases and covers for supported Apple, Samsung, Google and other models.</p></div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {activeTab === "media" && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <section className="rounded-3xl bg-slate-950 text-white p-7 md:p-10 shadow-xl">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">LUXMO HUB</p>
+              <h1 className="mt-2 text-3xl md:text-5xl font-black">Media Coverage</h1>
+              <p className="mt-4 text-slate-300 max-w-3xl">News, announcements, brand features and media updates from LUXMO HUB will be collected here.</p>
+            </section>
+            <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                <div className="text-4xl">📰</div>
+                <h2 className="mt-3 text-xl font-black">Media updates coming here</h2>
+                <p className="mt-2 text-sm text-slate-600">This dedicated page is ready for future press coverage, articles, interviews, announcements and publication links.</p>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {activeTab === "contact" && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <section className="rounded-3xl bg-slate-950 text-white p-7 md:p-10 shadow-xl">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">SUPPORT</p>
+              <h1 className="mt-2 text-3xl md:text-5xl font-black">Contact LUXMO HUB</h1>
+              <p className="mt-4 text-slate-300">For product, order, delivery and warranty assistance, contact our support team.</p>
+            </section>
+            <LuxmoContactCenter />
+            <section className="grid md:grid-cols-2 gap-4">
+              <a href={`tel:${BUSINESS_INFO.phones[0]}`} className="rounded-2xl border bg-white p-5 shadow-sm hover:border-blue-400"><div className="font-black">📞 Call Support</div><div className="mt-1 text-sm text-slate-600">{BUSINESS_INFO.phones[0]}</div></a>
+              <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="rounded-2xl border bg-white p-5 shadow-sm hover:border-blue-400"><div className="font-black">✉️ Email Support</div><div className="mt-1 text-sm text-slate-600">{luxmoBusinessValue("email", BUSINESS_INFO.emails[0])}</div></a>
+            </section>
+          </div>
+        )}
+
+        {activeTab === "blog" && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <section className="rounded-3xl bg-slate-950 text-white p-7 md:p-10 shadow-xl">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">LUXMO HUB JOURNAL</p>
+              <h1 className="mt-2 text-3xl md:text-5xl font-black">Blog</h1>
+              <p className="mt-4 text-slate-300">Product guides, solar information, buying tips and LUXMO HUB updates.</p>
+            </section>
+            <div className="grid md:grid-cols-3 gap-4">
+              {[
+                ["☀️", "Hybrid Solar Inverter Guide", "Learn the key points to check before choosing a hybrid solar inverter."],
+                ["🔋", "Solar Battery & Storage", "Understand battery voltage, capacity and practical storage considerations."],
+                ["📱", "Mobile Case Buying Guide", "Things to check for fit, protection, camera clearance and everyday use."]
+              ].map(([icon,title,text]) => (
+                <article key={title} className="bg-white border rounded-2xl p-5 shadow-sm">
+                  <div className="text-3xl">{icon}</div><h2 className="mt-3 font-black">{title}</h2><p className="mt-2 text-sm text-slate-600 leading-6">{text}</p>
+                  <span className="inline-block mt-4 text-xs font-black text-blue-600">Coming Soon →</span>
+                </article>
+              ))}
             </div>
           </div>
         )}
@@ -5881,6 +6169,36 @@ export default function LuxmoHubApp() {
             className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-white font-bold hover:bg-blue-700 transition shadow-sm"
           >
             🔵 Facebook Page
+          </a>
+
+          <a
+            href="https://www.linkedin.com/in/luxmo-hub-38929742b?utm_source=share_via&utm_content=profile&utm_medium=member_android"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#0A66C2] px-5 py-3 text-white font-bold hover:opacity-90 transition shadow-sm"
+          >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-[#0A66C2] text-sm font-black">in</span>
+            LinkedIn
+          </a>
+
+          <a
+            href="https://x.com/Luxmohub"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 rounded-xl bg-black px-5 py-3 text-white font-bold hover:bg-slate-900 transition shadow-sm"
+          >
+            <span className="text-lg font-black">𝕏</span>
+            X
+          </a>
+
+          <a
+            href="https://www.threads.com/@luxmohub"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-white font-bold hover:bg-slate-800 transition shadow-sm"
+          >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white text-xs font-black">@</span>
+            Threads
           </a>
         </div>
       </div>
