@@ -4358,6 +4358,7 @@ export default function LuxmoHubApp() {
                 <div className="ml-3 pl-3 border-l-2 border-amber-400 space-y-1">
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("sale"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-black text-red-600 hover:bg-red-50">SALE</button>
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("new arrivals"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">New Arrivals</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery(""); setSelectedCategory("All"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Latest Products</button>
 
                   <button
                     type="button"
@@ -4405,6 +4406,10 @@ export default function LuxmoHubApp() {
 
               {openMobileNavSection === "categories" && (
                 <div className="ml-3 pl-3 border-l-2 border-blue-500 space-y-1">
+                  {/* Requested LUXMO HUB category menu: Solar Products + Mobile Accessories */}
+                  <div className="px-4 pt-2 pb-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                    Solar Products
+                  </div>
                   {[
                     "Solar Panel",
                     "Solar Inverter",
@@ -4413,6 +4418,31 @@ export default function LuxmoHubApp() {
                     "Lithium Battery",
                     "Luxmohub Premium Series",
                     "Luxmohub ECO Series"
+                  ].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        setShowMobileNav(false);
+                        setSearchQuery(label);
+                        setActiveTab("catalog");
+                      }}
+                      className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-blue-50"
+                    >
+                      {label}
+                    </button>
+                  ))}
+
+                  <div className="px-4 pt-4 pb-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                    Mobile Accessories
+                  </div>
+                  {[
+                    "Mobile Cases & Covers",
+                    "Premium Quality Back Case Cover",
+                    "Leather Case Cover",
+                    "Screen Protector",
+                    "Camera Protector",
+                    "Other Accessories"
                   ].map((label) => (
                     <button
                       key={label}
