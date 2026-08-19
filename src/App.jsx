@@ -4287,16 +4287,16 @@ export default function LuxmoHubApp() {
         </div>
       </header>
 
-      {/* MOBILE HAMBURGER NAVIGATION — accordion/collapsible sections */}
+      {/* UNIFIED HAMBURGER NAVIGATION — mobile, tablet and desktop */}
       {showMobileNav && (
-        <div className="sm:hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+        <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Navigation menu">
           <button
             type="button"
             aria-label="Close navigation"
             onClick={() => setShowMobileNav(false)}
             className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
           />
-          <aside className="absolute right-0 top-0 h-full w-[min(92vw,390px)] bg-white shadow-2xl overflow-y-auto">
+          <aside className="absolute right-0 top-0 h-full w-[min(92vw,430px)] bg-white shadow-2xl overflow-y-auto">
             <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 bg-slate-950 text-white border-b border-slate-800">
               <div>
                 <div className="text-[10px] font-black tracking-[0.22em] text-amber-300">LUXMO HUB</div>
