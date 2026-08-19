@@ -4221,10 +4221,10 @@ export default function LuxmoHubApp() {
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           </div>
 
-          <div className="flex items-center justify-end gap-1.5 sm:gap-3 text-sm font-medium min-w-0 ml-auto">
+          <div className="flex items-center justify-start sm:justify-end gap-1.5 sm:gap-3 text-sm font-medium min-w-0 ml-auto w-full sm:w-auto order-2 sm:order-none overflow-x-auto sm:overflow-visible scrollbar-hide pb-0.5 sm:pb-0">
             <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
-            <button onClick={() => setActiveTab("policies")} className={`hidden sm:block px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
+            <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
             <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
 
             <button onClick={() => setActiveTab("cart")} className="relative p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0">
