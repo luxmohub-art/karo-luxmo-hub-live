@@ -111,6 +111,48 @@ const BUSINESS_INFO = {
 
 const CATEGORIES = ["Hybrid Solar Inverter", "Mobile Back Case", "Solar Accessories"];
 
+// Public navigation category taxonomy requested for the LUXMO HUB storefront.
+// These are display/navigation categories only; the core product category IDs above
+// remain unchanged so existing catalogue, checkout and admin data are not broken.
+const MOBILE_PHONE_CASE_CATEGORIES = [
+  ["Genuine Leather Case", "Real leather, premium quality"],
+  ["PU Leather Case", "Synthetic/artificial leather, budget-friendly"],
+  ["Business/Executive Leather Case", "Minimal, professional design"],
+  ["Kickstand Leather Case", "Built-in stand feature ke saath"],
+  ["Full Grain Leather", "Sabse top quality, natural texture visible"],
+  ["Vegan Leather", "Plant-based/eco-friendly synthetic alternative"],
+  ["Microfiber Leather", "High-density synthetic, durable aur soft"],
+  ["Silicone/TPU Cases", "Soft, flexible, shock-absorbing"],
+  ["Hard PC (Polycarbonate) Cases", "Slim, rigid, scratch-resistant"],
+  ["Transparent/Clear Cases", "Original phone design visible"],
+  ["Bumper Cases", "Sirf sides cover"],
+  ["Rugged/Armor Cases", "Heavy-duty, military-grade protection"],
+  ["Wallet Cases", "Card holder + cash pocket integrated"],
+  ["Designer/Printed Cases", "Custom prints, patterns, characters"],
+  ["Magnetic Cases (MagSafe Compatible)", "Wireless charging/mount friendly"],
+  ["Kickstand/Pop Socket Cases", "Built-in stand ya grip"],
+  ["Ring Holder Cases", "Grip ke liye finger ring attached"],
+  ["Metal/Aluminum Cases", "Premium, heavy-duty metallic build"]
+];
+
+const HYBRID_SOLAR_INVERTER_CATEGORIES = [
+  ["Single Phase Hybrid Inverter", "For home/residential use"],
+  ["Three Phase Hybrid Inverter", "For commercial/industrial loads"],
+  ["Low Voltage Hybrid Inverter (12V/24V/48V)", "Small battery bank systems"],
+  ["High Voltage Hybrid Inverter (96V/120V+)", "Large battery banks, high capacity"],
+  ["On-Grid/Off-Grid Combo Hybrid Inverter", "Supports both modes"],
+  ["Off-Grid Hybrid Inverter", "Fully battery-based, no grid connection"],
+  ["String Hybrid Inverter", "Connects multiple solar panel strings"],
+  ["Microinverter-based Hybrid System", "Panel-level power conversion"],
+  ["Low Frequency Hybrid Inverter", "Heavy-duty, transformer-based, higher surge capacity"],
+  ["High Frequency Hybrid Inverter", "Compact, lightweight, transformerless"],
+  ["Wall-Mounted Hybrid Inverter", "Residential compact installations"],
+  ["Rack-Mounted/Industrial Hybrid Inverter", "For commercial setups"],
+  ["PWM-based Hybrid Inverter", "Basic built-in charge controller"],
+  ["MPPT-based Hybrid Inverter", "Advanced charge controller, higher efficiency"],
+  ["Smart/WiFi-enabled Hybrid Inverter", "App monitoring and remote control features"]
+];
+
 const IPHONE_MODELS = [
   "iPhone 18 Pro Max", "iPhone 18 Pro", "iPhone 18 Plus", "iPhone 18", "iPhone Air",
   "iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17 Plus", "iPhone 17", "iPhone Air",
@@ -4356,10 +4398,31 @@ export default function LuxmoHubApp() {
 
               {openMobileNavSection === "shop" && (
                 <div className="ml-3 pl-3 border-l-2 border-amber-400 space-y-1">
-                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("sale"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-black text-red-600 hover:bg-red-50">SALE</button>
-                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("new arrivals"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">New Arrivals</button>
-                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery(""); setSelectedCategory("All"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Latest Products</button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setSearchQuery("sale"); setActiveTab("catalog"); }}
+                    className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-black text-red-600 hover:bg-red-50"
+                  >
+                    SALE
+                  </button>
 
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setSearchQuery("new arrivals"); setActiveTab("catalog"); }}
+                    className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50"
+                  >
+                    New Arrivals
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setSearchQuery(""); setSelectedCategory("All"); setActiveTab("catalog"); }}
+                    className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50"
+                  >
+                    Latest Products
+                  </button>
+
+                  {/* Mobile Cases & Covers */}
                   <button
                     type="button"
                     onClick={() => setOpenMobileShopSubsection(v => v === "mobile-cases" ? "" : "mobile-cases")}
@@ -4371,23 +4434,59 @@ export default function LuxmoHubApp() {
 
                   {openMobileShopSubsection === "mobile-cases" && (
                     <div className="ml-3 pl-3 border-l border-slate-200 space-y-1">
-                      {[
-                        ["APPLE / IPHONE", "iphone"],
-                        ["SAMSUNG", "samsung"],
-                        ["GOOGLE", "google"],
-                        ["NAT GEO Series", "nat geo"]
-                      ].map(([label, term]) => (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() => { setShowMobileNav(false); setSearchQuery(term); setActiveTab("catalog"); }}
-                          className="w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold text-slate-700 hover:bg-blue-50"
-                        >
-                          {label}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        onClick={() => { setShowMobileNav(false); setSelectedCategory("Mobile Back Case"); setSearchQuery(""); setActiveTab("catalog"); }}
+                        className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50"
+                      >
+                        Mobile Cases &amp; Covers
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowMobileNav(false); setSearchQuery("screen protector"); setActiveTab("catalog"); }}
+                        className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50"
+                      >
+                        Screen Protector
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowMobileNav(false); setSearchQuery("camera protector"); setActiveTab("catalog"); }}
+                        className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50"
+                      >
+                        Camera Protector
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowMobileNav(false); setSearchQuery("accessories"); setActiveTab("catalog"); }}
+                        className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50"
+                      >
+                        Other Accessories
+                      </button>
                     </div>
                   )}
+
+                  {/* Hybrid Solar Inverters */}
+                  <button
+                    type="button"
+                    onClick={() => setOpenMobileShopSubsection(v => v === "hybrid-inverters" ? "" : "hybrid-inverters")}
+                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-left text-sm font-black hover:bg-slate-50"
+                  >
+                    <span>Hybrid Solar Inverters</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${openMobileShopSubsection === "hybrid-inverters" ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {openMobileShopSubsection === "hybrid-inverters" && (
+                    <div className="ml-3 pl-3 border-l border-slate-200 space-y-1">
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("single phase"); setSelectedCategory("Hybrid Solar Inverter"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Single Phase Inverters</button>
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("three phase"); setSelectedCategory("Hybrid Solar Inverter"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Three Phase Inverters</button>
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("off-grid on-grid"); setSelectedCategory("Hybrid Solar Inverter"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Off-Grid / On-Grid Inverters</button>
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("mppt pwm"); setSelectedCategory("Hybrid Solar Inverter"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">MPPT / PWM Based Inverters</button>
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("wifi smart"); setSelectedCategory("Hybrid Solar Inverter"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">WiFi/Smart Inverters</button>
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("solar accessories"); setSelectedCategory("Solar Accessories"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Solar Accessories (ACDB/DCDB Box, AC/DC SPD, MC4 Connectors)</button>
+                    </div>
+                  )}
+                </div>
+              )}
 
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("screen protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Screen Protector</button>
                   <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("camera protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Camera Protector</button>
@@ -4406,60 +4505,45 @@ export default function LuxmoHubApp() {
 
               {openMobileNavSection === "categories" && (
                 <div className="ml-3 pl-3 border-l-2 border-blue-500 space-y-1">
-                  {/* Requested LUXMO HUB category menu: Solar Products + Mobile Accessories */}
-                  <div className="px-4 pt-2 pb-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                    Solar Products
+                  <div className="px-4 pt-2 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                    Mobile Phone Back Case Cover
                   </div>
-                  {[
-                    "Solar Panel",
-                    "Solar Inverter",
-                    "Hybrid Solar Inverter",
-                    "Industrial Energy Storage",
-                    "Lithium Battery",
-                    "Luxmohub Premium Series",
-                    "Luxmohub ECO Series"
-                  ].map((label) => (
+                  {MOBILE_PHONE_CASE_CATEGORIES.map(([label, description], index) => (
                     <button
-                      key={label}
+                      key={`mobile-case-category-${index}`}
                       type="button"
                       onClick={() => {
                         setShowMobileNav(false);
                         setSearchQuery(label);
                         setActiveTab("catalog");
                       }}
-                      className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-blue-50"
+                      className="w-full text-left px-4 py-2.5 rounded-lg hover:bg-blue-50"
                     >
-                      {label}
+                      <span className="block text-sm font-bold text-slate-700">{index + 1}. {label}</span>
+                      <span className="block mt-0.5 text-[11px] leading-4 font-medium text-slate-500">{description}</span>
                     </button>
                   ))}
 
-                  <div className="px-4 pt-4 pb-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                    Mobile Accessories
+                  <div className="px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                    Hybrid Solar Inverter
                   </div>
-                  {[
-                    "Mobile Cases & Covers",
-                    "Premium Quality Back Case Cover",
-                    "Leather Case Cover",
-                    "Screen Protector",
-                    "Camera Protector",
-                    "Other Accessories"
-                  ].map((label) => (
+                  {HYBRID_SOLAR_INVERTER_CATEGORIES.map(([label, description], index) => (
                     <button
-                      key={label}
+                      key={`hybrid-inverter-category-${index}`}
                       type="button"
                       onClick={() => {
                         setShowMobileNav(false);
                         setSearchQuery(label);
                         setActiveTab("catalog");
                       }}
-                      className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-blue-50"
+                      className="w-full text-left px-4 py-2.5 rounded-lg hover:bg-blue-50"
                     >
-                      {label}
+                      <span className="block text-sm font-bold text-slate-700">{index + 1}. {label}</span>
+                      <span className="block mt-0.5 text-[11px] leading-4 font-medium text-slate-500">{description}</span>
                     </button>
                   ))}
                 </div>
               )}
-
               <button
                 type="button"
                 onClick={() => { setShowMobileNav(false); setActiveTab("catalog"); }}
