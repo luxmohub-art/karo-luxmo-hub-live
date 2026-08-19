@@ -4488,12 +4488,6 @@ export default function LuxmoHubApp() {
                 </div>
               )}
 
-                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("screen protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Screen Protector</button>
-                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("camera protector"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Camera Protector</button>
-                  <button type="button" onClick={() => { setShowMobileNav(false); setSearchQuery("accessories"); setActiveTab("catalog"); }} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50">Other Accessories</button>
-                </div>
-              )}
-
               <button
                 type="button"
                 onClick={() => setOpenMobileNavSection(v => v === "categories" ? "" : "categories")}
