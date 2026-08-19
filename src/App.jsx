@@ -4992,6 +4992,21 @@ export default function LuxmoHubApp() {
                 <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">📱 Mobile Protection</h3><p className="mt-2 text-sm text-slate-600">Premium mobile cases and covers for supported Apple, Samsung, Google and other models.</p></div>
               </div>
             </section>
+
+            <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm space-y-4">
+              <h2 className="text-2xl font-black">Our Mission</h2>
+              <p className="text-slate-600 leading-7">At LUXMO HUB, our mission is to make reliable solar energy solutions and durable mobile accessories accessible to every Indian household and business. We work directly with trusted manufacturers to bring genuine products at fair prices, without compromising on quality.</p>
+            </section>
+
+            <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm space-y-5">
+              <h2 className="text-2xl font-black">Why Choose LUXMO HUB</h2>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">✅ Quality Assured Products</h3><p className="mt-2 text-sm text-slate-600">Every hybrid inverter and mobile case goes through quality checks before it reaches you.</p></div>
+                <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">💰 Transparent Pricing</h3><p className="mt-2 text-sm text-slate-600">No hidden charges, clear product specifications and honest descriptions.</p></div>
+                <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">🚚 Pan-India Delivery</h3><p className="mt-2 text-sm text-slate-600">We ship across India with reliable courier partners and order tracking.</p></div>
+                <div className="rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">🎧 Responsive Support</h3><p className="mt-2 text-sm text-slate-600">Reach us via WhatsApp, email or phone for any pre- or post-purchase queries.</p></div>
+              </div>
+            </section>
           </div>
         )}
 
@@ -5002,6 +5017,15 @@ export default function LuxmoHubApp() {
               <h1 className="mt-2 text-3xl md:text-5xl font-black">Media Coverage</h1>
               <p className="mt-4 text-slate-300 max-w-3xl">News, announcements, brand features and media updates from LUXMO HUB will be collected here.</p>
             </section>
+
+            <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm space-y-4">
+              <h2 className="text-2xl font-black">Featured On</h2>
+              <p className="text-slate-600 leading-7">LUXMO HUB is featured on our official YouTube channel, where we showcase product reviews, installation guides and demonstrations of our hybrid solar inverters and mobile accessories. Subscribe to stay updated with our latest content.</p>
+              <a href="https://www.youtube.com/@LuxmoHub" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700">
+                ▶️ Visit Our YouTube Channel
+              </a>
+            </section>
+
             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                 <div className="text-4xl">📰</div>
@@ -5036,9 +5060,9 @@ export default function LuxmoHubApp() {
             </section>
             <div className="grid md:grid-cols-3 gap-4">
               {[
-                ["☀️", "Hybrid Solar Inverter Guide", "Learn the key points to check before choosing a hybrid solar inverter."],
-                ["🔋", "Solar Battery & Storage", "Understand battery voltage, capacity and practical storage considerations."],
-                ["📱", "Mobile Case Buying Guide", "Things to check for fit, protection, camera clearance and everyday use."]
+                ["☀️", "Hybrid Solar Inverter Kaise Choose Karein", "Solar inverter kharidte waqt load capacity, voltage rating aur charge controller type (PWM vs MPPT) check karna zaroori hai. Jaaniye sahi inverter select karne ke practical tips."],
+                ["🔋", "Solar Battery & Storage — Beginner's Guide", "Battery voltage, capacity (Ah) aur storage requirements samajhna aapke solar system ki efficiency ke liye zaroori hai. Jaaniye kaunsi battery aapke ghar ya business ke liye sahi rahegi."],
+                ["📱", "Mobile Case Buying Guide", "Sahi mobile case choose karte waqt material, camera protection, port accessibility aur daily-use durability jaise factors dhyan me rakhein."]
               ].map(([icon,title,text]) => (
                 <article key={title} className="bg-white border rounded-2xl p-5 shadow-sm">
                   <div className="text-3xl">{icon}</div><h2 className="mt-3 font-black">{title}</h2><p className="mt-2 text-sm text-slate-600 leading-6">{text}</p>
