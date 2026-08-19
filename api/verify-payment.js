@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "../lib/firebase-admin.js";
+import {
+  sendOrderConfirmationNotifications,
+} from "../lib/notifications.js";
 
 function safeEqualHex(a, b) {
   try {
@@ -39,7 +42,9 @@ async function razorpayGet(path, keyId, keySecret) {
     }
   );
 
-  const data = await response.json().catch(() => ({}));
+  const data = await response
+    .json()
+    .catch(() => ({}));
 
   if (!response.ok) {
     throw new Error(
@@ -84,8 +89,11 @@ export default async function handler(req, res) {
       });
     }
 
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const keyId =
+      process.env.RAZORPAY_KEY_ID;
+
+    const keySecret =
+      process.env.RAZORPAY_KEY_SECRET;
 
     if (!keyId || !keySecret) {
       return res.status(500).json({
@@ -115,22 +123,24 @@ export default async function handler(req, res) {
     }
 
     // STEP 2 — Verify actual Razorpay order
-    const razorpayOrder = await razorpayGet(
-      `/orders/${encodeURIComponent(
-        razorpay_order_id
-      )}`,
-      keyId,
-      keySecret
-    );
+    const razorpayOrder =
+      await razorpayGet(
+        `/orders/${encodeURIComponent(
+          razorpay_order_id
+        )}`,
+        keyId,
+        keySecret
+      );
 
     // STEP 3 — Verify actual Razorpay payment
-    const razorpayPayment = await razorpayGet(
-      `/payments/${encodeURIComponent(
-        razorpay_payment_id
-      )}`,
-      keyId,
-      keySecret
-    );
+    const razorpayPayment =
+      await razorpayGet(
+        `/payments/${encodeURIComponent(
+          razorpay_payment_id
+        )}`,
+        keyId,
+        keySecret
+      );
 
     if (
       razorpayPayment.order_id !==
@@ -144,13 +154,15 @@ export default async function handler(req, res) {
     }
 
     if (
-      razorpayPayment.status !== "captured" &&
+      razorpayPayment.status !==
+        "captured" &&
       razorpayPayment.captured !== true
     ) {
       return res.status(400).json({
         success: false,
         error: `Payment is not captured yet (status: ${
-          razorpayPayment.status || "unknown"
+          razorpayPayment.status ||
+          "unknown"
         })`,
       });
     }
@@ -165,9 +177,11 @@ export default async function handler(req, res) {
         : {};
 
     // STEP 4 — Verify website amount against Razorpay amount
-    const expectedAmountPaise = Math.round(
-      Number(clientOrder.total || 0) * 100
-    );
+    const expectedAmountPaise =
+      Math.round(
+        Number(clientOrder.total || 0) *
+          100
+      );
 
     if (
       !expectedAmountPaise ||
@@ -193,22 +207,28 @@ export default async function handler(req, res) {
     }
 
     // STEP 5 — Save verified order to Firebase
-    const adminApp = getFirebaseAdmin();
-    const db = getFirestore(adminApp);
+    const adminApp =
+      getFirebaseAdmin();
 
-    const websiteOrderId = String(
-      clientOrder.id || ""
-    ).trim();
+    const db =
+      getFirestore(adminApp);
 
-    const documentId = cleanDocId(
-      websiteOrderId ||
-        `rzp_${razorpay_order_id}`
-    );
+    const websiteOrderId =
+      String(
+        clientOrder.id || ""
+      ).trim();
+
+    const documentId =
+      cleanDocId(
+        websiteOrderId ||
+          `rzp_${razorpay_order_id}`
+      );
 
     if (!documentId) {
       return res.status(400).json({
         success: false,
-        error: "Website order ID is required",
+        error:
+          "Website order ID is required",
       });
     }
 
@@ -219,21 +239,26 @@ export default async function handler(req, res) {
     const existingSnapshot =
       await orderRef.get();
 
-    const existing = existingSnapshot.exists
-      ? existingSnapshot.data()
-      : null;
+    const existing =
+      existingSnapshot.exists
+        ? existingSnapshot.data()
+        : null;
 
     // Duplicate payment protection
     if (
-      existing?.paymentVerified === true &&
+      existing?.paymentVerified ===
+        true &&
       existing?.razorpayPaymentId ===
         razorpay_payment_id
     ) {
       return res.status(200).json({
         success: true,
-        message: "Payment already verified",
-        paymentId: razorpay_payment_id,
-        orderId: razorpay_order_id,
+        message:
+          "Payment already verified",
+        paymentId:
+          razorpay_payment_id,
+        orderId:
+          razorpay_order_id,
         websiteOrderId:
           existing?.websiteOrderId ||
           websiteOrderId ||
@@ -286,8 +311,9 @@ export default async function handler(req, res) {
         "",
 
       amount:
-        Number(razorpayOrder.amount) /
-        100,
+        Number(
+          razorpayOrder.amount
+        ) / 100,
 
       currency:
         razorpayOrder.currency ||
@@ -317,8 +343,32 @@ export default async function handler(req, res) {
       { merge: true }
     );
 
+    // STEP 6 — Send order confirmation notifications.
+    // Notification failure must NOT fail a successfully
+    // verified Razorpay payment or Firestore order save.
+    try {
+      const notificationResult =
+        await sendOrderConfirmationNotifications(
+          firestoreOrder
+        );
+
+      console.log(
+        "LUXMO HUB order notification result:",
+        notificationResult
+      );
+    } catch (
+      notificationError
+    ) {
+      console.error(
+        "LUXMO HUB notification error:",
+        notificationError?.message ||
+          notificationError
+      );
+    }
+
     return res.status(200).json({
       success: true,
+
       message:
         "Payment verified and order saved successfully",
 
