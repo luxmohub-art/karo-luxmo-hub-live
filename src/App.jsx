@@ -153,6 +153,72 @@ const HYBRID_SOLAR_INVERTER_CATEGORIES = [
   ["Smart/WiFi-enabled Hybrid Inverter", "App monitoring and remote control features"]
 ];
 
+// Professional category taxonomy + filter metadata.
+const LUXMO_CATEGORY_TREE = {
+  "Mobile Cases & Covers": ["Leather Cases", "Silicone/TPU Cases", "Hard/Rugged Cases", "Transparent Cases", "Wallet & Flip Cases", "Designer/Printed Cases"],
+  "Hybrid Solar Inverters": ["Single Phase", "Three Phase", "Off-Grid / On-Grid"]
+};
+
+const LUXMO_FILTER_OPTIONS = {
+  mobile: {
+    material: ["Genuine Leather", "PU Leather", "Vegan Leather", "Microfiber", "Silicone", "TPU", "Polycarbonate", "Metal"],
+    feature: ["Kickstand", "MagSafe", "Ring Holder", "Wallet", "Waterproof"],
+    color: ["Black", "Brown", "Blue", "Green", "Red", "White", "Gray", "Transparent"]
+  },
+  solar: {
+    voltage: ["12V", "24V", "48V", "96V", "120V+"],
+    chargeController: ["PWM", "MPPT"],
+    frequency: ["Low", "High"],
+    mounting: ["Wall", "Rack"],
+    smartFeature: ["WiFi", "Smart"]
+  }
+};
+
+const normalizeText = (value) => String(value ?? "").toLowerCase().trim();
+
+const inferMobileSubCategory = (p) => {
+  const text = normalizeText(`${p.title} ${p.description} ${p.material || ""}`);
+  if (text.includes("leather") || ["Genuine Leather", "PU Leather", "Vegan Leather", "Microfiber"].some(v => normalizeText(p.material).includes(normalizeText(v)))) return "Leather Cases";
+  if (text.includes("silicone") || text.includes("tpu")) return "Silicone/TPU Cases";
+  if (text.includes("rugged") || text.includes("armor") || text.includes("hard pc") || text.includes("polycarbonate")) return "Hard/Rugged Cases";
+  if (text.includes("transparent") || text.includes("clear")) return "Transparent Cases";
+  if (text.includes("wallet") || text.includes("flip")) return "Wallet & Flip Cases";
+  if (text.includes("designer") || text.includes("printed") || text.includes("print")) return "Designer/Printed Cases";
+  return "Leather Cases";
+};
+
+const inferSolarSubCategory = (p) => {
+  const text = normalizeText(`${p.title} ${p.description} ${p.specs || ""}`);
+  if (text.includes("three phase") || text.includes("3 phase")) return "Three Phase";
+  if (text.includes("off-grid") || text.includes("off grid") || text.includes("on-grid") || text.includes("on grid")) return "Off-Grid / On-Grid";
+  return "Single Phase";
+};
+
+const getLuxmoTaxonomy = (p) => {
+  const isSolar = normalizeText(p.category).includes("inverter") || normalizeText(p.mainCategory).includes("solar");
+  const mainCategory = isSolar ? "Hybrid Solar Inverters" : "Mobile Cases & Covers";
+  const subCategory = p.subCategory || (isSolar ? inferSolarSubCategory(p) : inferMobileSubCategory(p));
+  const specs = p.inverterSpecs || {};
+  const attrs = p.attributes || {};
+  return {
+    mainCategory,
+    subCategory,
+    attributes: {
+      material: attrs.material || p.material || "",
+      feature: Array.isArray(attrs.feature) ? attrs.feature : [],
+      color: attrs.color || (Array.isArray(p.colours) ? p.colours[0] : p.colour) || "",
+      compatiblePhoneModel: attrs.compatiblePhoneModel || p.model || "",
+      voltage: attrs.voltage || specs.batteryVoltage || "",
+      chargeController: attrs.chargeController || (specs.mpptCurrent ? "MPPT" : ""),
+      frequency: attrs.frequency || "",
+      mounting: attrs.mounting || "",
+      smartFeature: attrs.smartFeature || specs.wifi || "",
+      capacity: attrs.capacity || specs.ratedPower || ""
+    }
+  };
+};
+
+
 const IPHONE_MODELS = [
   "iPhone 18 Pro Max", "iPhone 18 Pro", "iPhone 18 Plus", "iPhone 18", "iPhone Air",
   "iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17 Plus", "iPhone 17", "iPhone Air",
@@ -3216,6 +3282,47 @@ function LuxmoLowStockBadge({ products = [], isAdmin = false, onClick }) {
 }
 
 
+
+function LuxmoCategoryFilterPanel({
+  solar, material, feature, color, voltage, chargeController, frequency, mounting, smartFeature,
+  setMaterial, setFeature, setColor, setVoltage, setChargeController, setFrequency, setMounting, setSmartFeature,
+  minPrice, maxPrice, setMinPrice, setMaxPrice, maxBound, onClear
+}) {
+  const toggle = (setter, value) => setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+  const groups = solar ? [
+    ["Voltage", LUXMO_FILTER_OPTIONS.solar.voltage, voltage, setVoltage],
+    ["Charge Controller", LUXMO_FILTER_OPTIONS.solar.chargeController, chargeController, setChargeController],
+    ["Frequency", LUXMO_FILTER_OPTIONS.solar.frequency, frequency, setFrequency],
+    ["Mounting", LUXMO_FILTER_OPTIONS.solar.mounting, mounting, setMounting],
+    ["Smart / WiFi", LUXMO_FILTER_OPTIONS.solar.smartFeature, smartFeature, setSmartFeature]
+  ] : [
+    ["Material", LUXMO_FILTER_OPTIONS.mobile.material, material, setMaterial],
+    ["Feature", LUXMO_FILTER_OPTIONS.mobile.feature, feature, setFeature]
+  ];
+  return <div className="space-y-5">
+    <div className="flex items-center justify-between"><h3 className="font-black">Filters</h3><button type="button" onClick={onClear} className="text-xs font-black text-blue-600">Clear All</button></div>
+    {groups.map(([title, options, selected, setter]) => <div key={title}>
+      <p className="text-xs font-black uppercase tracking-wider text-slate-500 mb-2">{title}</p>
+      <div className="space-y-2">{options.map(option => <label key={option} className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+        <input type="checkbox" checked={selected.includes(option)} onChange={() => toggle(setter, option)} className="rounded" /> {option}
+      </label>)}</div>
+    </div>)}
+    {!solar && <div>
+      <p className="text-xs font-black uppercase tracking-wider text-slate-500 mb-2">Color</p>
+      <div className="flex flex-wrap gap-2">{LUXMO_FILTER_OPTIONS.mobile.color.map(option => {
+        const active = color.includes(option);
+        return <button key={option} type="button" title={option} onClick={() => toggle(setColor, option)} className={`w-8 h-8 rounded-full border-2 ${active ? "ring-2 ring-blue-500 ring-offset-2" : ""}`} style={{background: option.toLowerCase() === "transparent" ? "linear-gradient(45deg,#fff 45%,#e2e8f0 45%,#e2e8f0 55%,#fff 55%)" : option.toLowerCase()}} />;
+      })}</div>
+    </div>}
+    <div>
+      <p className="text-xs font-black uppercase tracking-wider text-slate-500 mb-2">Price</p>
+      <div className="grid grid-cols-2 gap-2"><input type="number" min="0" value={minPrice || ""} onChange={e => setMinPrice(Number(e.target.value) || 0)} placeholder="Min ₹" className="w-full border rounded-lg px-2 py-2 text-sm" /><input type="number" min="0" value={maxPrice || ""} onChange={e => setMaxPrice(Number(e.target.value) || 0)} placeholder="Max ₹" className="w-full border rounded-lg px-2 py-2 text-sm" /></div>
+      <input type="range" min="0" max={Math.max(maxBound,1)} value={Math.min(maxPrice || maxBound, maxBound)} onChange={e => setMaxPrice(Number(e.target.value))} className="w-full mt-3" />
+      <div className="flex justify-between text-[11px] text-slate-500"><span>₹0</span><span>₹{maxBound.toLocaleString("en-IN")}</span></div>
+    </div>
+  </div>;
+}
+
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(() => {
     try {
@@ -3231,6 +3338,19 @@ export default function LuxmoHubApp() {
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedModelFilter, setSelectedModelFilter] = useState("All");
+  const [selectedMainCategory, setSelectedMainCategory] = useState("All");
+  const [selectedSubCategory, setSelectedSubCategory] = useState("All");
+  const [filterMaterial, setFilterMaterial] = useState([]);
+  const [filterFeature, setFilterFeature] = useState([]);
+  const [filterColor, setFilterColor] = useState([]);
+  const [filterVoltage, setFilterVoltage] = useState([]);
+  const [filterChargeController, setFilterChargeController] = useState([]);
+  const [filterFrequency, setFilterFrequency] = useState([]);
+  const [filterMounting, setFilterMounting] = useState([]);
+  const [filterSmartFeature, setFilterSmartFeature] = useState([]);
+  const [filterMinPrice, setFilterMinPrice] = useState(0);
+  const [filterMaxPrice, setFilterMaxPrice] = useState(0);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [recentSearches, setRecentSearches] = useState(() => safeReadJSON(LUXMO_PRO_STORAGE.recentSearches, []));
   const [siteTheme, setSiteTheme] = useState(() => safeReadJSON(LUXMO_PRO_STORAGE.theme, "light") === "dark" ? "dark" : "light");
@@ -3621,17 +3741,53 @@ export default function LuxmoHubApp() {
       const combinedText = `${p.title} ${p.description} ${p.category} ${p.model} ${(p.models || []).join(" ")} ${(p.colours || []).join(" ")}`.toLowerCase();
       if (FORBIDDEN_TERMS.some(term => combinedText.includes(term))) return false;
 
-      const matchesCat = selectedCategory === "All" || p.category === selectedCategory;
+      const taxonomy = getLuxmoTaxonomy(p);
+      const a = taxonomy.attributes;
+      const price = Number(p.salePrice ?? p.price ?? 0);
+      const matchesLegacyCat = selectedCategory === "All" || p.category === selectedCategory;
+      const matchesMain = selectedMainCategory === "All" || taxonomy.mainCategory === selectedMainCategory;
+      const matchesSub = selectedSubCategory === "All" || taxonomy.subCategory === selectedSubCategory;
       const matchesModel = selectedModelFilter === "All" || p.model === selectedModelFilter || (p.models || []).includes(selectedModelFilter);
       const q = searchQuery.toLowerCase().trim();
-      const matchesSearch = !q || 
-        p.title.toLowerCase().includes(q) || 
-        (`${p.model || ""} ${(p.models || []).join(" ")} ${(p.colours || []).join(" ")}`).toLowerCase().includes(q) || 
-        p.sku.toLowerCase().includes(q);
+      const matchesSearch = !q || combinedText.includes(q);
+      const hasAny = (value, selected) => !selected.length || selected.some(v => normalizeText(value).includes(normalizeText(v)));
+      const hasFeature = !filterFeature.length || filterFeature.some(v => (Array.isArray(a.feature) ? a.feature : []).some(x => normalizeText(x).includes(normalizeText(v))) || normalizeText(combinedText).includes(normalizeText(v)));
+      const matchesPrice = (!filterMinPrice || price >= filterMinPrice) && (!filterMaxPrice || price <= filterMaxPrice);
 
-      return matchesCat && matchesModel && matchesSearch && (isAdminLoggedIn || p.published);
+      return matchesLegacyCat && matchesMain && matchesSub && matchesModel && matchesSearch &&
+        hasAny(a.material, filterMaterial) && hasFeature && hasAny(a.color, filterColor) &&
+        hasAny(a.voltage, filterVoltage) && hasAny(a.chargeController, filterChargeController) &&
+        hasAny(a.frequency, filterFrequency) && hasAny(a.mounting, filterMounting) &&
+        hasAny(a.smartFeature, filterSmartFeature) && matchesPrice && (isAdminLoggedIn || p.published);
     });
-  }, [products, selectedCategory, selectedModelFilter, searchQuery, isAdminLoggedIn]);
+  }, [products, selectedCategory, selectedMainCategory, selectedSubCategory, selectedModelFilter, searchQuery,
+      filterMaterial, filterFeature, filterColor, filterVoltage, filterChargeController, filterFrequency,
+      filterMounting, filterSmartFeature, filterMinPrice, filterMaxPrice, isAdminLoggedIn]);
+
+  const activeFilterChips = useMemo(() => [
+    ...filterMaterial.map(v => ({type:"material", value:v, label:v})),
+    ...filterFeature.map(v => ({type:"feature", value:v, label:v})),
+    ...filterColor.map(v => ({type:"color", value:v, label:v})),
+    ...filterVoltage.map(v => ({type:"voltage", value:v, label:v})),
+    ...filterChargeController.map(v => ({type:"chargeController", value:v, label:v})),
+    ...filterFrequency.map(v => ({type:"frequency", value:v, label:v})),
+    ...filterMounting.map(v => ({type:"mounting", value:v, label:v})),
+    ...filterSmartFeature.map(v => ({type:"smartFeature", value:v, label:v})),
+    ...(selectedMainCategory !== "All" ? [{type:"mainCategory", value:selectedMainCategory, label:selectedMainCategory}] : []),
+    ...(selectedSubCategory !== "All" ? [{type:"subCategory", value:selectedSubCategory, label:selectedSubCategory}] : []),
+    ...(filterMinPrice ? [{type:"minPrice", value:filterMinPrice, label:`₹${filterMinPrice}+`}] : []),
+    ...(filterMaxPrice ? [{type:"maxPrice", value:filterMaxPrice, label:`Up to ₹${filterMaxPrice}`}] : [])
+  ], [filterMaterial, filterFeature, filterColor, filterVoltage, filterChargeController, filterFrequency, filterMounting, filterSmartFeature, selectedMainCategory, selectedSubCategory, filterMinPrice, filterMaxPrice]);
+
+  const clearAllFilters = () => {
+    setSelectedMainCategory("All"); setSelectedSubCategory("All");
+    setFilterMaterial([]); setFilterFeature([]); setFilterColor([]); setFilterVoltage([]);
+    setFilterChargeController([]); setFilterFrequency([]); setFilterMounting([]); setFilterSmartFeature([]);
+    setFilterMinPrice(0); setFilterMaxPrice(0); setSelectedModelFilter("All");
+  };
+
+  const toggleFilterValue = (setter, value) => setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+
 
   const buildVariantMatrix = (models, colours, baseSku, basePrice, baseSalePrice, baseStock, images) => {
     const safeModels = models?.length ? models : [formData.model];
@@ -3687,6 +3843,12 @@ export default function LuxmoHubApp() {
       return;
     }
 
+    const draftForTaxonomy = {
+      title: formData.title, description: formData.description, category: formData.category, model: formData.model, models: formData.models,
+      colours: formData.colours, material: formData.material, inverterSpecs: formData.inverterSpecs,
+      attributes: editingProduct?.attributes || {}
+    };
+    const taxonomy = getLuxmoTaxonomy(draftForTaxonomy);
     const productPayload = {
       id: editingProduct ? editingProduct.id : `prod-${Date.now()}`,
       title: formData.title.trim(),
@@ -3723,7 +3885,21 @@ export default function LuxmoHubApp() {
       seoOgImage: formData.seoOgImage || '',
       specs: formData.specs?.trim() || '',
       inverterSpecs: formData.inverterSpecs || {},
-      mobileSpecs: formData.mobileSpecs || {}
+      mobileSpecs: formData.mobileSpecs || {},
+      mainCategory: taxonomy.mainCategory,
+      subCategory: taxonomy.subCategory,
+      attributes: {
+        ...taxonomy.attributes,
+        compatiblePhoneModel: formData.mobileSpecs?.phoneModel || taxonomy.attributes.compatiblePhoneModel,
+        feature: [
+          ...(formData.mobileSpecs?.magsafe ? ["MagSafe"] : []),
+          ...(formData.mobileSpecs?.cameraProtection ? ["Camera Protection"] : [])
+        ],
+        capacity: formData.inverterSpecs?.ratedPower || taxonomy.attributes.capacity,
+        voltage: formData.inverterSpecs?.batteryVoltage || taxonomy.attributes.voltage,
+        smartFeature: formData.inverterSpecs?.wifi || taxonomy.attributes.smartFeature,
+        chargeController: formData.inverterSpecs?.mpptCurrent ? "MPPT" : taxonomy.attributes.chargeController
+      }
     };
 
     if (editingProduct) {
@@ -4498,43 +4674,18 @@ export default function LuxmoHubApp() {
               </button>
 
               {openMobileNavSection === "categories" && (
-                <div className="ml-3 pl-3 border-l-2 border-blue-500 space-y-1">
-                  <div className="px-4 pt-2 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                    Mobile Phone Back Case Cover
-                  </div>
-                  {MOBILE_PHONE_CASE_CATEGORIES.map(([label, description], index) => (
-                    <button
-                      key={`mobile-case-category-${index}`}
-                      type="button"
-                      onClick={() => {
-                        setShowMobileNav(false);
-                        setSearchQuery(label);
-                        setActiveTab("catalog");
-                      }}
-                      className="w-full text-left px-4 py-2.5 rounded-lg hover:bg-blue-50"
-                    >
-                      <span className="block text-sm font-bold text-slate-700">{index + 1}. {label}</span>
-                      <span className="block mt-0.5 text-[11px] leading-4 font-medium text-slate-500">{description}</span>
-                    </button>
-                  ))}
-
-                  <div className="px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                    Hybrid Solar Inverter
-                  </div>
-                  {HYBRID_SOLAR_INVERTER_CATEGORIES.map(([label, description], index) => (
-                    <button
-                      key={`hybrid-inverter-category-${index}`}
-                      type="button"
-                      onClick={() => {
-                        setShowMobileNav(false);
-                        setSearchQuery(label);
-                        setActiveTab("catalog");
-                      }}
-                      className="w-full text-left px-4 py-2.5 rounded-lg hover:bg-blue-50"
-                    >
-                      <span className="block text-sm font-bold text-slate-700">{index + 1}. {label}</span>
-                      <span className="block mt-0.5 text-[11px] leading-4 font-medium text-slate-500">{description}</span>
-                    </button>
+                <div className="ml-3 pl-3 border-l-2 border-blue-500 space-y-2">
+                  {Object.entries(LUXMO_CATEGORY_TREE).map(([main, subs]) => (
+                    <div key={main} className="rounded-xl border border-slate-200 overflow-hidden">
+                      <button type="button" onClick={() => { setShowMobileNav(false); setSelectedMainCategory(main); setSelectedSubCategory("All"); setSelectedCategory("All"); setActiveTab("catalog"); }} className="w-full flex items-center justify-between px-4 py-3 text-left font-black hover:bg-slate-50">
+                        <span>{main}</span><ChevronRight className="w-4 h-4" />
+                      </button>
+                      <div className="px-3 pb-3 grid grid-cols-1 gap-1">
+                        {subs.map(sub => (
+                          <button key={sub} type="button" onClick={() => { setShowMobileNav(false); setSelectedMainCategory(main); setSelectedSubCategory(sub); setSelectedCategory("All"); setActiveTab("catalog"); }} className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-700">{sub}</button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -4898,49 +5049,86 @@ export default function LuxmoHubApp() {
           </div>
         )}
 
-        {/* CATALOG VIEW */}
+        {/* CATALOG VIEW — professional category + filters */}
         {activeTab === "catalog" && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h1 className="text-xl font-bold">Catalog</h1>
-              <div className="flex gap-2">
-                <button onClick={() => setSelectedCategory("All")} className={`px-3 py-1 text-xs rounded-lg ${selectedCategory === "All" ? "bg-blue-600 text-white" : "bg-white border"}`}>All</button>
-                {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-3 py-1 text-xs rounded-lg ${selectedCategory === cat ? "bg-blue-600 text-white" : "bg-white border"}`}>{cat}</button>
-                ))}
+            <div className="rounded-3xl bg-slate-950 text-white p-6 md:p-8 shadow-xl">
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-300">LUXMO HUB SHOP</p>
+                  <h1 className="mt-2 text-2xl md:text-4xl font-black">{selectedMainCategory === "All" ? "Shop All Products" : selectedMainCategory}</h1>
+                  <p className="mt-2 text-sm text-slate-300">Choose a category and refine products with professional filters.</p>
+                </div>
+                <button type="button" onClick={() => setMobileFilterOpen(true)} className="md:hidden inline-flex items-center justify-center gap-2 rounded-xl bg-white text-slate-900 px-4 py-3 font-black"><Filter className="w-4 h-4" /> Filters</button>
               </div>
             </div>
 
-            <LuxmoRecentSearches
-              terms={recentSearches}
-              onSelect={(term) => setSearchQuery(term)}
-              onClear={() => {
-                setRecentSearches([]);
-                safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, []);
-              }}
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {filteredProducts.map(prod => (
-                <ProductCard
-                key={prod.id}
-                product={prod}
-                onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
-                onAddToCart={addToCart}
-                onBuyNow={(p) => {
-                  if (p.variants?.length) {
-                    setSelectedProduct(p);
-                    setSelectedVariantKey(p.variants?.[0]?.key || "");
-                    setActiveImageIndex(0);
-                    setActiveTab("product");
-                  } else {
-                    addToCart(p);
-                    setActiveTab("cart");
-                  }
-                }}
-              />
-              ))}
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+              <button type="button" onClick={() => { setSelectedMainCategory("All"); setSelectedSubCategory("All"); }} className="hover:text-blue-600">Home</button>
+              <ChevronRight className="w-3 h-3" />
+              <button type="button" onClick={() => setSelectedSubCategory("All")} className="hover:text-blue-600">{selectedMainCategory === "All" ? "Shop" : selectedMainCategory}</button>
+              {selectedSubCategory !== "All" && <><ChevronRight className="w-3 h-3" /><span className="text-slate-900">{selectedSubCategory}</span></>}
             </div>
+
+            <div className="grid lg:grid-cols-[250px_minmax(0,1fr)] gap-6">
+              <aside className="hidden lg:block bg-white border rounded-2xl p-5 h-fit sticky top-24">
+                <LuxmoCategoryFilterPanel
+                  solar={selectedMainCategory === "Hybrid Solar Inverters"}
+                  material={filterMaterial} feature={filterFeature} color={filterColor}
+                  voltage={filterVoltage} chargeController={filterChargeController} frequency={filterFrequency} mounting={filterMounting} smartFeature={filterSmartFeature}
+                  setMaterial={setFilterMaterial} setFeature={setFilterFeature} setColor={setFilterColor} setVoltage={setFilterVoltage} setChargeController={setFilterChargeController} setFrequency={setFilterFrequency} setMounting={setFilterMounting} setSmartFeature={setFilterSmartFeature}
+                  minPrice={filterMinPrice} maxPrice={filterMaxPrice} setMinPrice={setFilterMinPrice} setMaxPrice={setFilterMaxPrice}
+                  maxBound={Math.max(1000, ...products.map(p => Number(p.salePrice ?? p.price ?? 0)))} onClear={clearAllFilters}
+                />
+              </aside>
+
+              <div className="min-w-0 space-y-5">
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(LUXMO_CATEGORY_TREE).map(([main, subs]) => <div key={main} className="w-full sm:w-auto">
+                    <button type="button" onClick={() => { setSelectedMainCategory(main); setSelectedSubCategory("All"); setSelectedCategory("All"); }} className={`px-4 py-2 rounded-xl text-sm font-black border ${selectedMainCategory === main ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700"}`}>{main}</button>
+                    {selectedMainCategory === main && <div className="flex flex-wrap gap-2 mt-2">{subs.map(sub => <button key={sub} type="button" onClick={() => setSelectedSubCategory(sub)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${selectedSubCategory === sub ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{sub}</button>)}</div>}
+                  </div>)}
+                </div>
+
+                <div className="flex flex-wrap gap-2 items-center">
+                  {activeFilterChips.map(chip => <button key={`${chip.type}-${chip.value}`} type="button" onClick={() => {
+                    const map = {material:setFilterMaterial, feature:setFilterFeature, color:setFilterColor, voltage:setFilterVoltage, chargeController:setFilterChargeController, frequency:setFilterFrequency, mounting:setFilterMounting, smartFeature:setFilterSmartFeature};
+                    if (map[chip.type]) map[chip.type](prev => prev.filter(v => v !== chip.value));
+                    if (chip.type === "mainCategory") setSelectedMainCategory("All");
+                    if (chip.type === "subCategory") setSelectedSubCategory("All");
+                    if (chip.type === "minPrice") setFilterMinPrice(0);
+                    if (chip.type === "maxPrice") setFilterMaxPrice(0);
+                  }} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 px-3 py-1.5 text-xs font-black">{chip.label} <X className="w-3 h-3" /></button>)}
+                  {activeFilterChips.length > 0 && <button type="button" onClick={clearAllFilters} className="text-xs font-black text-red-600">Clear All</button>}
+                </div>
+
+                <LuxmoRecentSearches terms={recentSearches} onSelect={(term) => setSearchQuery(term)} onClear={() => { setRecentSearches([]); safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, []); }} />
+
+                <div className="flex items-center justify-between border-b pb-3"><h2 className="font-black text-lg">Products <span className="text-sm text-slate-500">({filteredProducts.length})</span></h2></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
+                    onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
+                    onAddToCart={addToCart}
+                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); } }}
+                  />)}
+                </div>
+                {!filteredProducts.length && <div className="bg-white border rounded-2xl p-10 text-center text-slate-500 font-bold">No products match the selected filters. <button type="button" onClick={clearAllFilters} className="text-blue-600">Clear filters</button></div>}
+              </div>
+            </div>
+
+            {mobileFilterOpen && <div className="fixed inset-0 z-[80] bg-black/50 md:hidden" onClick={() => setMobileFilterOpen(false)}>
+              <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black">Filter Products</h2><button type="button" onClick={() => setMobileFilterOpen(false)} className="p-2 rounded-full bg-slate-100"><X className="w-5 h-5" /></button></div>
+                <LuxmoCategoryFilterPanel
+                  solar={selectedMainCategory === "Hybrid Solar Inverters"}
+                  material={filterMaterial} feature={filterFeature} color={filterColor} voltage={filterVoltage} chargeController={filterChargeController} frequency={filterFrequency} mounting={filterMounting} smartFeature={filterSmartFeature}
+                  setMaterial={setFilterMaterial} setFeature={setFilterFeature} setColor={setFilterColor} setVoltage={setFilterVoltage} setChargeController={setFilterChargeController} setFrequency={setFilterFrequency} setMounting={setFilterMounting} setSmartFeature={setFilterSmartFeature}
+                  minPrice={filterMinPrice} maxPrice={filterMaxPrice} setMinPrice={setFilterMinPrice} setMaxPrice={setFilterMaxPrice}
+                  maxBound={Math.max(1000, ...products.map(p => Number(p.salePrice ?? p.price ?? 0)))} onClear={clearAllFilters}
+                />
+                <button type="button" onClick={() => setMobileFilterOpen(false)} className="w-full mt-5 rounded-xl bg-slate-950 text-white py-3 font-black">Apply Filters</button>
+              </div>
+            </div>}
           </div>
         )}
 
