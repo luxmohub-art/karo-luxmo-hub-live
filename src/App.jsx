@@ -42,7 +42,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
   AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
-  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, MoreVertical, Menu, ChevronDown
+  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, Menu, ChevronDown
 } from 'lucide-react';
 
 const BUSINESS_INFO = {
@@ -3342,7 +3342,6 @@ export default function LuxmoHubApp() {
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
-  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [openMobileNavSection, setOpenMobileNavSection] = useState("");
   const [openMobileShopSubsection, setOpenMobileShopSubsection] = useState("");
@@ -4261,43 +4260,16 @@ export default function LuxmoHubApp() {
               )}
             </button>
 
-            {/* Mobile hamburger + desktop three-dot menu. */}
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                aria-label="Open mobile navigation"
-                aria-expanded={showMobileNav}
-                onClick={() => {
-                  setShowMobileNav(v => !v);
-                  setShowHeaderMenu(false);
-                }}
-                className="sm:hidden p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
-              >
-                <Menu className="w-6 h-6" />
-              </button>
-
-              <button
-                type="button"
-                aria-label="More options"
-                aria-expanded={showHeaderMenu}
-                onClick={() => {
-                  setShowHeaderMenu(v => !v);
-                  setShowMobileNav(false);
-                }}
-                className="hidden sm:block p-2 rounded-xl hover:bg-slate-100 text-slate-700"
-              >
-                <MoreVertical className="w-6 h-6" />
-              </button>
-
-              {showHeaderMenu && isAdminLoggedIn && (
-                <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-slate-200 bg-white shadow-2xl z-[80] overflow-hidden">
-                  <button type="button" onClick={() => { setShowHeaderMenu(false); setActiveTab("admin"); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Dashboard</button>
-                  <button type="button" onClick={() => { setShowHeaderMenu(false); setActiveTab("admin"); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Low Stock</button>
-                  <button type="button" onClick={() => { setShowHeaderMenu(false); setShowProCenter(true); }} className="w-full text-left px-4 py-3 text-sm font-black hover:bg-slate-50">Store Tools</button>
-                  <button type="button" onClick={() => { setShowHeaderMenu(false); handleAdminLogout(); }} className="w-full text-left px-4 py-3 text-sm font-black text-red-600 hover:bg-red-50">Log Out Admin</button>
-                </div>
-              )}
-            </div>
+            {/* Unified hamburger navigation on mobile, tablet and desktop. */}
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              aria-expanded={showMobileNav}
+              onClick={() => setShowMobileNav(v => !v)}
+              className="p-2.5 sm:p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 shrink-0"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
 
             {isAdminLoggedIn && (
               <>
