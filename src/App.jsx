@@ -1,4 +1,90 @@
 /*
+ * STAGE 2 COMPLETE — PUBLIC SHIPPING CONFIG
+ * Checkout shipping settings are loaded from /api/config.
+ * LUXMO_DEFAULT_STORE_SETTINGS is used only as a safe display fallback
+ * when the public config request fails. The frontend no longer reads
+ * luxmo_master_admin_settings_v2 for shipping rates or thresholds.
+ */
+/* LUXMO SECURITY FRONTEND HARDENING — STAGE B PREPARATION */
+
+const LUXMO_SECURITY_KEYS = Object.freeze({
+  products: "luxmo_products",
+  orders: "luxmo_pro_orders",
+});
+
+function luxmoSecurityFetch(url, options = {}) {
+  return fetch(url, {
+    credentials: "include",
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+}
+
+async function fetchAuthoritativeProducts(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== "") query.set(key, String(value));
+  });
+  const response = await luxmoSecurityFetch(`/api/products${query.toString() ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Unable to fetch authoritative product data.");
+  const data = await response.json();
+  if (!data?.success) throw new Error(data?.error || "Product data request failed.");
+  return Array.isArray(data.products) ? data.products : [];
+}
+
+async function fetchPublicStoreConfig() {
+  const response = await luxmoSecurityFetch("/api/config");
+  if (!response.ok) throw new Error("Unable to fetch store configuration.");
+  const data = await response.json();
+  if (!data?.success) throw new Error(data?.error || "Store configuration request failed.");
+  return data;
+}
+
+async function requestOrderAccess(orderId, phone) {
+  const response = await luxmoSecurityFetch("/api/orders", {
+    method: "POST",
+    body: JSON.stringify({ action: "request-access", orderId, phone }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to verify order access.");
+  return data;
+}
+
+async function fetchAuthenticatedOrder(orderId, accessToken) {
+  if (!accessToken) throw new Error("Order access token is required.");
+  const response = await luxmoSecurityFetch(`/api/orders?orderId=${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to retrieve order.");
+  return data;
+}
+
+async function createAuthoritativeOrder(payload) {
+  const response = await luxmoSecurityFetch("/api/create-order", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to create order.");
+  return data;
+}
+
+async function createAuthoritativeShipment(payload) {
+  const response = await luxmoSecurityFetch("/api/create-shipment", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to create shipment.");
+  return data;
+}
+
+/*
  * LUXMO HUB — VERIFIED PRODUCT VIDEO BUILD
  * Product-level YouTube + direct MP4 URL support is enabled for catalogue listings,
  * product detail, and up to 12 homepage promotional products.
@@ -45,69 +131,29 @@ import {
   FileText, Info, HelpCircle, RefreshCw, Truck, Scale, Menu, ChevronDown
 } from 'lucide-react';
 
-const BUSINESS_INFO = {
+const PUBLIC_BUSINESS_INFO = Object.freeze({
   tradeName: "LUXMO HUB",
-  legalName: "Sarita Devi",
-  type: "Proprietorship",
+  // GSTIN is public business/tax information and may be displayed on invoices and legal/business information.
   gstin: "09CNCPD1174R1ZN",
-
-  // Complete Udyam Registration Certificate details
-  udyam: {
-    registrationNumber: "UDYAM-UP-21-0062490",
-    enterpriseName: "LUXMO HUB",
-    classificationYear: "2026-27",
-    enterpriseType: "Micro",
-    classificationDate: "05/08/2026",
-    majorActivity: "TRADING",
-    socialCategory: "OBC",
-    unitName: "Luxmo Hub",
-
-    officialAddress: {
-      flatDoorBlockNo: "147",
-      premisesBuilding: "Luxmo Hub Office",
-      villageTown: "Kotwa",
-      blockPost: "Mathura Chhapar",
-      roadStreetLane: "Unnamed Road",
-      city: "Deoria",
-      state: "UTTAR PRADESH",
-      district: "DEORIA",
-      pinCode: "274405"
-    },
-
-    registeredMobile: "8299260182",
-    registeredEmail: "Luxmohub@gmail.com",
-
-    dateOfIncorporationRegistration: "25/05/2026",
-    dateOfCommencementOfProductionBusiness: "25/05/2026",
-    dateOfUdyamRegistration: "05/08/2026",
-
-    nicClassification: {
-      nic2Digit: "46",
-      nic2DigitActivity: "Wholesale trade, except of motor vehicles and motorcycles",
-      nic4Digit: "4659",
-      nic4DigitActivity: "Wholesale of other machinery and equipment",
-      nic5Digit: "46599",
-      nic5DigitActivity: "Wholesale of other machinery, equipment and supplies n.e.c. including computer-controlled machine tools and computer-controlled sewing and knitting machines",
-      activity: "Trading"
-    },
-
-    assistance: {
-      districtIndustriesCentre: "DEORIA (UTTAR PRADESH)",
-      msmeDfo: "KANPUR (UTTAR PRADESH)"
-    }
+  supportEmail: "luxmohub@gmail.com",
+  supportPhone: "+91 75650 12418",
+  businessAddress:
+    "Building No. 147, Unnamed Road, Near Mathura Chhapar Branch Post Office, Vill-Kotwa, Mathura Chhapar, District Deoria, Uttar Pradesh - 274405, India",
+  grievanceOfficer: {
+    name: "Gyaneshwar Sharma",
+    designation: "Grievance Officer",
+    email: "luxmohub@gmail.com",
+    phone: "+91 75650 12418"
   },
 
-  address: {
-    line1: "Building No. 147, Unnamed Road",
-    line2: "Near Mathura Chhapar Branch Post Office",
-    area: "Vill-Kotwa, Mathura Chhapar",
-    district: "District Deoria",
-    state: "Uttar Pradesh – 274405, India"
-  },
-  emails: ["luxmohub@gmail.com"],
-  phones: ["+91 7565012418", "+91 8299260182"],
-  hours: "Monday–Saturday, 10:00 AM–6:00 PM (Sunday and public holidays may be closed.)"
-};
+  // TODO-LEGAL: Confirm with a CA/legal advisor whether proprietor's legal name
+  // must be publicly displayed per Consumer Protection (E-Commerce) Rules 2020 Rule 4(2) before production launch.
+});
+
+// Security boundary: personal legal name, Udyam registration details,
+// NIC classification details, and other private/internal registration details
+// remain excluded from the frontend bundle.
+
 
 const CATEGORIES = ["Hybrid Solar Inverter", "Mobile Back Case", "Solar Accessories"];
 
@@ -549,7 +595,7 @@ Customer Support
 
 Brand: LUXMO HUB
 Email: luxmohub@gmail.com
-Phone: +91 75650 12418
+Phone: 
 
 LUXMO HUB — Quality Products, Trusted by You.`;
 
@@ -677,7 +723,7 @@ LUXMO HUB — Quality Products, Trusted by You.
 
 Customer Support
 Email: luxmohub@gmail.com
-Phone: +91 75650 12418`;
+Phone: `;
 
 const WARRANTY_POLICY_FULL = String.raw`LUXMO HUB Warranty Policy
 
@@ -988,7 +1034,7 @@ Warranty Support
 LUXMO HUB
 
 Email: luxmohub@gmail.com
-Phone: +91 75650 12418
+Phone: 
 
 For faster assistance, customers should keep their:
 
@@ -1155,7 +1201,6 @@ const LUXMO_STORE_SETTINGS_KEY = "luxmo_store_settings";
 const luxmoNormalizeStoreSettings = (value = {}) => ({
   ...LUXMO_DEFAULT_STORE_SETTINGS,
   ...value,
-  ...(safeReadJSON("luxmo_master_admin_settings_v2", {})?.shipping || {}),
   standardDeliveryRate: Math.max(0, Number(value.standardDeliveryRate ?? LUXMO_DEFAULT_STORE_SETTINGS.standardDeliveryRate)),
   expressDeliveryRate: Math.max(0, Number(value.expressDeliveryRate ?? LUXMO_DEFAULT_STORE_SETTINGS.expressDeliveryRate)),
   standardMinDays: Math.max(1, Number(value.standardMinDays ?? LUXMO_DEFAULT_STORE_SETTINGS.standardMinDays)),
@@ -1697,6 +1742,7 @@ function LuxmoCheckout({
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState("");
   const [couponError, setCouponError] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
 
   const managedPaymentMethods =
     safeReadJSON("luxmo_master_admin_settings_v2", {
@@ -1734,185 +1780,69 @@ function LuxmoCheckout({
    * This also supports existing coupon data without
    * changing the Admin Coupon section.
    */
-  const getManagedCoupons = () => {
-  const candidates = [
-    "luxmo_master_coupons",
-    "luxmo_coupons",
-    "luxmo_coupon_rules",
-    "luxmo_admin_coupons",
-    "luxmo_master_admin_settings_v2",
-  ];
+  /*
+   * STEP 3 SECURITY:
+   * Coupon rules are never loaded from localStorage for checkout pricing.
+   * The server is the sole authority for coupon validity and discount.
+   */
 
-  const allCoupons = [];
-
-  for (const key of candidates) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-
-      const parsed = JSON.parse(raw);
-
-      const addCoupons = (list) => {
-        if (!Array.isArray(list)) return;
-
-        list.forEach((item) => {
-          if (
-            item &&
-            typeof item === "object" &&
-            (item.code || item.couponCode)
-          ) {
-            allCoupons.push(item);
-          }
-        });
-      };
-
-      if (Array.isArray(parsed)) {
-        addCoupons(parsed);
-      }
-
-      if (parsed && typeof parsed === "object") {
-        addCoupons(parsed.coupons);
-        addCoupons(parsed.couponRules);
-        addCoupons(parsed.couponCodes);
-        addCoupons(parsed.promotions);
-      }
-    } catch {
-      // Ignore invalid localStorage entries.
-    }
-  }
-
-  const unique = [];
-  const seen = new Set();
-
-  // Use admin-managed coupons first, then keep built-in coupons as a
-  // safe fallback when older/empty localStorage data is present.
-  for (const coupon of [...allCoupons, ...LUXMO_COUPONS]) {
-    const code = String(
-      coupon.code || coupon.couponCode || ""
-    )
-      .trim()
-      .toUpperCase();
-
-    if (!code || seen.has(code)) continue;
-
-    seen.add(code);
-    unique.push({ ...coupon, code });
-  }
-
-  return unique;
-};
-
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const enteredCode = coupon.trim().toUpperCase();
 
     setCouponError("");
     setCouponMessage("");
-    setDiscount(0);
 
     if (!enteredCode) {
       setCouponError("Please enter a coupon code.");
       return;
     }
 
-    // Always keep the built-in production coupons as a fallback.
-    // This prevents an empty/malformed Admin localStorage record from
-    // disabling WELCOME5 on the customer checkout.
-    const coupons = getManagedCoupons();
-    const fallbackCoupon = LUXMO_COUPONS.find(
-      item => String(item.code || "").trim().toUpperCase() === enteredCode
-    );
-
-    const matched = coupons.find(item => {
-      const code = String(
-        item.code || item.couponCode || ""
-      )
-        .trim()
-        .toUpperCase();
-
-      return (
-        code === enteredCode &&
-        item.enabled !== false
-      );
-    });
-
-    const activeCoupon = matched || fallbackCoupon;
-
-    if (!activeCoupon || activeCoupon.enabled === false) {
-      setCouponError("Invalid or inactive coupon code.");
-      return;
-    }
-
-    const minOrder = Number(
-      activeCoupon.minOrder ??
-        activeCoupon.minimumOrder ??
-        activeCoupon.minAmount ??
-        activeCoupon.min ??
-        0
-    );
-
-    if (subtotal < minOrder) {
-      setCouponError(
-        `Minimum order value for this coupon is ${luxmoMoney(
-          minOrder
-        )}.`
-      );
-      return;
-    }
-
-    const type = String(
-      activeCoupon.type || activeCoupon.discountType || "Percent"
-    ).toLowerCase();
-
-    const value = Number(
-      activeCoupon.value ??
-        activeCoupon.amount ??
-        activeCoupon.discount ??
-        0
-    );
-
-    const maxDiscount = Number(
-      activeCoupon.maxDiscount ??
-        activeCoupon.maximumDiscount ??
-        0
-    );
-
-    if (!Number.isFinite(value) || value <= 0) {
-      setCouponError("This coupon has an invalid discount.");
-      return;
-    }
-
-    let calculatedDiscount = 0;
-
-    if (
-      type.includes("percent") ||
-      type.includes("%")
-    ) {
-      calculatedDiscount =
-        (subtotal * value) / 100;
-
-      if (
-        maxDiscount > 0 &&
-        calculatedDiscount > maxDiscount
-      ) {
-        calculatedDiscount = maxDiscount;
+    const payload = {
+      action: "validate",
+      items: cart.map((item) => ({
+        id: item.id,
+        sku: item.sku || "",
+        qty: Number(item.qty || 1)
+      })),
+      couponCode: enteredCode,
+      shippingMode: effectiveShippingMode,
+      shippingAddress: {
+        name: draft.name || "",
+        phone: draft.phone || "",
+        line1: draft.line1 || "",
+        line2: draft.line2 || "",
+        city: draft.city || "",
+        state: draft.state || "",
+        pincode: draft.pincode || ""
       }
-    } else {
-      calculatedDiscount = value;
+    };
+
+    try {
+      setCouponLoading(true);
+
+      const result = await createAuthoritativeOrder(payload);
+      const pricing = result?.pricing || result;
+
+      if (typeof pricing.discount === "number") {
+        setDiscount(Math.max(0, pricing.discount));
+      }
+
+      setCouponMessage(
+        pricing?.coupon?.message ||
+        result?.message ||
+        "Coupon applied successfully."
+      );
+    } catch (error) {
+      setDiscount(0);
+      setCouponError(
+        error?.message ||
+        "Unable to validate this coupon."
+      );
+    } finally {
+      setCouponLoading(false);
     }
-
-    calculatedDiscount = Math.min(
-      Math.max(0, calculatedDiscount),
-      subtotal
-    );
-
-    setDiscount(calculatedDiscount);
-
-    setCouponMessage(
-      `${enteredCode} applied — ${luxmoMoney(
-        calculatedDiscount
-      )} discount.`
-    );
   };
+
 
   const removeCoupon = () => {
     setCoupon("");
@@ -2504,7 +2434,7 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
   const [couriers,setCouriers]=useState(()=>safeReadJSON("luxmo_pro_couriers",LUXMO_COURIER_PROVIDERS));
-  const [storeSettings,setStoreSettings]=useState(()=>luxmoNormalizeStoreSettings(safeReadJSON(LUXMO_STORE_SETTINGS_KEY,LUXMO_DEFAULT_STORE_SETTINGS)));
+  const [storeSettings,setStoreSettings]=useState(()=>luxmoNormalizeStoreSettings(LUXMO_DEFAULT_STORE_SETTINGS));
 
   useEffect(() => {
     let cancelled = false;
@@ -2519,6 +2449,44 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
       if (Array.isArray(d.stockAlerts)) setAlerts(d.stockAlerts);
     }).catch(error => console.warn("Customer Firestore load unavailable:",error.message));
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchPublicStoreConfig()
+      .then((config) => {
+        if (cancelled) return;
+
+        const serverShipping = config?.shipping;
+
+        if (
+          serverShipping &&
+          typeof serverShipping === "object"
+        ) {
+          setStoreSettings((current) =>
+            luxmoNormalizeStoreSettings({
+              ...current,
+              ...serverShipping,
+            })
+          );
+        }
+      })
+      .catch((error) => {
+        /*
+         * Safe display-only fallback:
+         * storeSettings starts from LUXMO_DEFAULT_STORE_SETTINGS.
+         * We intentionally do NOT fall back to localStorage shipping data.
+         */
+        console.warn(
+          "Public shipping config unavailable; using safe display-only defaults:",
+          error?.message || error
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -3194,7 +3162,7 @@ function LuxmoSolarCalculator({ products = [], onClose }) {
 }
 
 function LuxmoQuickWhatsAppModal({ onClose }) {
-  const phone = "917565012418";
+  const phone = null;
   const [type, setType] = useState("Solar Inverter");
   const [message, setMessage] = useState("Hello LUXMO HUB, I want information about your Hybrid Solar Inverters. Please share price, specifications, warranty and delivery details.");
 
@@ -3206,6 +3174,10 @@ function LuxmoQuickWhatsAppModal({ onClose }) {
   };
 
   const send = () => {
+    if (!phone) {
+      window.location.href = "/contact";
+      return;
+    }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -3247,22 +3219,7 @@ function LuxmoLowStockBadge({ products = [], isAdmin = false, onClick }) {
   const [count, setCount] = useState(() => products.filter((p) => luxmoProductStock(p) <= 5).length);
 
   useEffect(() => {
-    const refresh = () => {
-      try {
-        const saved = JSON.parse(localStorage.getItem("luxmo_products") || "[]");
-        const source = Array.isArray(saved) && saved.length ? saved : products;
-        setCount(source.filter((p) => luxmoProductStock(p) <= 5).length);
-      } catch {
-        setCount(products.filter((p) => luxmoProductStock(p) <= 5).length);
-      }
-    };
-    refresh();
-    const timer = setInterval(refresh, 30000);
-    window.addEventListener("storage", refresh);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("storage", refresh);
-    };
+    setCount(products.filter((p) => luxmoProductStock(p) <= 5).length);
   }, [products]);
 
   if (!isAdmin) return null;
@@ -3323,17 +3280,61 @@ function LuxmoCategoryFilterPanel({
   </div>;
 }
 
+
+
+function LuxmoPublicBusinessLegalInfo() {
+  return (
+    <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
+      <h2 className="text-2xl font-black text-slate-900">Business &amp; Grievance Information</h2>
+      <div className="mt-5 grid md:grid-cols-2 gap-5 text-sm text-slate-700">
+        <div>
+          <h3 className="font-semibold text-slate-900">Business Information</h3>
+          <p className="mt-2"><strong>Business / Trade Name:</strong> {PUBLIC_BUSINESS_INFO.tradeName}</p>
+          <p className="mt-1"><strong>GSTIN:</strong> {PUBLIC_BUSINESS_INFO.gstin}</p>
+          <p className="mt-1"><strong>Business Address:</strong> {PUBLIC_BUSINESS_INFO.businessAddress}</p>
+        </div>
+        <div>
+          <h3 className="font-semibold text-slate-900">Customer Care</h3>
+          <p className="mt-2">Email: <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="underline">{PUBLIC_BUSINESS_INFO.supportEmail}</a></p>
+          <p className="mt-1">Phone: <a href={`tel:${PUBLIC_BUSINESS_INFO.supportPhone.replace(/\s/g, "")}`} className="underline">{PUBLIC_BUSINESS_INFO.supportPhone}</a></p>
+        </div>
+        <div className="md:col-span-2 border-t pt-5">
+          <h3 className="font-semibold text-slate-900">Grievance Redressal Officer</h3>
+          <p className="mt-2"><strong>Name:</strong> {PUBLIC_BUSINESS_INFO.grievanceOfficer.name}</p>
+          <p className="mt-1"><strong>Designation:</strong> {PUBLIC_BUSINESS_INFO.grievanceOfficer.designation}</p>
+          <p className="mt-1">Email: <a href={`mailto:${PUBLIC_BUSINESS_INFO.grievanceOfficer.email}`} className="underline">{PUBLIC_BUSINESS_INFO.grievanceOfficer.email}</a></p>
+          <p className="mt-1">Phone: <a href={`tel:${PUBLIC_BUSINESS_INFO.grievanceOfficer.phone.replace(/\s/g, "")}`} className="underline">{PUBLIC_BUSINESS_INFO.grievanceOfficer.phone}</a></p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function LuxmoHubApp() {
-  const [products, setProducts] = useState(() => {
-    try {
-      const saved = localStorage.getItem("luxmo_products");
-      const loaded = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-      return Array.isArray(loaded) && loaded.length ? loaded : INITIAL_PRODUCTS;
-    } catch (err) {
-      console.error("Storage load error:", err);
-      return INITIAL_PRODUCTS;
-    }
-  });;
+  const [products, setProducts] = useState(INITIAL_PRODUCTS);
+
+  // Product/price data is loaded from the authoritative backend.
+  // INITIAL_PRODUCTS is display-only fallback while the request is pending.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const authoritativeProducts = await fetchAuthoritativeProducts();
+        if (!cancelled && authoritativeProducts.length) {
+          setProducts(authoritativeProducts);
+        }
+      } catch (error) {
+        console.error("Authoritative product load failed:", error);
+        // Keep the existing display fallback; never treat localStorage as
+        // authoritative product/price data.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -4096,27 +4097,54 @@ export default function LuxmoHubApp() {
         address
       };
 
-      // Existing Razorpay create-order flow is preserved.
-      const orderResponse = await fetch("/api/create-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
+      /*
+       * STEP 3 — SERVER-AUTHORITATIVE PRICING
+       * Do NOT send a client-calculated amount to create-order.
+       * The server re-prices products, validates the coupon and shipping,
+       * calculates the final total, and creates the Razorpay order.
+       */
+      const orderData = await createAuthoritativeOrder({
+        action: "create",
+        websiteOrderId: pendingOrder.id,
+        items: items.map((item) => ({
+          id: item.id,
+          sku: item.sku || "",
+          qty: Number(item.qty || 1)
+        })),
+        couponCode: String(
+          pendingOrder.couponCode ||
+          pendingOrder.coupon ||
+          coupon ||
+          ""
+        ).trim().toUpperCase(),
+        shippingMode:
+          pendingOrder.shippingMode ||
+          effectiveShippingMode ||
+          "standard",
+        paymentMethod: "razorpay",
+        customer: {
+          name: address.name,
+          phone: address.phone,
+          email: pendingOrder.email || address.email || ""
         },
-        body: JSON.stringify({
-          amount: total,
-         websiteOrderId: pendingOrder.id
-        })
+        shippingAddress: {
+          name: address.name,
+          phone: address.phone,
+          line1: address.line1,
+          line2: address.line2 || "",
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode
+        }
       });
 
-      let orderData = {};
-      try {
-        orderData = await orderResponse.json();
-      } catch {
-        throw new Error("Invalid response from Razorpay order API.");
-      }
-
-      if (!orderResponse.ok || !orderData.success) {
-        throw new Error(orderData.error || "Unable to create order");
+      if (
+        !orderData?.orderId ||
+        !Number(orderData?.amount)
+      ) {
+        throw new Error(
+          "Server returned an invalid Razorpay order."
+        );
       }
 
       try {
@@ -4137,7 +4165,7 @@ export default function LuxmoHubApp() {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: orderData.amount,
         currency: orderData.currency,
-        name: BUSINESS_INFO.tradeName,
+        name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
         order_id: orderData.orderId,
 
@@ -4385,8 +4413,8 @@ export default function LuxmoHubApp() {
 
         prefill: {
           name: orderPayload.customer?.name || "Customer",
-          email: orderPayload.customer?.email || BUSINESS_INFO.emails[0],
-          contact: orderPayload.customer?.phone || BUSINESS_INFO.phones[0]
+          email: orderPayload.customer?.email || "",
+          contact: orderPayload.customer?.phone || ""
         },
 
         theme: {
@@ -4422,10 +4450,10 @@ export default function LuxmoHubApp() {
       {/* Top Banner */}
       <div className="bg-slate-900 text-slate-300 text-xs py-1.5 px-4 border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-          <span>GST Registered Proprietorship: <strong>{BUSINESS_INFO.legalName}</strong> ({BUSINESS_INFO.tradeName})</span>
+          <span>GST Registered Business: <strong>{PUBLIC_BUSINESS_INFO.tradeName}</strong></span>
           <div className="flex gap-4">
-            <a href={`tel:${BUSINESS_INFO.phones[0]}`} className="hover:text-white flex items-center gap-1"><Phone className="w-3 h-3" /> {BUSINESS_INFO.phones[0]}</a>
-            <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="hover:text-white flex items-center gap-1"><Mail className="w-3 h-3" /> {luxmoBusinessValue("email",BUSINESS_INFO.emails[0])}</a>
+            
+            <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="hover:text-white flex items-center gap-1"><Mail className="w-3 h-3" /> {luxmoBusinessValue("email",PUBLIC_BUSINESS_INFO.supportEmail)}</a>
           </div>
         </div>
       </div>
@@ -4963,10 +4991,7 @@ export default function LuxmoHubApp() {
               <h2 className="text-2xl font-black">Need Help?</h2>
               <p className="mt-2 text-slate-300">Our customer support team is available for product, order, delivery and warranty assistance.</p>
               <div className="mt-5 flex flex-wrap justify-center gap-3">
-                <a href={`tel:${BUSINESS_INFO.phones[0]}`} className="px-5 py-3 rounded-xl bg-white text-slate-900 font-bold">
-                  Call +91 75650 12418
-                </a>
-                <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="px-5 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold">
+                <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="px-5 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold">
                   Email Support
                 </a>
               </div>
@@ -5045,8 +5070,7 @@ export default function LuxmoHubApp() {
             </section>
             <LuxmoContactCenter />
             <section className="grid md:grid-cols-2 gap-4">
-              <a href={`tel:${BUSINESS_INFO.phones[0]}`} className="rounded-2xl border bg-white p-5 shadow-sm hover:border-blue-400"><div className="font-black">📞 Call Support</div><div className="mt-1 text-sm text-slate-600">{BUSINESS_INFO.phones[0]}</div></a>
-              <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="rounded-2xl border bg-white p-5 shadow-sm hover:border-blue-400"><div className="font-black">✉️ Email Support</div><div className="mt-1 text-sm text-slate-600">{luxmoBusinessValue("email", BUSINESS_INFO.emails[0])}</div></a>
+              <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="rounded-2xl border bg-white p-5 shadow-sm hover:border-blue-400"><div className="font-black">✉️ Email Support</div><div className="mt-1 text-sm text-slate-600">{luxmoBusinessValue("email", PUBLIC_BUSINESS_INFO.supportEmail)}</div></a>
             </section>
           </div>
         )}
@@ -5276,76 +5300,14 @@ export default function LuxmoHubApp() {
 
               <div className="rounded-2xl bg-slate-950 text-white p-6">
                 <h3 className="text-xl font-black">BUSINESS INFORMATION</h3>
+                <p className="mt-3 text-sm text-slate-300 leading-6">Public-facing business information is limited to details required for customer communication and legally required disclosures. Personal legal identity, Udyam registration details, registered address and registered phone numbers are not embedded in this client application.</p>
                 <div className="mt-4 grid md:grid-cols-2 gap-3 text-sm">
-                  <p><strong>Trade Name / Brand:</strong> LUXMO HUB</p>
-                  <p><strong>Legal Business Name:</strong> Sarita Devi</p>
-                  <p><strong>Business Constitution:</strong> Proprietorship</p>
-                  <p><strong>GSTIN:</strong> 09CNCPD1174R1ZN</p>
+                  <p><strong>Trade Name / Brand:</strong> {PUBLIC_BUSINESS_INFO.tradeName}</p>
+                  <p><strong>GSTIN:</strong> {PUBLIC_BUSINESS_INFO.gstin}</p>
+                  <p><strong>Customer Support:</strong> {PUBLIC_BUSINESS_INFO.supportEmail}</p>
+                  <p><strong>Business Hours:</strong> {PUBLIC_BUSINESS_INFO.hours}</p>
                 </div>
-
-                <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-900 p-5">
-                  <h4 className="text-lg font-black text-amber-300">Udyam / MSME Registration Details</h4>
-
-                  <div className="mt-4 grid md:grid-cols-2 gap-3 text-sm text-slate-200">
-                    <p><strong>Udyam Registration Number:</strong> {BUSINESS_INFO.udyam.registrationNumber}</p>
-                    <p><strong>Name of Enterprise:</strong> {BUSINESS_INFO.udyam.enterpriseName}</p>
-                    <p><strong>Classification Year:</strong> {BUSINESS_INFO.udyam.classificationYear}</p>
-                    <p><strong>Enterprise Type:</strong> {BUSINESS_INFO.udyam.enterpriseType}</p>
-                    <p><strong>Classification Date:</strong> {BUSINESS_INFO.udyam.classificationDate}</p>
-                    <p><strong>Major Activity:</strong> {BUSINESS_INFO.udyam.majorActivity}</p>
-                    <p><strong>Social Category:</strong> {BUSINESS_INFO.udyam.socialCategory}</p>
-                    <p><strong>Name of Unit:</strong> {BUSINESS_INFO.udyam.unitName}</p>
-                    <p><strong>Registered Mobile:</strong> {BUSINESS_INFO.udyam.registeredMobile}</p>
-                    <p><strong>Registered Email:</strong> {BUSINESS_INFO.udyam.registeredEmail}</p>
-                    <p><strong>Date of Incorporation / Registration:</strong> {BUSINESS_INFO.udyam.dateOfIncorporationRegistration}</p>
-                    <p><strong>Date of Commencement of Production / Business:</strong> {BUSINESS_INFO.udyam.dateOfCommencementOfProductionBusiness}</p>
-                    <p><strong>Date of Udyam Registration:</strong> {BUSINESS_INFO.udyam.dateOfUdyamRegistration}</p>
-                  </div>
-
-                  <div className="mt-5 pt-5 border-t border-slate-700">
-                    <h4 className="font-bold text-amber-300">Official Address of Enterprise</h4>
-                    <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm text-slate-300">
-                      <p><strong>Flat/Door/Block No.:</strong> {BUSINESS_INFO.udyam.officialAddress.flatDoorBlockNo}</p>
-                      <p><strong>Name of Premises/Building:</strong> {BUSINESS_INFO.udyam.officialAddress.premisesBuilding}</p>
-                      <p><strong>Village/Town:</strong> {BUSINESS_INFO.udyam.officialAddress.villageTown}</p>
-                      <p><strong>Block/Post:</strong> {BUSINESS_INFO.udyam.officialAddress.blockPost}</p>
-                      <p><strong>Road/Street/Lane:</strong> {BUSINESS_INFO.udyam.officialAddress.roadStreetLane}</p>
-                      <p><strong>City:</strong> {BUSINESS_INFO.udyam.officialAddress.city}</p>
-                      <p><strong>State:</strong> {BUSINESS_INFO.udyam.officialAddress.state}</p>
-                      <p><strong>District:</strong> {BUSINESS_INFO.udyam.officialAddress.district}</p>
-                      <p><strong>PIN:</strong> {BUSINESS_INFO.udyam.officialAddress.pinCode}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 pt-5 border-t border-slate-700">
-                    <h4 className="font-bold text-amber-300">National Industry Classification (NIC) Codes</h4>
-                    <div className="mt-3 space-y-3 text-sm text-slate-300">
-                      <p><strong>NIC 2 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic2Digit} — {BUSINESS_INFO.udyam.nicClassification.nic2DigitActivity}</p>
-                      <p><strong>NIC 4 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic4Digit} — {BUSINESS_INFO.udyam.nicClassification.nic4DigitActivity}</p>
-                      <p><strong>NIC 5 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic5Digit} — {BUSINESS_INFO.udyam.nicClassification.nic5DigitActivity}</p>
-                      <p><strong>Activity:</strong> {BUSINESS_INFO.udyam.nicClassification.activity}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 pt-5 border-t border-slate-700">
-                    <h4 className="font-bold text-amber-300">Udyam Assistance Offices</h4>
-                    <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm text-slate-300">
-                      <p><strong>District Industries Centre:</strong> {BUSINESS_INFO.udyam.assistance.districtIndustriesCentre}</p>
-                      <p><strong>MSME-DFO:</strong> {BUSINESS_INFO.udyam.assistance.msmeDfo}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <h4 className="font-bold mt-6">Customer Support:</h4>
-                <p className="mt-1">Email: <a href="mailto:luxmohub@gmail.com" className="underline hover:text-white">luxmohub@gmail.com</a></p>
-                <p>Phone: <a href="tel:+917565012418" className="underline hover:text-white">+91 75650 12418</a></p>
-
-                <h4 className="font-bold mt-6">Grievance Redressal Officer:</h4>
-                <p className="mt-1">Gyaneshwar Sharma</p>
-                <p>Email: <a href="mailto:luxmohub@gmail.com" className="underline hover:text-white">luxmohub@gmail.com</a></p>
-                <p>Phone: <a href="tel:+917565012418" className="underline hover:text-white">+91 75650 12418</a></p>
               </div>
-            </section>
 
             {/* SHIPPING & DELIVERY — FULL CONTENT */}
             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
@@ -5485,7 +5447,6 @@ export default function LuxmoHubApp() {
                 <p className="mt-2">For delivery-related assistance, customers should contact:</p>
                 <p className="mt-3 font-bold">LUXMO HUB</p>
                 <p>Email: <a href="mailto:luxmohub@gmail.com" className="text-blue-700 underline">luxmohub@gmail.com</a></p>
-                <p>Phone: <a href="tel:+917565012418" className="text-blue-700 underline">+91 75650 12418</a></p>
                 <p className="mt-3 text-sm">
                   Please keep your Order ID and tracking details available when contacting customer support.
                 </p>
@@ -5514,121 +5475,24 @@ export default function LuxmoHubApp() {
               <h2 className="text-2xl font-black text-slate-900">⚖️ Grievance Redressal &amp; Customer Complaint</h2>
               <p>LUXMO HUB aims to acknowledge customer complaints within 48 hours and aims to redress complaints within one month, subject to applicable law and the nature and complexity of the complaint.</p>
               <div className="bg-slate-50 rounded-xl p-5 border">
-                <p><strong>Grievance Redressal Officer:</strong> Gyaneshwar Sharma</p>
+                
                 <p><strong>Email:</strong> luxmohub@gmail.com</p>
-                <p><strong>Phone:</strong> +91 75650 12418</p>
               </div>
             </section>
 
-            {/* BUSINESS INFORMATION */}
-            <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
-              <h2 className="text-2xl font-black text-slate-900">🏢 Business Information</h2>
-              <div className="mt-5 grid sm:grid-cols-2 gap-4 text-sm">
-                <div><span className="font-bold">Trade Name / Brand:</span> LUXMO HUB</div>
-                <div><span className="font-bold">Legal Business Name:</span> Sarita Devi</div>
-                <div><span className="font-bold">Business Constitution:</span> Proprietorship</div>
-                <div><span className="font-bold">GSTIN:</span> 09CNCPD1174R1ZN</div>
-                <div><span className="font-bold">Customer Support:</span> luxmohub@gmail.com</div>
-                <div><span className="font-bold">Phone:</span> +91 75650 12418</div>
-                <div><span className="font-bold">Grievance Officer:</span> Gyaneshwar Sharma</div>
-              </div>
-            </section>
+            {/* PUBLIC BUSINESS INFORMATION */
+             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
+               <h2 className="text-2xl font-black text-slate-900">Business Information</h2>
+               <div className="mt-5 grid sm:grid-cols-2 gap-4 text-sm">
+                 <div><span className="font-bold">Trade Name / Brand:</span> {PUBLIC_BUSINESS_INFO.tradeName}</div>
+                 <div><span className="font-bold">Business Constitution:</span> Proprietorship</div>
+                 <div><span className="font-bold">GSTIN:</span> {PUBLIC_BUSINESS_INFO.gstin}</div>
+                 <div><span className="font-bold">Customer Support:</span> {PUBLIC_BUSINESS_INFO.supportEmail}</div>
+               </div>
+               <p className="mt-4 text-sm text-slate-600 leading-6">Personal legal identity, Udyam/MSME registration details, registered address and registered phone numbers are not embedded in this public client application. Legally required business details can be supplied by the server when generating invoices or other compliance documents.</p>
+             </section>
 
-            {/* COMPLETE UDYAM / MSME REGISTRATION */}
-            <section className="bg-slate-950 text-white border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl">
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Government Registration</p>
-              <h2 className="mt-1 text-2xl md:text-3xl font-black">Udyam / MSME Registration Details</h2>
-
-              <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Udyam Registration Number</p>
-                  <p className="mt-1 font-black text-amber-300">{BUSINESS_INFO.udyam.registrationNumber}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Name of Enterprise</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.enterpriseName}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Enterprise Type</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.enterpriseType}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Classification Year</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.classificationYear}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Classification Date</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.classificationDate}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Major Activity</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.majorActivity}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Social Category</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.socialCategory}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Name of Unit</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.unitName}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Registered Mobile</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.registeredMobile}</p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Registered Email</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.registeredEmail}</p>
-                </div>
-                <div className="sm:col-span-2 rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Date of Incorporation / Registration</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.dateOfIncorporationRegistration}</p>
-                </div>
-                <div className="sm:col-span-2 rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Date of Commencement of Production / Business</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.dateOfCommencementOfProductionBusiness}</p>
-                </div>
-                <div className="sm:col-span-2 rounded-xl bg-white/5 border border-slate-700 p-4">
-                  <p className="text-slate-400">Date of Udyam Registration</p>
-                  <p className="mt-1 font-black">{BUSINESS_INFO.udyam.dateOfUdyamRegistration}</p>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-xl bg-white/5 border border-slate-700 p-5">
-                <h3 className="font-black text-amber-300">Official Address of Enterprise</h3>
-                <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-300">
-                  <p><strong>Flat/Door/Block No.:</strong> {BUSINESS_INFO.udyam.officialAddress.flatDoorBlockNo}</p>
-                  <p><strong>Premises/Building:</strong> {BUSINESS_INFO.udyam.officialAddress.premisesBuilding}</p>
-                  <p><strong>Village/Town:</strong> {BUSINESS_INFO.udyam.officialAddress.villageTown}</p>
-                  <p><strong>Block/Post:</strong> {BUSINESS_INFO.udyam.officialAddress.blockPost}</p>
-                  <p><strong>Road/Street/Lane:</strong> {BUSINESS_INFO.udyam.officialAddress.roadStreetLane}</p>
-                  <p><strong>City:</strong> {BUSINESS_INFO.udyam.officialAddress.city}</p>
-                  <p><strong>State:</strong> {BUSINESS_INFO.udyam.officialAddress.state}</p>
-                  <p><strong>District:</strong> {BUSINESS_INFO.udyam.officialAddress.district}</p>
-                  <p><strong>PIN:</strong> {BUSINESS_INFO.udyam.officialAddress.pinCode}</p>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-xl bg-white/5 border border-slate-700 p-5">
-                <h3 className="font-black text-amber-300">National Industry Classification (NIC) Codes</h3>
-                <div className="mt-3 space-y-3 text-sm text-slate-300">
-                  <p><strong>NIC 2 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic2Digit} — {BUSINESS_INFO.udyam.nicClassification.nic2DigitActivity}</p>
-                  <p><strong>NIC 4 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic4Digit} — {BUSINESS_INFO.udyam.nicClassification.nic4DigitActivity}</p>
-                  <p><strong>NIC 5 Digit:</strong> {BUSINESS_INFO.udyam.nicClassification.nic5Digit} — {BUSINESS_INFO.udyam.nicClassification.nic5DigitActivity}</p>
-                  <p><strong>Activity:</strong> {BUSINESS_INFO.udyam.nicClassification.activity}</p>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-xl bg-white/5 border border-slate-700 p-5">
-                <h3 className="font-black text-amber-300">Udyam Assistance Offices</h3>
-                <div className="mt-3 grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
-                  <p><strong>District Industries Centre:</strong> {BUSINESS_INFO.udyam.assistance.districtIndustriesCentre}</p>
-                  <p><strong>MSME-DFO:</strong> {BUSINESS_INFO.udyam.assistance.msmeDfo}</p>
-                </div>
-              </div>
-            </section>
-
-            {/* EXISTING POLICY SUMMARY */}
+             /* EXISTING POLICY SUMMARY */}
             <section className="bg-slate-50 border rounded-2xl p-6 md:p-8">
               <h2 className="text-2xl font-black text-slate-900">Important Customer Policies</h2>
               <p className="mt-3 text-slate-600">The full policy documents below should be read together with the applicable product page, sales invoice and product-specific terms.</p>
@@ -6398,18 +6262,14 @@ export default function LuxmoHubApp() {
         </div>
 
         <div>
-          <h4 className="text-white font-bold">Legal Business Details</h4>
+          <h4 className="text-white font-bold">Business Details</h4>
           <div className="mt-3 space-y-1 text-sm text-slate-400">
-            <p><strong className="text-slate-200">Legal Business Name:</strong> {luxmoBusinessValue("legalName","Sarita Devi")}</p>
-            <p><strong className="text-slate-200">Business Constitution:</strong> {luxmoBusinessValue("constitution","Proprietorship")}</p>
-            <p><strong className="text-slate-200">GSTIN:</strong> {luxmoBusinessValue("gstin","09CNCPD1174R1ZN")}</p>
-            <p><strong className="text-slate-200">Udyam Registration No.:</strong> {BUSINESS_INFO.udyam.registrationNumber}</p>
-            <p><strong className="text-slate-200">Enterprise Type:</strong> {BUSINESS_INFO.udyam.enterpriseType}</p>
-            <p><strong className="text-slate-200">Major Activity:</strong> {BUSINESS_INFO.udyam.majorActivity}</p>
-            <p><strong className="text-slate-200">Grievance Officer:</strong> {luxmoBusinessValue("grievanceOfficer","Gyaneshwar Sharma")}</p>
-            <a href={`mailto:${BUSINESS_INFO.emails[0]}`} className="block hover:text-white pt-1">{BUSINESS_INFO.emails[0]}</a>
-            <a href={`tel:${luxmoBusinessValue("phone","+91 75650 12418").replace(/\s/g,"")}`} className="block hover:text-white">{luxmoBusinessValue("phone","+91 75650 12418")}</a>
+            <p><strong className="text-slate-200">Trade Name:</strong> {PUBLIC_BUSINESS_INFO.tradeName}</p>
+            <p><strong className="text-slate-200">Business Constitution:</strong> Proprietorship</p>
+            <p><strong className="text-slate-200">GSTIN:</strong> {PUBLIC_BUSINESS_INFO.gstin}</p>
+            <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="block hover:text-white pt-1">{PUBLIC_BUSINESS_INFO.supportEmail}</a>
           </div>
+        </div>
         </div>
       </div>
 
@@ -6420,7 +6280,7 @@ export default function LuxmoHubApp() {
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <a
-            href="https://wa.me/917565012418"
+            href="/contact"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-white font-bold hover:bg-green-700 transition shadow-sm"
@@ -6492,7 +6352,9 @@ export default function LuxmoHubApp() {
         <p>LUXMO HUB — Quality Products, Trusted by You.</p>
       </div>
     </div>
-  </footer>}
+  
+        <LuxmoPublicBusinessLegalInfo />
+</footer>}
 
   {/* ADMIN AUTH MODAL — GOOGLE AUTHENTICATOR / TOTP */}
   {showAdminModal && (
@@ -6916,9 +6778,9 @@ const LUXMO_POLICY_EDITOR_DEFAULTS = {
   "Warranty Policy": WARRANTY_POLICY_FULL,
   "Shipping & Delivery": "LUXMO HUB Shipping & Delivery policy. Delivery timelines depend on product category, destination, courier serviceability, weather, holidays and operational conditions. Standard and express delivery rules are controlled from Admin Panel → Shipping.",
   "Unboxing & Proof": UNBOXING_POLICY,
-  "Grievance Redressal": "LUXMO HUB Grievance Redressal. Grievance Officer: Gyaneshwar Sharma. Email: luxmohub@gmail.com. Phone: +91 75650 12418. Complaints should include order ID, customer details, product details and supporting evidence.",
+  "Grievance Redressal": "LUXMO HUB Grievance Redressal. Complaints should include order ID, customer details, product details and supporting evidence. Contact details are provided through the current support channel.",
   "About Us": "Welcome to LUXMO HUB — a customer-focused online brand offering hybrid solar inverters, solar accessories and premium mobile phone back case covers. LUXMO HUB focuses on accurate product information, secure packaging, reliable delivery support and responsive customer service.",
-  "Contact Us": "LUXMO HUB Customer Support\nEmail: luxmohub@gmail.com\nPhone: +91 75650 12418\nBusiness hours: Monday–Saturday, 10:00 AM–6:00 PM.",
+  "Contact Us": "LUXMO HUB Customer Support\nEmail: luxmohub@gmail.com\nBusiness hours: Monday–Saturday, 10:00 AM–6:00 PM.",
   "Terms & Customer Policies": "LUXMO HUB Terms & Customer Policies. Customers should review product descriptions, pricing, delivery, payment, return, replacement, refund, warranty and other applicable policies before placing an order.",
   "Privacy Policy": "LUXMO HUB Privacy Policy. Customer information should be used only for legitimate order processing, customer support, payment, delivery, security and legal/compliance purposes, subject to applicable law.",
   "Return & Replacement": RETURN_REPLACEMENT_POLICY,
@@ -6934,15 +6796,15 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
   const [settings, setSettings] = React.useState(() => luxmoMasterRead());
   const [policies, setPolicies] = React.useState(() => safeReadJSON(LUXMO_POLICY_OVERRIDE_KEY, LUXMO_POLICY_EDITOR_DEFAULTS));
   const [business, setBusiness] = React.useState(() => safeReadJSON(LUXMO_BUSINESS_OVERRIDE_KEY, {
-    legalName: BUSINESS_INFO.legalName,
-    constitution: BUSINESS_INFO.type,
-    gstin: BUSINESS_INFO.gstin,
-    udyam: BUSINESS_INFO.udyam.registrationNumber,
-    enterpriseType: BUSINESS_INFO.udyam.enterpriseType,
-    majorActivity: BUSINESS_INFO.udyam.majorActivity,
-    grievanceOfficer: "Gyaneshwar Sharma",
-    email: BUSINESS_INFO.emails[0],
-    phone: BUSINESS_INFO.phones[0]
+    legalName: "",
+    constitution: "Proprietorship",
+    gstin: PUBLIC_BUSINESS_INFO.gstin,
+    udyam: "",
+    enterpriseType: "",
+    majorActivity: "",
+    grievanceOfficer: "",
+    email: PUBLIC_BUSINESS_INFO.supportEmail,
+    phone: ""
   }));
   const [orders, setOrders] = React.useState(() => safeReadJSON(LUXMO_PRO_STORAGE.orders, []));
  React.useEffect(() => {
@@ -7134,16 +6996,13 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
         </div>}
 
         {tab === "business" && <div className="space-y-4">
-          <h3 className="font-black">Legal Business Details</h3>
-          <div className="grid md:grid-cols-2 gap-3">{Object.entries({legalName:"Legal Business Name",constitution:"Business Constitution",gstin:"GSTIN",udyam:"Udyam Registration No.",enterpriseType:"Enterprise Type",majorActivity:"Major Activity",grievanceOfficer:"Grievance Officer",email:"Business Email",phone:"Business Phone"}).map(([k,label])=><label key={k} className="text-xs font-bold">{label}<input className="admin-field mt-1" value={business[k]||""} onChange={e=>setBusiness(prev=>({...prev,[k]:e.target.value}))}/></label>)}</div>
-          <button onClick={()=>saveBusiness(business)} className="rounded-xl bg-emerald-600 text-white px-4 py-2.5 text-xs font-black">Save Legal Details</button>
-        </div>}
-
-        {tab === "security" && <div className="space-y-4">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><h3 className="font-black text-emerald-900">Google Authenticator Admin Login — Preserved</h3><p className="mt-2 text-sm text-emerald-800">The existing 6-digit TOTP login and server-session flow remain the authentication boundary. The Admin Panel does not expose the TOTP secret.</p></div>
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><h3 className="font-black text-amber-900">Production Security</h3><p className="mt-2 text-sm text-amber-800">localStorage is useful for this frontend demo but is not a secure multi-device database. Connect product, pricing, order, policy and store-setting persistence to authenticated server/API storage before production.</p></div>
-        </div>}
-      </div>
+          <h4 className="text-white font-bold">Business Details</h4>
+          <div className="mt-3 space-y-1 text-sm text-slate-400">
+            <p><strong className="text-slate-200">Trade Name:</strong> {PUBLIC_BUSINESS_INFO.tradeName}</p>
+            <p><strong className="text-slate-200">Business Constitution:</strong> Proprietorship</p>
+            <p><strong className="text-slate-200">GSTIN:</strong> {PUBLIC_BUSINESS_INFO.gstin}</p>
+            <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="block hover:text-white pt-1">{PUBLIC_BUSINESS_INFO.supportEmail}</a>
+          </div>
     </section>
   );
 }
@@ -7714,4 +7573,16 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
       )}
     </>
   );
+             {/* PUBLIC BUSINESS INFORMATION */}
+             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
+               <h2 className="text-2xl font-black text-slate-900">Business Information</h2>
+               <div className="mt-5 grid sm:grid-cols-2 gap-4 text-sm">
+                 <div><span className="font-bold">Trade Name / Brand:</span> {PUBLIC_BUSINESS_INFO.tradeName}</div>
+                 <div><span className="font-bold">Business Constitution:</span> Proprietorship</div>
+                 <div><span className="font-bold">GSTIN:</span> {PUBLIC_BUSINESS_INFO.gstin}</div>
+                 <div><span className="font-bold">Customer Support:</span> {PUBLIC_BUSINESS_INFO.supportEmail}</div>
+               </div>
+               <p className="mt-4 text-sm text-slate-600 leading-6">Personal legal identity, Udyam/MSME registration details, registered address and registered phone numbers are not embedded in this public client application. Legally required business details can be supplied by the server when generating invoices or other compliance documents.</p>
+             </section>
+
 }
