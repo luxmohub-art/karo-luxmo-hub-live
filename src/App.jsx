@@ -6091,7 +6091,7 @@ export default function LuxmoHubApp() {
         )}
 
         {showCheckoutModal && (
-          <div className="fixed inset-0 z-[10000] bg-slate-950/70 backdrop-blur-sm overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
+          <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
             <div className="min-h-full w-full p-2 md:p-5">
               <div className="max-w-5xl mx-auto">
                 <div className="flex justify-end mb-2">
@@ -6272,7 +6272,7 @@ export default function LuxmoHubApp() {
   `}</style>
 
   {/* PROFESSIONAL FOOTER */}
-  {homepagePublished?.sectionEnabled?.footer !== false && <footer className="bg-slate-950 text-slate-300 mt-10">
+  {homepagePublished?.sectionEnabled?.footer !== false && activeTab !== "cart" && !showCheckoutModal && !showStoreTools && <footer className="bg-slate-950 text-slate-300 mt-10">
     <div className="max-w-7xl mx-auto px-4 py-10">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
