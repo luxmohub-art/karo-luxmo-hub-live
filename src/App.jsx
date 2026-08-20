@@ -3359,7 +3359,20 @@ export default function LuxmoHubApp() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedVariantKey, setSelectedVariantKey] = useState("");
-  const [showProCenter, setShowProCenter] = useState(false);
+  const [showStoreTools, setShowStoreTools] = useState(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+
+  useEffect(() => {
+    const modalOpen = showStoreTools || showCheckoutModal;
+    if (modalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showStoreTools, showCheckoutModal]);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [showWarrantyModal, setShowWarrantyModal] = useState(false);
   const [showSolarCalculator, setShowSolarCalculator] = useState(false);
@@ -4494,7 +4507,7 @@ export default function LuxmoHubApp() {
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
             {isAdminLoggedIn && (
-              <button onClick={() => setShowProCenter(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
+              <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
             )}
 
             <button onClick={() => setActiveTab("cart")} className="relative p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0">
@@ -4746,7 +4759,7 @@ export default function LuxmoHubApp() {
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
                   <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
                   <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Low Stock</button>
-                  <button type="button" onClick={() => { setShowMobileNav(false); setShowProCenter(true); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Store Tools</button>
+                  <button type="button" onClick={() => { setShowMobileNav(false); setShowStoreTools(true); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Store Tools</button>
                 </div>
               )}
             </div>
@@ -5157,7 +5170,7 @@ export default function LuxmoHubApp() {
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
                     onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
                     onAddToCart={addToCart}
-                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); } }}
+                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); setShowCheckoutModal(true); } }}
                   />)}
                 </div>
                 {!filteredProducts.length && <div className="bg-white border rounded-2xl p-10 text-center text-slate-500 font-bold">No products match the selected filters. <button type="button" onClick={clearAllFilters} className="text-blue-600">Clear filters</button></div>}
@@ -5685,7 +5698,7 @@ export default function LuxmoHubApp() {
                   <span className="text-blue-600">₹{cartTotal}</span>
                 </div>
                 <button
-                  onClick={() => setShowProCenter(true)}
+                  onClick={() => setShowCheckoutModal(true)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
                 >
                   Proceed to Secure Checkout
@@ -6050,24 +6063,59 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-        {showProCenter && (
-          <div className="fixed inset-0 z-[65] bg-black/40 p-2 md:p-5 overflow-auto">
+        {showStoreTools && isAdminLoggedIn && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm p-2 md:p-5 overflow-auto" role="dialog" aria-modal="true" aria-label="LUXMO HUB Store Tools">
             <div className="max-w-7xl mx-auto my-2 md:my-5">
               <div className="flex justify-end mb-2">
-                <button onClick={() => setShowProCenter(false)} className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg">Close Store Tools ×</button>
+                <button
+                  onClick={() => setShowStoreTools(false)}
+                  className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg"
+                >
+                  Close Store Tools ×
+                </button>
               </div>
               <LuxmoProSuite
                 products={products}
                 cart={cart}
                 addToCart={addToCart}
-                onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowProCenter(false); }}
-                isAdminLoggedIn={isAdminLoggedIn}
+                onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowStoreTools(false); }}
+                isAdminLoggedIn={true}
                 onPay={handleRazorpayPayment}
                 siteTheme={siteTheme}
                 setSiteTheme={setSiteTheme}
-                checkoutOnly={!isAdminLoggedIn}
-                onCheckoutClose={() => setShowProCenter(false)}
+                checkoutOnly={false}
+                onCheckoutClose={() => setShowStoreTools(false)}
               />
+            </div>
+          </div>
+        )}
+
+        {showCheckoutModal && (
+          <div className="fixed inset-0 z-[10000] bg-slate-950/70 backdrop-blur-sm overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
+            <div className="min-h-full w-full p-2 md:p-5">
+              <div className="max-w-5xl mx-auto">
+                <div className="flex justify-end mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCheckoutModal(false)}
+                    className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg"
+                  >
+                    Close Checkout ×
+                  </button>
+                </div>
+                <LuxmoProSuite
+                  products={products}
+                  cart={cart}
+                  addToCart={addToCart}
+                  onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowCheckoutModal(false); }}
+                  isAdminLoggedIn={false}
+                  onPay={handleRazorpayPayment}
+                  siteTheme={siteTheme}
+                  setSiteTheme={setSiteTheme}
+                  checkoutOnly={true}
+                  onCheckoutClose={() => setShowCheckoutModal(false)}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -6434,7 +6482,7 @@ export default function LuxmoHubApp() {
       )}
 
       {/* Floating WhatsApp quick contact — stays below Secure Checkout modal */}
-      {!showProCenter && (
+      {!showStoreTools && !showCheckoutModal && (
         <button
           type="button"
           onClick={() => setShowWhatsAppModal(true)}
