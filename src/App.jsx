@@ -5308,6 +5308,7 @@ export default function LuxmoHubApp() {
                   <p><strong>Business Hours:</strong> {PUBLIC_BUSINESS_INFO.hours}</p>
                 </div>
               </div>
+            </section>
 
             {/* SHIPPING & DELIVERY — FULL CONTENT */}
             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
@@ -6270,7 +6271,6 @@ export default function LuxmoHubApp() {
             <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="block hover:text-white pt-1">{PUBLIC_BUSINESS_INFO.supportEmail}</a>
           </div>
         </div>
-        </div>
       </div>
 
       {/* SOCIAL MEDIA LINKS */}
@@ -7003,6 +7003,8 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
             <p><strong className="text-slate-200">GSTIN:</strong> {PUBLIC_BUSINESS_INFO.gstin}</p>
             <a href={`mailto:${PUBLIC_BUSINESS_INFO.supportEmail}`} className="block hover:text-white pt-1">{PUBLIC_BUSINESS_INFO.supportEmail}</a>
           </div>
+        </div>}
+      </div>
     </section>
   );
 }
