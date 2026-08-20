@@ -2423,7 +2423,7 @@ function LuxmoFeatureChecklist() {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Readiness" title="Ecommerce Feature Checklist" description="A practical checklist for the Luxmo Hub storefront."/><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{LUXMO_PROTECTED_FEATURES.map((f,i)=><div key={f} className="flex gap-2 items-center border rounded-xl px-3 py-2.5 text-xs"><span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center font-black">✓</span><span>{f}</span></div>)}</div></div>;
 }
 
-function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn, onPay, siteTheme, setSiteTheme }) {
+function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLoggedIn, onPay, siteTheme, setSiteTheme, checkoutOnly = false, onCheckoutClose }) {
   const [tab,setTab]=useState("overview");
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
@@ -2498,7 +2498,7 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
       if (Array.isArray(r.reviews) && r.reviews.length) setReviews(r.reviews);
     });
   }, []);
-  const [checkout,setCheckout]=useState(false);
+  const [checkout,setCheckout]=useState(Boolean(checkoutOnly));
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
   const selectProduct=p=>{setRecent(prev=>{const next=[p.id,...prev.filter(id=>id!==p.id)].slice(0,12);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,next);return next;});onSelectProduct(p);};
   const createOrder=order=>{
@@ -2523,7 +2523,7 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   ];
   if(isAdminLoggedIn) tabs.push(["settings","Store Settings"],["analytics","Analytics"],["couriers","Couriers"],["checklist","Checklist"]);
   return <>
-    <div className="luxmo-pro-suite rounded-3xl bg-slate-50 border border-slate-200 p-4 md:p-6 space-y-5">
+    {!checkoutOnly && <div className="luxmo-pro-suite rounded-3xl bg-slate-50 border border-slate-200 p-4 md:p-6 space-y-5">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div><div className="text-[11px] uppercase tracking-[0.2em] text-blue-600 font-black">LUXMO HUB PRO</div><h2 className="text-2xl font-black text-slate-900">Ecommerce Control Center</h2><p className="text-sm text-slate-500 mt-1">Customer tools, checkout workflows, reviews, orders, shipping settings and store operations.</p></div>
         <div className="flex flex-wrap gap-2"><LuxmoProBadge tone="green">{products.length} Products</LuxmoProBadge><LuxmoProBadge>{cart.length} Cart Items</LuxmoProBadge><LuxmoProBadge tone="amber">{orders.length} Orders</LuxmoProBadge></div>
@@ -2559,8 +2559,8 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
       {tab==="couriers"&&isAdminLoggedIn&&<LuxmoCourierSettings settings={couriers} setSettings={setCouriers}/>} 
       {tab==="checklist"&&isAdminLoggedIn&&<LuxmoFeatureChecklist/>}
       {cart.length>0&&<div className="sticky bottom-3 bg-slate-950 text-white rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-2xl"><div><div className="font-black">Ready to checkout?</div><div className="text-xs text-slate-300">{cart.length} line item(s) · {luxmoMoney(subtotal)}</div></div><div className="flex gap-2"><button onClick={()=>setCheckout(true)} className="bg-blue-600 rounded-xl px-5 py-2.5 text-sm font-black">Checkout</button></div></div>}
-    </div>
-    {checkout&&<LuxmoCheckout cart={cart} subtotal={subtotal} customer={customer} addresses={addresses} storeSettings={storeSettings} onOrderCreated={createOrder} onClose={()=>setCheckout(false)}/>} 
+    </div>}
+    {checkout&&<LuxmoCheckout cart={cart} subtotal={subtotal} customer={customer} addresses={addresses} storeSettings={storeSettings} onOrderCreated={createOrder} onClose={()=>{setCheckout(false); if (checkoutOnly && onCheckoutClose) onCheckoutClose();}}/>} 
     <LuxmoCookieConsent/>
   </>;
 }
@@ -6065,6 +6065,8 @@ export default function LuxmoHubApp() {
                 onPay={handleRazorpayPayment}
                 siteTheme={siteTheme}
                 setSiteTheme={setSiteTheme}
+                checkoutOnly={!isAdminLoggedIn}
+                onCheckoutClose={() => setShowProCenter(false)}
               />
             </div>
           </div>
