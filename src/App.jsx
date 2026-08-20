@@ -1787,7 +1787,9 @@ function LuxmoCheckout({
    */
 
   const applyCoupon = async () => {
-    const enteredCode = coupon.trim().toUpperCase();
+    const enteredCode = String(coupon || "")
+      .trim()
+      .toUpperCase();
 
     setCouponError("");
     setCouponMessage("");
@@ -1797,49 +1799,107 @@ function LuxmoCheckout({
       return;
     }
 
-    const payload = {
-      action: "validate",
-      items: cart.map((item) => ({
-        id: item.id,
-        sku: item.sku || "",
-        qty: Number(item.qty || 1)
-      })),
-      couponCode: enteredCode,
-      shippingMode: effectiveShippingMode,
-      shippingAddress: {
-        name: draft.name || "",
-        phone: draft.phone || "",
-        line1: draft.line1 || "",
-        line2: draft.line2 || "",
-        city: draft.city || "",
-        state: draft.state || "",
-        pincode: draft.pincode || ""
-      }
-    };
-
     try {
-      setCouponLoading(true);
-
-      const result = await createAuthoritativeOrder(payload);
-      const pricing = result?.pricing || result;
-
-      if (typeof pricing.discount === "number") {
-        setDiscount(Math.max(0, pricing.discount));
+      if (typeof setCouponLoading === "function") {
+        setCouponLoading(true);
       }
+
+      /*
+       * IMPORTANT:
+       * Coupon validity/discount is now requested from the backend.
+       * Do not read coupon rules from localStorage here.
+       */
+      const response = await fetch("/api/create-order", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "quote",
+
+          items: cart.map((item) => ({
+            id: item.id,
+            sku: item.sku || "",
+            title: item.title || "",
+            category: item.category || "",
+            productCategory: item.productCategory || "",
+            qty: Number(item.qty || 1),
+          })),
+
+          /*
+           * These values are sent for quote context only.
+           * The backend must remain authoritative.
+           */
+          subtotal: Number(subtotal || 0),
+          shippingFee: Number(shipping?.fee || 0),
+
+          couponCode: enteredCode,
+
+          shippingMode:
+            effectiveShippingMode || "standard",
+
+          shippingAddress: {
+            name: draft?.name || "",
+            phone: draft?.phone || "",
+            line1: draft?.line1 || "",
+            line2: draft?.line2 || "",
+            city: draft?.city || "",
+            state: draft?.state || "",
+            pincode: draft?.pincode || "",
+          },
+        }),
+      });
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok || !data?.success) {
+        setDiscount(0);
+
+        setCouponError(
+          data?.error ||
+            data?.message ||
+            "Invalid or inactive coupon code."
+        );
+
+        return;
+      }
+
+      const pricing = data?.pricing || {};
+
+      const serverDiscount = Number(
+        pricing.discount || 0
+      );
+
+      setDiscount(
+        Number.isFinite(serverDiscount)
+          ? Math.max(0, serverDiscount)
+          : 0
+      );
 
       setCouponMessage(
-        pricing?.coupon?.message ||
-        result?.message ||
-        "Coupon applied successfully."
+        pricing?.couponCode
+          ? `${pricing.couponCode} applied — ₹${serverDiscount.toLocaleString(
+              "en-IN"
+            )} discount.`
+          : `${enteredCode} applied — ₹${serverDiscount.toLocaleString(
+              "en-IN"
+            )} discount.`
       );
     } catch (error) {
       setDiscount(0);
+
       setCouponError(
         error?.message ||
-        "Unable to validate this coupon."
+          "Unable to validate coupon. Please try again."
       );
     } finally {
-      setCouponLoading(false);
+      if (typeof setCouponLoading === "function") {
+        setCouponLoading(false);
+      }
     }
   };
 
