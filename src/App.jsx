@@ -1097,6 +1097,366 @@ const isSafeVideoUrl = (value) => {
   }
 };
 
+
+/* ============================================================================
+   LUXMO HUB — PRODUCT VIDEO COMPONENTS
+   Product data:
+     videoUrl   = direct MP4/CDN URL
+     youtubeUrl = YouTube watch/embed/short URL
+   ============================================================================ */
+
+const normalizeYouTubeUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const embed = getYouTubeEmbedUrl(raw);
+  return embed || raw;
+};
+
+const AdminVideoField = ({ value = {}, onChange }) => {
+  const youtubeUrl = value?.youtubeUrl || '';
+  const videoUrl = value?.videoUrl || '';
+  const [checkingSize, setCheckingSize] = React.useState(false);
+  const [sizeWarning, setSizeWarning] = React.useState('');
+  const [urlWarning, setUrlWarning] = React.useState('');
+
+  const update = (patch) => {
+    onChange?.({
+      youtubeUrl,
+      videoUrl,
+      ...patch,
+    });
+  };
+
+  const handleYouTubeChange = (next) => {
+    const normalized = normalizeYouTubeUrl(next);
+    setUrlWarning(
+      next.trim() && !getYouTubeEmbedUrl(next)
+        ? 'Please enter a valid YouTube watch, youtu.be, Shorts, Live or embed URL.'
+        : ''
+    );
+    update({ youtubeUrl: normalized });
+  };
+
+  const checkMp4Size = async (url) => {
+    const cleanUrl = String(url || '').trim();
+    if (!cleanUrl) {
+      setSizeWarning('');
+      return;
+    }
+
+    if (!isSafeVideoUrl(cleanUrl)) {
+      setSizeWarning('');
+      return;
+    }
+
+    setCheckingSize(true);
+    setSizeWarning('');
+
+    try {
+      const response = await fetch(cleanUrl, {
+        method: 'HEAD',
+        mode: 'cors',
+      });
+
+      const length = Number(
+        response.headers.get('content-length') || 0
+      );
+
+      if (length > 25 * 1024 * 1024) {
+        setSizeWarning(
+          `Warning: video is ${(length / 1024 / 1024).toFixed(1)} MB. Recommended maximum is 25 MB.`
+        );
+      } else if (length > 0) {
+        setSizeWarning(
+          `Video size: ${(length / 1024 / 1024).toFixed(1)} MB.`
+        );
+      } else {
+        setSizeWarning(
+          'Video size could not be read from the server. Make sure the MP4/CDN allows HEAD requests.'
+        );
+      }
+    } catch {
+      setSizeWarning(
+        'Video size could not be checked. The video URL may block HEAD/CORS requests.'
+      );
+    } finally {
+      setCheckingSize(false);
+    }
+  };
+
+  const handleMp4Change = (next) => {
+    const cleanUrl = next.trim();
+    setUrlWarning(
+      cleanUrl && !isSafeVideoUrl(cleanUrl)
+        ? 'Please enter a valid HTTP/HTTPS MP4 URL.'
+        : ''
+    );
+    update({ videoUrl: cleanUrl });
+    if (cleanUrl) checkMp4Size(cleanUrl);
+    else setSizeWarning('');
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+      <div>
+        <div className="font-black text-slate-900">Product Video</div>
+        <p className="text-[11px] text-slate-600 mt-1">
+          Optional. Add a YouTube URL or direct MP4/CDN URL. Leave both empty to show no product video.
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+          YouTube Video URL
+        </label>
+        <input
+          type="url"
+          className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md"
+          value={youtubeUrl}
+          onChange={(e) => handleYouTubeChange(e.target.value)}
+          placeholder="https://www.youtube.com/watch?v=..."
+        />
+        {youtubeUrl && (
+          <div className="mt-1 text-[10px] text-slate-500 break-all">
+            Saved as: {getYouTubeEmbedUrl(youtubeUrl) || youtubeUrl}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+          Direct MP4 / Video URL
+        </label>
+        <input
+          type="url"
+          className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md"
+          value={videoUrl}
+          onChange={(e) => handleMp4Change(e.target.value)}
+          onBlur={() => checkMp4Size(videoUrl)}
+          placeholder="https://cdn.example.com/product-video.mp4"
+        />
+        {checkingSize && (
+          <div className="mt-1 text-[10px] font-semibold text-blue-700">
+            Checking video size…
+          </div>
+        )}
+        {sizeWarning && (
+          <div className={`mt-1 text-[10px] font-semibold rounded-md px-2 py-1 ${
+            sizeWarning.startsWith('Warning')
+              ? 'text-amber-800 bg-amber-100'
+              : 'text-slate-600 bg-white'
+          }`}>
+            {sizeWarning}
+          </div>
+        )}
+      </div>
+
+      {urlWarning && (
+        <div className="text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {urlWarning}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const VideoBadge = ({ onClick, className = '' }) => (
+  <button
+    type="button"
+    aria-label="Watch product video"
+    title="Watch product video"
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick?.();
+    }}
+    className={`absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-slate-950/90 px-2.5 py-1.5 text-[10px] font-black text-white shadow-lg ring-1 ring-white/60 hover:scale-105 transition ${className}`}
+  >
+    <span aria-hidden="true">▶</span>
+    VIDEO
+  </button>
+);
+
+const VideoCarousel = ({ products = [], onOpenVideo }) => {
+  const videoProducts = React.useMemo(
+    () =>
+      products
+        .filter(
+          (product) =>
+            getYouTubeEmbedUrl(product?.youtubeUrl) ||
+            isSafeVideoUrl(product?.videoUrl)
+        )
+        .slice(0, 10),
+    [products]
+  );
+
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [playingIndex, setPlayingIndex] = React.useState(null);
+  const [mobile, setMobile] = React.useState(false);
+  const containerRef = React.useRef(null);
+  const observerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const update = () => setMobile(window.innerWidth < 768);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  React.useEffect(() => {
+    if (!containerRef.current || mobile) return undefined;
+
+    const nodes = Array.from(
+      containerRef.current.querySelectorAll('[data-video-slide]')
+    );
+
+    observerRef.current?.disconnect();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const index = Number(
+            entry.target.getAttribute('data-video-index')
+          );
+
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
+            setActiveIndex(index);
+            setPlayingIndex(index);
+          }
+        });
+      },
+      { threshold: [0.65] }
+    );
+
+    nodes.forEach((node) => observer.observe(node));
+    observerRef.current = observer;
+
+    return () => observer.disconnect();
+  }, [videoProducts.length, mobile]);
+
+  if (!videoProducts.length) return null;
+
+  const product = videoProducts[activeIndex] || videoProducts[0];
+
+  return (
+    <section className="mt-8 mb-8">
+      <div className="flex items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl md:text-2xl font-black text-slate-900">
+            Product Videos
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            See our featured products in action.
+          </p>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 md:grid md:grid-cols-2 xl:grid-cols-3 md:overflow-visible"
+      >
+        {videoProducts.map((item, index) => {
+          const mp4 = isSafeVideoUrl(item?.videoUrl)
+            ? String(item.videoUrl).trim()
+            : '';
+          const youtube = getYouTubeEmbedUrl(item?.youtubeUrl);
+          const shouldRenderVideo =
+            mobile
+              ? false
+              : playingIndex === index;
+
+          return (
+            <article
+              key={item.id || index}
+              data-video-slide
+              data-video-index={index}
+              className="min-w-[86%] sm:min-w-[70%] md:min-w-0 snap-center rounded-2xl overflow-hidden border bg-white shadow-sm"
+              onMouseEnter={() => {
+                if (!mobile) {
+                  setActiveIndex(index);
+                  setPlayingIndex(index);
+                }
+              }}
+              onMouseLeave={() => {
+                if (!mobile) setPlayingIndex(null);
+              }}
+            >
+              <div
+                className="relative aspect-video bg-slate-950 cursor-pointer"
+                onClick={() => onOpenVideo?.(item)}
+              >
+                {!shouldRenderVideo && (
+                  <img
+                    src={
+                      (item.images && item.images[0]) ||
+                      item.image ||
+                      ''
+                    }
+                    alt={item.title || 'Product'}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+
+                {shouldRenderVideo && mp4 && (
+                  <video
+                    key={mp4}
+                    src={mp4}
+                    className="absolute inset-0 w-full h-full object-contain bg-black"
+                    muted
+                    autoPlay
+                    playsInline
+                    controls
+                    preload="metadata"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+
+                {shouldRenderVideo && !mp4 && youtube && (
+                  <iframe
+                    title={`${item.title || 'Product'} video`}
+                    src={`${youtube}?autoplay=1&mute=1&rel=0`}
+                    className="absolute inset-0 w-full h-full"
+                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    loading="lazy"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+
+                <VideoBadge onClick={() => onOpenVideo?.(item)} />
+
+                <div className="absolute bottom-2 left-2 rounded-lg bg-black/70 text-white px-2 py-1 text-[10px] font-bold">
+                  {mobile ? 'Tap to watch' : 'Hover to play'}
+                </div>
+              </div>
+
+              <div className="p-4">
+                <div className="text-[10px] font-bold uppercase text-blue-600">
+                  {item.category || 'Product'}
+                </div>
+                <h3 className="font-semibold text-sm mt-1 line-clamp-2">
+                  {item.title}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => onOpenVideo?.(item)}
+                  className="mt-3 text-xs font-black text-blue-700 hover:underline"
+                >
+                  Watch Video
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="sr-only">
+        Active video product: {product?.title || ''}
+      </div>
+    </section>
+  );
+};
+
 const compressImage = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3951,7 +4311,7 @@ export default function LuxmoHubApp() {
       featured: Boolean(formData.featured),
       buyNowUrl: formData.buyNowUrl?.trim() || '',
       detailsUrl: formData.detailsUrl?.trim() || '',
-      youtubeUrl: formData.youtubeUrl?.trim() || '',
+      youtubeUrl: normalizeYouTubeUrl(formData.youtubeUrl) || '',
       videoUrl: formData.videoUrl?.trim() || '',
       seoTitle: formData.seoTitle?.trim() || '',
       seoDescription: formData.seoDescription?.trim() || '',
@@ -5223,6 +5583,16 @@ export default function LuxmoHubApp() {
                   {activeFilterChips.length > 0 && <button type="button" onClick={clearAllFilters} className="text-xs font-black text-red-600">Clear All</button>}
                 </div>
 
+                <VideoCarousel
+                  products={filteredProducts}
+                  onOpenVideo={(product) => {
+                    setSelectedProduct(product);
+                    setSelectedVariantKey(product?.variants?.[0]?.key || "");
+                    setActiveImageIndex(0);
+                    setActiveTab("product");
+                  }}
+                />
+
                 <LuxmoRecentSearches terms={recentSearches} onSelect={(term) => setSearchQuery(term)} onClear={() => { setRecentSearches([]); safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, []); }} />
 
                 <div className="flex items-center justify-between border-b pb-3"><h2 className="font-black text-lg">Products <span className="text-sm text-slate-500">({filteredProducts.length})</span></h2></div>
@@ -6014,27 +6384,19 @@ export default function LuxmoHubApp() {
                     <input className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.detailsUrl || ''} onChange={e=>setFormData({...formData,detailsUrl:e.target.value})} placeholder="View Details URL (optional)" />
                     <input className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.seoTitle || ''} onChange={e=>setFormData({...formData,seoTitle:e.target.value})} placeholder="Product SEO Title" />
                   </div>
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-                    <div>
-                      <div className="font-black text-slate-900">🎬 Product Video</div>
-                      <p className="text-[11px] text-slate-600 mt-1">Add a YouTube video and/or a direct Full HD / 4K video URL. Large MP4 files are not stored inside App.jsx.</p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">YouTube Video URL</label>
-                        <input type="url" className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.youtubeUrl || ''} onChange={e=>setFormData({...formData,youtubeUrl:e.target.value})} placeholder="https://www.youtube.com/watch?v=..." />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Full HD / 4K Video URL</label>
-                        <input type="url" className="w-full p-2.5 bg-white text-slate-900 border border-slate-300 rounded-md" value={formData.videoUrl || ''} onChange={e=>setFormData({...formData,videoUrl:e.target.value})} placeholder="https://cdn.example.com/product-video.mp4" />
-                      </div>
-                    </div>
-                    {(formData.youtubeUrl || formData.videoUrl) && (
-                      <div className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                        Video link saved with this product. The customer product page will show the available video(s).
-                      </div>
-                    )}
-                  </div>
+                  <AdminVideoField
+                    value={{
+                      youtubeUrl: formData.youtubeUrl || '',
+                      videoUrl: formData.videoUrl || '',
+                    }}
+                    onChange={(next) =>
+                      setFormData({
+                        ...formData,
+                        youtubeUrl: next.youtubeUrl || '',
+                        videoUrl: next.videoUrl || '',
+                      })
+                    }
+                  />
                   <div className="flex flex-wrap gap-4 text-xs font-bold">
                     <label><input type="checkbox" checked={!!formData.featured} onChange={e=>setFormData({...formData,featured:e.target.checked})}/> Featured</label>
                     <label><input type="checkbox" checked={!!formData.bestSeller} onChange={e=>setFormData({...formData,bestSeller:e.target.checked})}/> Best Seller</label>
@@ -7602,14 +7964,7 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
             )}
 
             {hasVideo && (
-              <>
-                <button type="button" aria-label={`Watch ${product.title} video`} title="Watch product video"
-                  onClick={(e) => { e.stopPropagation(); setShowVideo(true); }}
-                  className="absolute left-3 bottom-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-950/90 px-3 py-2 text-[10px] font-black text-white shadow-lg ring-1 ring-white/60 hover:scale-105 transition">
-                  <span className="text-sm leading-none">▶</span> VIDEO
-                </button>
-                <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[9px] font-black text-slate-950 shadow">🎬</span>
-              </>
+              <VideoBadge onClick={() => setShowVideo(true)} />
             )}
           </div>
 
