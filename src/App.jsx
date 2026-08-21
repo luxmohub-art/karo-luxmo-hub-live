@@ -4894,10 +4894,14 @@ export default function LuxmoHubApp() {
       {/* Header */}
       <header className="bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 sm:gap-4 min-w-0">
-          <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab("home")}>
-            <div className="bg-slate-950 text-white font-black text-base sm:text-xl px-2.5 sm:px-3 py-1.5 rounded-xl tracking-wider border border-amber-500 shadow-sm whitespace-nowrap">
-              LUX<span className="text-amber-400">M</span>O <span className="text-amber-400">HUB</span>
-            </div>
+          <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab("home")} aria-label="LUXMO HUB Home">
+            <img
+              src="/luxmo-hub-logo.png"
+              alt="LUXMO HUB"
+              className="h-11 sm:h-14 w-auto max-w-[190px] object-contain"
+              loading="eager"
+              decoding="async"
+            />
           </div>
 
           <div className="flex-1 max-w-md relative hidden lg:block">
@@ -4965,6 +4969,50 @@ export default function LuxmoHubApp() {
           </div>
         </div>
       </header>
+
+      {/* PUBLIC SECOND-ROW NAVIGATION: keep the full commercial catalogue and support links visible. */}
+      <nav
+        aria-label="Main navigation"
+        className="bg-white border-b border-slate-200 sticky top-[96px] sm:top-[104px] z-30 shadow-sm"
+      >
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide py-2">
+            <button type="button" onClick={() => setActiveTab("home")} className="nav-row-link">Home</button>
+            <button type="button" onClick={() => { setSelectedMainCategory("Mobile"); setSelectedSubCategory("All"); setSelectedCategory("Mobile Back Case"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Mobile Phone Cases</button>
+            <button type="button" onClick={() => { setSelectedCategory("All"); setSearchQuery("mobile phone accessories"); setActiveTab("catalog"); }} className="nav-row-link">Mobile Phone Accessories</button>
+            <button type="button" onClick={() => { setSelectedCategory("Hybrid Solar Inverter"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Hybrid Solar Inverter</button>
+            <button type="button" onClick={() => { setSelectedCategory("Solar Accessories"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Solar Accessories</button>
+            <button type="button" onClick={() => setActiveTab("about")} className="nav-row-link">About Us</button>
+            <button type="button" onClick={() => setActiveTab("blog")} className="nav-row-link">Blog</button>
+            <button type="button" onClick={() => setActiveTab("support")} className="nav-row-link">Support</button>
+            <button type="button" onClick={() => setActiveTab("contact")} className="nav-row-link">Contact</button>
+            <button
+              type="button"
+              onClick={() => setShowWhatsAppModal(true)}
+              className="ml-1 shrink-0 rounded-xl bg-green-600 hover:bg-green-700 text-white px-3.5 py-2 text-sm font-black shadow-sm"
+            >
+              💬 Chat on WhatsApp
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Navigation-row utility styling. */}
+      <style>{`
+        .nav-row-link {
+          display: inline-flex;
+          align-items: center;
+          flex: 0 0 auto;
+          padding: 0.55rem 0.8rem;
+          border-radius: 0.75rem;
+          color: #334155;
+          font-size: 0.9rem;
+          font-weight: 800;
+          transition: background-color .15s ease, color .15s ease;
+        }
+        .nav-row-link:hover { background: #eff6ff; color: #2563eb; }
+        @media (min-width: 768px) { .nav-row-link { padding-left: 0.9rem; padding-right: 0.9rem; } }
+      `}</style>
 
       {/* UNIFIED HAMBURGER NAVIGATION — mobile, tablet and desktop */}
       {showMobileNav && (
