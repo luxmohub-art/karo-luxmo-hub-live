@@ -2349,17 +2349,45 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    if (
-      !draft.name.trim() ||
-      !luxmoValidateIndianMobile(draft.phone) ||
-      !draft.line1.trim() ||
-      !draft.city.trim() ||
-      !luxmoValidatePincode(draft.pincode)
-    ) {
-      return alert(
-        "Please complete valid delivery details."
-      );
+    // Validate checkout data before creating any order.
+    // Address line 2 is optional; all other delivery fields are required.
+    const name = String(draft?.name || "").trim();
+    const phone = String(draft?.phone || "").replace(/\D/g, "");
+    const line1 = String(draft?.line1 || "").trim();
+    const city = String(draft?.city || "").trim();
+    const state = String(draft?.state || "").trim();
+    const pincode = luxmoNormalizePincode(draft?.pincode || "");
+
+    if (!name) {
+      return alert("Please enter your full name.");
     }
+    if (!luxmoValidateIndianMobile(phone)) {
+      return alert("Please enter a valid 10-digit Indian mobile number.");
+    }
+    if (!line1) {
+      return alert("Please enter your complete delivery address.");
+    }
+    if (!city) {
+      return alert("Please enter your city.");
+    }
+    if (!state) {
+      return alert("Please enter your state.");
+    }
+    if (!luxmoValidatePincode(pincode)) {
+      return alert("Please enter a valid 6-digit delivery pincode.");
+    }
+
+    // Keep the normalized values in the order payload.
+    const validatedAddress = {
+      ...draft,
+      name,
+      phone,
+      line1,
+      city,
+      state,
+      pincode,
+    };
+    setDraft(validatedAddress);
 
     if (
       payment === "cod" &&
@@ -2418,7 +2446,7 @@ function LuxmoCheckout({
       shippingMode:
         effectiveShippingMode,
 
-      address: draft,
+      address: validatedAddress,
 
       courierProvider:
         "Pending Assignment",
@@ -4674,10 +4702,12 @@ export default function LuxmoHubApp() {
           sku: item.sku || "",
           qty: Number(item.qty || 1)
         })),
+        // IMPORTANT: this handler is outside CheckoutModal, so the
+        // CheckoutModal `coupon` state is not in scope here.
+        // Use only the coupon stored on the pending order.
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
-          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
