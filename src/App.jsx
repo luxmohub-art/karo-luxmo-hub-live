@@ -4896,9 +4896,9 @@ export default function LuxmoHubApp() {
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 sm:gap-4 min-w-0">
           <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab("home")} aria-label="LUXMO HUB Home">
             <img
-              src="/luxmo-hub-logo.png?v=20260821"
+              src="/luxmo-hub-logo.png?v=20260822-final"
               alt="LUXMO HUB"
-              className="h-11 sm:h-14 w-auto max-w-[190px] object-contain"
+              className="w-[250px] max-w-[calc(100vw-24px)] h-auto sm:w-[300px] sm:max-w-[300px] object-contain shrink-0 block"
               loading="eager"
               decoding="async"
             />
