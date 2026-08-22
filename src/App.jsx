@@ -1610,6 +1610,14 @@ const LUXMO_REMOTE_CUSTOMER_KEYS = new Set([
   "luxmo_pro_wishlist","luxmo_pro_addresses","luxmo_pro_customer",
   "luxmo_pro_recently_viewed","luxmo_pro_compare","luxmo_pro_stock_alerts"
 ]);
+
+/*
+ * Production data rule:
+ * - Server/API data is authoritative for orders, products, reviews and warranty.
+ * - localStorage is only a convenience cache for customer UI state/preferences.
+ * - Never use a local cached record as proof that a server transaction succeeded.
+ */
+
 const luxmoApi = async (url, options = {}) => {
   const response = await fetch(url, {
     credentials: "include",
@@ -1986,13 +1994,90 @@ function LuxmoCouponBox({ subtotal, items, onDiscountChange }) {
 function LuxmoPincodeChecker({ cartItems }) {
   const [pincode, setPincode] = useState("");
   const [result, setResult] = useState(null);
-  const check = () => {
+  const [checking, setChecking] = useState(false);
+
+  const check = async () => {
     const pin = luxmoNormalizePincode(pincode);
-    if (!luxmoValidatePincode(pin)) return setResult({ ok: false, message: "Please enter a valid 6-digit pincode." });
-    const estimate = luxmoShippingEstimate(cartItems.length ? cartItems : [{ category: "Mobile Back Case", price: 999, qty: 1 }]);
-    setResult({ ok: true, message: `Estimated standard delivery: ${estimate.minDays}–${estimate.maxDays} business days. Final courier availability will be confirmed by the shipping provider.` });
+    if (!luxmoValidatePincode(pin)) {
+      setResult({ ok: false, message: "Please enter a valid 6-digit pincode." });
+      return;
+    }
+
+    setChecking(true);
+    setResult(null);
+
+    try {
+      const items = cartItems?.length
+        ? cartItems
+        : [{ category: "Mobile Back Case", price: 999, qty: 1, weight: 0.5 }];
+      const weight = Math.max(0.5, items.reduce((sum, item) => {
+        const itemWeight = Number(item?.weight || item?.shippingWeight || 0.5);
+        return sum + (Number.isFinite(itemWeight) ? itemWeight : 0.5) * Math.max(1, Number(item?.qty || 1));
+      }, 0));
+      const declaredValue = Math.max(1, items.reduce((sum, item) => {
+        return sum + luxmoProductPrice(item) * Math.max(1, Number(item?.qty || 1));
+      }, 0));
+
+      const response = await fetch(`/api/check-serviceability?pincode=${encodeURIComponent(pin)}&cod=0&weight=${encodeURIComponent(weight.toFixed(2))}&declared_value=${encodeURIComponent(Math.round(declaredValue))}`, {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "application/json" }
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success !== true) {
+        throw new Error(data.error || data.message || "Unable to check delivery availability right now.");
+      }
+
+      if (!data.serviceable) {
+        setResult({
+          ok: false,
+          message: data.message || `Sorry, delivery is currently unavailable for pincode ${pin}.`
+        });
+      } else {
+        const courierText = data.courierCount ? ` ${data.courierCount} courier option${data.courierCount === 1 ? "" : "s"} available.` : "";
+        const etaText = data.estimatedDays ? ` Estimated delivery: ${data.estimatedDays} business days.` : "";
+        setResult({
+          ok: true,
+          message: data.message || `Delivery is available for pincode ${pin}.${courierText}${etaText}`
+        });
+      }
+    } catch (error) {
+      console.error("Pincode serviceability check failed:", error);
+      setResult({ ok: false, message: error?.message || "Unable to check delivery availability right now. Please try again." });
+    } finally {
+      setChecking(false);
+    }
   };
-  return <div className="border rounded-xl p-4"><div className="font-black text-sm">Check Delivery Availability</div><div className="flex gap-2 mt-2"><input value={pincode} onChange={e => setPincode(e.target.value)} maxLength={6} inputMode="numeric" placeholder="6-digit pincode" className="flex-1 border rounded-lg px-3 py-2 text-sm"/><button onClick={check} className="bg-blue-600 text-white rounded-lg px-4 text-xs font-bold">Check</button></div>{result && <div className={`mt-2 text-xs ${result.ok ? "text-emerald-700" : "text-red-600"}`}>{result.message}</div>}</div>;
+
+  return (
+    <div className="border rounded-xl p-4">
+      <div className="font-black text-sm">Check Delivery Availability</div>
+      <div className="flex gap-2 mt-2">
+        <input
+          value={pincode}
+          onChange={e => {
+            setPincode(luxmoNormalizePincode(e.target.value));
+            setResult(null);
+          }}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); check(); } }}
+          maxLength={6}
+          inputMode="numeric"
+          autoComplete="postal-code"
+          placeholder="6-digit pincode"
+          className="flex-1 border rounded-lg px-3 py-2 text-sm"
+        />
+        <button type="button" onClick={check} disabled={checking} className="bg-blue-600 disabled:opacity-60 text-white rounded-lg px-4 text-xs font-bold">
+          {checking ? "Checking…" : "Check"}
+        </button>
+      </div>
+      {result && (
+        <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold ${result.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function LuxmoStoreSettingsPanel({ settings, setSettings }) {
@@ -2779,15 +2864,47 @@ function LuxmoOrderCenter({ orders, setOrders }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
   const filtered = orders.filter(o => !query || `${o.id} ${o.status} ${o.awb || ""}`.toLowerCase().includes(query.toLowerCase()));
-  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
+  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); // Local order cache only; server/API remains authoritative.\n    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
   const printInvoice = order => { const w = window.open("", "_blank", "width=900,height=900"); if (!w) return; w.document.write(`<html><head><title>${order.id} Invoice</title><style>body{font-family:Arial;padding:40px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:10px;text-align:left}</style></head><body><h1>LUXMO HUB</h1><p>Order: ${order.id}<br/>Date: ${luxmoDate(order.createdAt)}</p><p>${order.address?.name || ""}<br/>${order.address?.line1 || ""}, ${order.address?.city || ""}, ${order.address?.state || ""} - ${order.address?.pincode || ""}</p><table><tr><th>Product</th><th>Qty</th><th>Price</th></tr>${order.items.map(i=>`<tr><td>${i.title} ${i.model||""} ${i.colour||""}</td><td>${i.qty}</td><td>${luxmoMoney(i.price*i.qty)}</td></tr>`).join("")}<tr><th colspan="2">Total</th><th>${luxmoMoney(order.total)}</th></tr></table><p>Payment: ${order.paymentMethod}</p></body></html>`); w.document.close(); w.focus(); w.print(); };
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="View order status, payment state, courier assignment and invoice print views."/><div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>{filtered.length===0?<div className="text-sm text-slate-500 py-8 text-center">No orders found.</div>:<div className="space-y-3">{filtered.map(o=><div key={o.id} className="border rounded-2xl p-4"><div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div></div><div className="flex items-center gap-2"><select value={o.status} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select><button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button><button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Invoice</button></div></div>{selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4"><div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty}<br/>{i.model} {i.colour}</div>)}</div><div><b>Delivery</b><div className="mt-1">{o.address?.name}<br/>{o.address?.line1}<br/>{o.address?.city}, {o.address?.state} - {o.address?.pincode}<br/>{o.address?.phone}</div></div><div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.status}</div></div></div>}</div>)}</div>}</div>;
 }
 
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
   const [draft, setDraft] = useState({ productId: products[0]?.id || "", name: "", rating: 5, text: "" });
-  const submit = () => { if (!draft.productId || !draft.name.trim() || !draft.text.trim()) return alert("Please select a product and complete your review."); const review = { ...draft, id: `rev-${Date.now()}`, createdAt: new Date().toISOString(), status: "Pending" }; const next=[review,...reviews]; setReviews(next); safeWriteJSON(LUXMO_PRO_STORAGE.reviews,next); setDraft({ ...draft, name:"", text:"" }); alert("Review submitted for moderation."); };
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">Submit Review</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async () => {
+    if (!draft.productId || !draft.name.trim() || !draft.text.trim()) {
+      return alert("Please select a product and complete your review.");
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const response = await luxmoApi("/api/reviews", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: draft.productId,
+          name: draft.name.trim(),
+          rating: Number(draft.rating || 5),
+          text: draft.text.trim()
+        })
+      });
+      const review = response.review || response.data || {
+        ...draft,
+        id: `rev-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        status: "Pending"
+      };
+      setReviews(prev => [review, ...prev.filter(r => r?.id !== review?.id)]);
+      setDraft({ ...draft, name:"", text:"" });
+      alert("Review submitted for moderation.");
+    } catch (error) {
+      console.error("Review submission failed:", error);
+      alert(error?.message || "Unable to submit review. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} disabled={submitting} className="bg-blue-600 disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-bold">{submitting ? "Submitting…" : "Submit Review"}</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
 }
 
 function LuxmoStockAlerts({ products, alerts, setAlerts }) {
@@ -2848,8 +2965,8 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
   const [customer,setCustomer]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.customer,{name:"",email:"",phone:""}));
-  const [orders,setOrders]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.orders,[]));
-  const [reviews,setReviews]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.reviews,[]));
+  const [orders,setOrders]=useState([]);
+  const [reviews,setReviews]=useState([]);
   const [recent,setRecent]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]));
   const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
@@ -3312,12 +3429,8 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
         createdAt: new Date().toISOString()
       };
 
-      try {
-        const saved = JSON.parse(localStorage.getItem("luxmo_warranty_registrations") || "[]");
-        const list = Array.isArray(saved) ? saved : [];
-        localStorage.setItem("luxmo_warranty_registrations", JSON.stringify([registration, ...list].slice(0, 50)));
-      } catch {}
-
+      // Warranty registration is stored by /api/warranty-registration.
+      // Do not duplicate customer warranty records in browser localStorage.
       setMessage({
         type: "success",
         text: `Warranty registered successfully. Registration ID: ${registration.registrationId}`
@@ -3775,7 +3888,12 @@ export default function LuxmoHubApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [recentSearches, setRecentSearches] = useState(() => safeReadJSON(LUXMO_PRO_STORAGE.recentSearches, []));
   const [siteTheme, setSiteTheme] = useState(() => safeReadJSON(LUXMO_PRO_STORAGE.theme, "light") === "dark" ? "dark" : "light");
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === "undefined") return "home";
+    const path = window.location.pathname.replace(/\/+$/, "");
+    const adminRequested = path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
+    return adminRequested ? "admin" : "home";
+  });
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedVariantKey, setSelectedVariantKey] = useState("");
@@ -3858,7 +3976,7 @@ export default function LuxmoHubApp() {
   }, []);
 
   useEffect(() => {
-    // Draft convenience only; it is never used as published content.
+    // Local draft convenience only; published homepage always comes from /api/homepage.
     try { localStorage.setItem("luxmo_homepage_draft", JSON.stringify(homepageDraft)); }
     catch (e) { console.warn("Homepage draft storage limit reached", e); }
   }, [homepageDraft]);
@@ -3928,6 +4046,7 @@ export default function LuxmoHubApp() {
     }
   };
 
+  // FIXED: /admin route + /?admin=1 route now open secure TOTP login.
   // Secure Admin authentication — Google Authenticator (TOTP).
   // IMPORTANT: the TOTP secret stays ONLY in Vercel as ADMIN_TOTP_SECRET.
   // The browser sends only the current 6-digit code to the server API.
@@ -3986,7 +4105,7 @@ export default function LuxmoHubApp() {
     luxmoServerFirstProducts().then(remote => {
       if (!cancelled && remote) {
         setProducts(remote);
-        try { localStorage.setItem("luxmo_products", JSON.stringify(remote)); } catch {}
+        // Product API is authoritative; localStorage is cache-only.
       }
     });
     return () => { cancelled = true; };
@@ -4074,16 +4193,16 @@ export default function LuxmoHubApp() {
   }, [activeTab, adminSessionChecking, isAdminLoggedIn]);
 
   // Admin login is intentionally not exposed in the public navigation.
-  // Open /?admin=1 directly to reach the existing secure TOTP login.
+  // Both /admin and /?admin=1 open the secure TOTP login.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("admin") === "1") {
-      if (!adminSessionChecking) {
-        if (isAdminLoggedIn) {
-          setActiveTab("admin");
-        } else {
-          openAdminLogin();
-        }
-      }
+    const path = window.location.pathname.replace(/\/+$/, "");
+    const adminRequested = path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
+    if (!adminRequested || adminSessionChecking) return;
+
+    if (isAdminLoggedIn) {
+      setActiveTab("admin");
+    } else {
+      openAdminLogin();
     }
   }, [adminSessionChecking, isAdminLoggedIn]);
 
@@ -4135,7 +4254,7 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    try { localStorage.setItem("luxmo_products", JSON.stringify(products)); } catch {}
+    // Product API is authoritative; localStorage is cache-only.
     if (!isAdminLoggedIn) return;
     const timer = setTimeout(() => {
       luxmoApi("/api/products", {method:"PUT",body:JSON.stringify({products})})
@@ -7425,7 +7544,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
   const updateOrder = (id, patch) => {
     const next = orders.map(o => (o.id || o.orderId) === id ? { ...o, ...patch, updatedAt: new Date().toISOString() } : o);
     setOrders(next);
-    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
+    // Local order cache only; server/API remains authoritative.\n    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
   };
   const updateStock = (id, stock) => {
     const next = products.map(p => p.id === id ? { ...p, stock: Math.max(0, Number(stock || 0)) } : p);
