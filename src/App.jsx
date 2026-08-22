@@ -1610,14 +1610,6 @@ const LUXMO_REMOTE_CUSTOMER_KEYS = new Set([
   "luxmo_pro_wishlist","luxmo_pro_addresses","luxmo_pro_customer",
   "luxmo_pro_recently_viewed","luxmo_pro_compare","luxmo_pro_stock_alerts"
 ]);
-
-/*
- * Production data rule:
- * - Server/API data is authoritative for orders, products, reviews and warranty.
- * - localStorage is only a convenience cache for customer UI state/preferences.
- * - Never use a local cached record as proof that a server transaction succeeded.
- */
-
 const luxmoApi = async (url, options = {}) => {
   const response = await fetch(url, {
     credentials: "include",
@@ -2864,7 +2856,7 @@ function LuxmoOrderCenter({ orders, setOrders }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
   const filtered = orders.filter(o => !query || `${o.id} ${o.status} ${o.awb || ""}`.toLowerCase().includes(query.toLowerCase()));
-  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); // Local order cache only; server/API remains authoritative.\n    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
+  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
   const printInvoice = order => { const w = window.open("", "_blank", "width=900,height=900"); if (!w) return; w.document.write(`<html><head><title>${order.id} Invoice</title><style>body{font-family:Arial;padding:40px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:10px;text-align:left}</style></head><body><h1>LUXMO HUB</h1><p>Order: ${order.id}<br/>Date: ${luxmoDate(order.createdAt)}</p><p>${order.address?.name || ""}<br/>${order.address?.line1 || ""}, ${order.address?.city || ""}, ${order.address?.state || ""} - ${order.address?.pincode || ""}</p><table><tr><th>Product</th><th>Qty</th><th>Price</th></tr>${order.items.map(i=>`<tr><td>${i.title} ${i.model||""} ${i.colour||""}</td><td>${i.qty}</td><td>${luxmoMoney(i.price*i.qty)}</td></tr>`).join("")}<tr><th colspan="2">Total</th><th>${luxmoMoney(order.total)}</th></tr></table><p>Payment: ${order.paymentMethod}</p></body></html>`); w.document.close(); w.focus(); w.print(); };
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="View order status, payment state, courier assignment and invoice print views."/><div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>{filtered.length===0?<div className="text-sm text-slate-500 py-8 text-center">No orders found.</div>:<div className="space-y-3">{filtered.map(o=><div key={o.id} className="border rounded-2xl p-4"><div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div></div><div className="flex items-center gap-2"><select value={o.status} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select><button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button><button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Invoice</button></div></div>{selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4"><div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty}<br/>{i.model} {i.colour}</div>)}</div><div><b>Delivery</b><div className="mt-1">{o.address?.name}<br/>{o.address?.line1}<br/>{o.address?.city}, {o.address?.state} - {o.address?.pincode}<br/>{o.address?.phone}</div></div><div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.status}</div></div></div>}</div>)}</div>}</div>;
 }
@@ -2872,11 +2864,13 @@ function LuxmoOrderCenter({ orders, setOrders }) {
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
   const [draft, setDraft] = useState({ productId: products[0]?.id || "", name: "", rating: 5, text: "" });
   const [submitting, setSubmitting] = useState(false);
+
   const submit = async () => {
     if (!draft.productId || !draft.name.trim() || !draft.text.trim()) {
       return alert("Please select a product and complete your review.");
     }
     if (submitting) return;
+
     setSubmitting(true);
     try {
       const response = await luxmoApi("/api/reviews", {
@@ -2888,14 +2882,23 @@ function LuxmoReviewCenter({ products, reviews, setReviews }) {
           text: draft.text.trim()
         })
       });
-      const review = response.review || response.data || {
-        ...draft,
-        id: `rev-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        status: "Pending"
-      };
-      setReviews(prev => [review, ...prev.filter(r => r?.id !== review?.id)]);
-      setDraft({ ...draft, name:"", text:"" });
+
+      const review =
+        response?.review ||
+        response?.data?.review ||
+        response?.data ||
+        {
+          ...draft,
+          id: `rev-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          status: "Pending"
+        };
+
+      setReviews(prev => [
+        review,
+        ...prev.filter(item => item?.id !== review?.id)
+      ]);
+      setDraft({ ...draft, name: "", text: "" });
       alert("Review submitted for moderation.");
     } catch (error) {
       console.error("Review submission failed:", error);
@@ -2904,6 +2907,7 @@ function LuxmoReviewCenter({ products, reviews, setReviews }) {
       setSubmitting(false);
     }
   };
+
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} disabled={submitting} className="bg-blue-600 disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-bold">{submitting ? "Submitting…" : "Submit Review"}</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
 }
 
@@ -3431,6 +3435,7 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
 
       // Warranty registration is stored by /api/warranty-registration.
       // Do not duplicate customer warranty records in browser localStorage.
+
       setMessage({
         type: "success",
         text: `Warranty registered successfully. Registration ID: ${registration.registrationId}`
@@ -3976,7 +3981,7 @@ export default function LuxmoHubApp() {
   }, []);
 
   useEffect(() => {
-    // Local draft convenience only; published homepage always comes from /api/homepage.
+    // Draft convenience only; it is never used as published content.
     try { localStorage.setItem("luxmo_homepage_draft", JSON.stringify(homepageDraft)); }
     catch (e) { console.warn("Homepage draft storage limit reached", e); }
   }, [homepageDraft]);
@@ -4096,17 +4101,7 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    // Do not call /api/admin-session on every public page load.
-    // An unauthenticated public visitor does not have an admin session,
-    // so the API correctly returns 401. Skipping that check keeps normal
-    // storefront logs clean while preserving secure checks for /admin.
-    const path = window.location.pathname.replace(/\\/+$/, "");
-    const adminRequested =
-      path === "/admin" ||
-      new URLSearchParams(window.location.search).get("admin") === "1" ||
-      activeTab === "admin";
-
-    if (!adminRequested) {
+    if (activeTab !== "admin") {
       setAdminSessionChecking(false);
       setIsAdminLoggedIn(false);
       return;
@@ -4121,7 +4116,7 @@ export default function LuxmoHubApp() {
     luxmoServerFirstProducts().then(remote => {
       if (!cancelled && remote) {
         setProducts(remote);
-        // Product API is authoritative; localStorage is cache-only.
+        // API is authoritative; localStorage is only a convenience cache.
       }
     });
     return () => { cancelled = true; };
@@ -4270,7 +4265,7 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    // Product API is authoritative; localStorage is cache-only.
+    try { localStorage.setItem("luxmo_products", JSON.stringify(products)); } catch {}
     if (!isAdminLoggedIn) return;
     const timer = setTimeout(() => {
       luxmoApi("/api/products", {method:"PUT",body:JSON.stringify({products})})
@@ -7560,7 +7555,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
   const updateOrder = (id, patch) => {
     const next = orders.map(o => (o.id || o.orderId) === id ? { ...o, ...patch, updatedAt: new Date().toISOString() } : o);
     setOrders(next);
-    // Local order cache only; server/API remains authoritative.\n    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
   };
   const updateStock = (id, stock) => {
     const next = products.map(p => p.id === id ? { ...p, stock: Math.max(0, Number(stock || 0)) } : p);
