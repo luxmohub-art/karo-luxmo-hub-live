@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#123D9B"/>
+      <stop offset="55%" stop-color="#0757C9"/>
+      <stop offset="100%" stop-color="#18C9C2"/>
+    </linearGradient>
+
+    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE52C"/>
+      <stop offset="55%" stop-color="#FFC107"/>
+      <stop offset="100%" stop-color="#FF5A00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Hexagon background -->
+  <path
+    d="M256 18 L470 140 L470 372 L256 494 L42 372 L42 140 Z"
+    fill="#071A43"
+    stroke="url(#bg)"
+    stroke-width="24"
+    stroke-linejoin="round"
+  />
+
+  <!-- Inner border -->
+  <path
+    d="M256 45 L440 151 L440 361 L256 467 L72 361 L72 151 Z"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="8"
+  />
+
+  <!-- Sun -->
+  <circle cx="150" cy="180" r="55" fill="#FFD21C"/>
+
+  <g stroke="#FFD21C" stroke-width="12" stroke-linecap="round">
+    <line x1="150" y1="105" x2="150" y2="80"/>
+    <line x1="98" y1="125" x2="78" y2="105"/>
+    <line x1="202" y1="125" x2="222" y2="105"/>
+    <line x1="75" y1="180" x2="48" y2="180"/>
+  </g>
+
+  <!-- Solar panel -->
+  <path
+    d="M76 245 L220 205 L220 372 L76 330 Z"
+    fill="#0755C8"
+    stroke="#5ED9FF"
+    stroke-width="6"
+  />
+
+  <g stroke="#D8F4FF" stroke-width="4">
+    <line x1="112" y1="235" x2="112" y2="340"/>
+    <line x1="150" y1="225" x2="150" y2="350"/>
+    <line x1="187" y1="215" x2="187" y2="361"/>
+    <line x1="78" y1="273" x2="220" y2="233"/>
+    <line x1="77" y1="308" x2="220" y2="269"/>
+    <line x1="77" y1="341" x2="220" y2="305"/>
+  </g>
+
+  <!-- Smartphone -->
+  <rect
+    x="288" y="118"
+    width="112"
+    height="290"
+    rx="25"
+    fill="#092C62"
+    stroke="#20DCE8"
+    stroke-width="8"
+    transform="rotate(8 344 263)"
+  />
+
+  <!-- Camera -->
+  <rect
+    x="306" y="150"
+    width="68"
+    height="80"
+    rx="15"
+    fill="#07152D"
+    stroke="#B9E8FF"
+    stroke-width="5"
+    transform="rotate(8 340 190)"
+  />
+
+  <g fill="#041126" stroke="#25CFFF" stroke-width="4">
+    <circle cx="326" cy="174" r="12"/>
+    <circle cx="353" cy="178" r="12"/>
+    <circle cx="330" cy="202" r="12"/>
+  </g>
+
+  <!-- Circuit pattern -->
+  <g fill="none" stroke="#19E3F0" stroke-width="7"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M310 275 L332 253 L332 232"/>
+    <path d="M315 319 L348 286 L348 254"/>
+    <path d="M326 352 L366 312 L366 282"/>
+    <path d="M345 369 L378 336 L378 313"/>
+  </g>
+
+  <g fill="#19E3F0">
+    <circle cx="332" cy="232" r="7"/>
+    <circle cx="348" cy="254" r="7"/>
+    <circle cx="366" cy="282" r="7"/>
+    <circle cx="378" cy="313" r="7"/>
+  </g>
+
+  <!-- Main lightning -->
+  <path
+    d="M274 70
+       L154 270
+       L224 258
+       L184 442
+       L365 221
+       L286 232 Z"
+    fill="url(#bolt)"
+    stroke="#FF9D00"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+
+  <!-- Lightning highlight -->
+  <path
+    d="M274 88 L181 260 L232 250"
+    fill="none"
+    stroke="#FFF59A"
+    stroke-width="9"
+    stroke-linecap="round"
+  />
+</svg>
