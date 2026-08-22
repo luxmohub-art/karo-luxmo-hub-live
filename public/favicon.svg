@@ -1,18 +1,182 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 200">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8" />
-      <stop offset="100%" stop-color="#0284c7" />
+    <linearGradient id="hex" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#123D9B"/>
+      <stop offset="55%" stop-color="#0757C9"/>
+      <stop offset="100%" stop-color="#18C9C2"/>
     </linearGradient>
-    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fef08a" />
-      <stop offset="100%" stop-color="#eab308" />
+
+    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFD92F"/>
+      <stop offset="45%" stop-color="#FFC107"/>
+      <stop offset="100%" stop-color="#FF5A00"/>
     </linearGradient>
+
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE52C"/>
+      <stop offset="100%" stop-color="#FF8A00"/>
+    </linearGradient>
+
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#42BFFF"/>
+      <stop offset="100%" stop-color="#0755C8"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8"
+        flood-color="#001A45" flood-opacity=".45"/>
+    </filter>
   </defs>
-  <rect width="180" height="200" fill="#0b0f19" />
-  <g transform="translate(10, 10)">
-    <path d="M 90 10 L 160 45 V 120 C 160 165 90 190 90 190 C 90 190 20 165 20 120 V 45 Z" fill="none" stroke="url(#shieldGrad)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="90" cy="98" r="36" fill="none" stroke="url(#goldGrad)" stroke-width="5" stroke-dasharray="12 6" />
-    <path d="M 78 68 V 120 H 115" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Hexagon -->
+  <path
+    d="M256 20
+       L462 138
+       L462 374
+       L256 492
+       L50 374
+       L50 138 Z"
+    fill="#071A43"
+    stroke="url(#hex)"
+    stroke-width="22"
+    stroke-linejoin="round"
+    filter="url(#shadow)"
+  />
+
+  <!-- Inner border -->
+  <path
+    d="M256 45
+       L438 150
+       L438 362
+       L256 467
+       L74 362
+       L74 150 Z"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="8"
+    opacity=".95"
+    stroke-linejoin="round"
+  />
+
+  <!-- Sun -->
+  <circle cx="151" cy="187" r="55" fill="url(#sun)"/>
+
+  <!-- Sun rays -->
+  <g stroke="#FFD21C" stroke-width="12" stroke-linecap="round">
+    <line x1="151" y1="111" x2="151" y2="83"/>
+    <line x1="100" y1="132" x2="80" y2="112"/>
+    <line x1="202" y1="132" x2="222" y2="112"/>
+    <line x1="78" y1="187" x2="50" y2="187"/>
   </g>
+
+  <!-- Solar panel -->
+  <path
+    d="M78 247 L224 206 L224 374 L78 330 Z"
+    fill="url(#panel)"
+    stroke="#7DD8FF"
+    stroke-width="5"
+  />
+
+  <!-- Solar panel grid -->
+  <g stroke="#D8F4FF" stroke-width="4" opacity=".9">
+    <line x1="114" y1="237" x2="114" y2="341"/>
+    <line x1="153" y1="226" x2="153" y2="352"/>
+    <line x1="190" y1="216" x2="190" y2="363"/>
+
+    <line x1="80" y1="273" x2="224" y2="232"/>
+    <line x1="79" y1="309" x2="224" y2="269"/>
+    <line x1="79" y1="343" x2="224" y2="305"/>
+  </g>
+
+  <!-- Smartphone -->
+  <rect
+    x="288"
+    y="118"
+    width="112"
+    height="290"
+    rx="25"
+    fill="#092C62"
+    stroke="#20DCE8"
+    stroke-width="8"
+    transform="rotate(8 344 263)"
+  />
+
+  <!-- Phone screen -->
+  <rect
+    x="302"
+    y="137"
+    width="84"
+    height="250"
+    rx="15"
+    fill="#061D42"
+    stroke="#3DBEFF"
+    stroke-width="3"
+    transform="rotate(8 344 263)"
+  />
+
+  <!-- Camera module -->
+  <rect
+    x="310"
+    y="153"
+    width="62"
+    height="76"
+    rx="15"
+    fill="#07152D"
+    stroke="#B9E8FF"
+    stroke-width="5"
+    transform="rotate(8 341 191)"
+  />
+
+  <g fill="#041126" stroke="#25CFFF" stroke-width="4">
+    <circle cx="327" cy="173" r="12"/>
+    <circle cx="353" cy="177" r="12"/>
+    <circle cx="330" cy="201" r="12"/>
+  </g>
+
+  <!-- Circuit lines -->
+  <g
+    fill="none"
+    stroke="#19E3F0"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M310 275 L332 253 L332 232"/>
+    <path d="M315 319 L348 286 L348 254"/>
+    <path d="M326 352 L366 312 L366 282"/>
+    <path d="M345 369 L378 336 L378 313"/>
+  </g>
+
+  <g fill="#19E3F0">
+    <circle cx="332" cy="232" r="7"/>
+    <circle cx="348" cy="254" r="7"/>
+    <circle cx="366" cy="282" r="7"/>
+    <circle cx="378" cy="313" r="7"/>
+  </g>
+
+  <!-- Main Lightning Bolt -->
+  <path
+    d="M274 70
+       L154 270
+       L224 258
+       L184 442
+       L365 221
+       L286 232
+       Z"
+    fill="url(#bolt)"
+    stroke="#FF9D00"
+    stroke-width="6"
+    stroke-linejoin="round"
+    filter="url(#shadow)"
+  />
+
+  <!-- Lightning highlight -->
+  <path
+    d="M274 86 L181 260 L232 250"
+    fill="none"
+    stroke="#FFF59A"
+    stroke-width="9"
+    stroke-linecap="round"
+    opacity=".85"
+  />
 </svg>
