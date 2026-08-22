@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="hexGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#123D9B"/>
+      <stop offset="55%" stop-color="#0757C9"/>
+      <stop offset="100%" stop-color="#18C9C2"/>
+    </linearGradient>
+
+    <linearGradient id="boltGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE52C"/>
+      <stop offset="50%" stop-color="#FFC107"/>
+      <stop offset="100%" stop-color="#FF5A00"/>
+    </linearGradient>
+
+    <linearGradient id="sunGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE52C"/>
+      <stop offset="100%" stop-color="#FF8A00"/>
+    </linearGradient>
+
+    <linearGradient id="solarGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#42BFFF"/>
+      <stop offset="100%" stop-color="#0755C8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Hexagon -->
+  <path
+    d="M256 18 L470 140 L470 372 L256 494 L42 372 L42 140 Z"
+    fill="#071A43"
+    stroke="url(#hexGradient)"
+    stroke-width="24"
+    stroke-linejoin="round"
+  />
+
+  <!-- Inner White Border -->
+  <path
+    d="M256 45 L440 151 L440 361 L256 467 L72 361 L72 151 Z"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="8"
+    stroke-linejoin="round"
+  />
+
+  <!-- Sun -->
+  <circle
+    cx="150"
+    cy="180"
+    r="55"
+    fill="url(#sunGradient)"
+  />
+
+  <!-- Sun Rays -->
+  <g
+    stroke="#FFD21C"
+    stroke-width="12"
+    stroke-linecap="round"
+  >
+    <line x1="150" y1="105" x2="150" y2="80"/>
+    <line x1="98" y1="125" x2="78" y2="105"/>
+    <line x1="202" y1="125" x2="222" y2="105"/>
+    <line x1="75" y1="180" x2="48" y2="180"/>
+  </g>
+
+  <!-- Solar Panel -->
+  <path
+    d="M76 245 L220 205 L220 372 L76 330 Z"
+    fill="url(#solarGradient)"
+    stroke="#5ED9FF"
+    stroke-width="6"
+  />
+
+  <!-- Solar Panel Grid -->
+  <g
+    stroke="#D8F4FF"
+    stroke-width="4"
+    opacity="0.95"
+  >
+    <line x1="112" y1="235" x2="112" y2="340"/>
+    <line x1="150" y1="225" x2="150" y2="350"/>
+    <line x1="187" y1="215" x2="187" y2="361"/>
+
+    <line x1="78" y1="273" x2="220" y2="233"/>
+    <line x1="77" y1="308" x2="220" y2="269"/>
+    <line x1="77" y1="341" x2="220" y2="305"/>
+  </g>
+
+  <!-- Smartphone -->
+  <rect
+    x="288"
+    y="118"
+    width="112"
+    height="290"
+    rx="25"
+    fill="#092C62"
+    stroke="#20DCE8"
+    stroke-width="8"
+    transform="rotate(8 344 263)"
+  />
+
+  <!-- Phone Screen -->
+  <rect
+    x="303"
+    y="137"
+    width="82"
+    height="252"
+    rx="15"
+    fill="#061D42"
+    stroke="#3DBEFF"
+    stroke-width="3"
+    transform="rotate(8 344 263)"
+  />
+
+  <!-- Camera Module -->
+  <rect
+    x="306"
+    y="150"
+    width="68"
+    height="80"
+    rx="15"
+    fill="#07152D"
+    stroke="#B9E8FF"
+    stroke-width="5"
+    transform="rotate(8 340 190)"
+  />
+
+  <!-- Camera Lenses -->
+  <g
+    fill="#041126"
+    stroke="#25CFFF"
+    stroke-width="4"
+  >
+    <circle cx="326" cy="174" r="12"/>
+    <circle cx="353" cy="178" r="12"/>
+    <circle cx="330" cy="202" r="12"/>
+  </g>
+
+  <!-- Mobile Circuit Pattern -->
+  <g
+    fill="none"
+    stroke="#19E3F0"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M310 275 L332 253 L332 232"/>
+    <path d="M315 319 L348 286 L348 254"/>
+    <path d="M326 352 L366 312 L366 282"/>
+    <path d="M345 369
