@@ -4096,8 +4096,24 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
+    // Do not call /api/admin-session on every public page load.
+    // An unauthenticated public visitor does not have an admin session,
+    // so the API correctly returns 401. Skipping that check keeps normal
+    // storefront logs clean while preserving secure checks for /admin.
+    const path = window.location.pathname.replace(/\\/+$/, "");
+    const adminRequested =
+      path === "/admin" ||
+      new URLSearchParams(window.location.search).get("admin") === "1" ||
+      activeTab === "admin";
+
+    if (!adminRequested) {
+      setAdminSessionChecking(false);
+      setIsAdminLoggedIn(false);
+      return;
+    }
+
     verifyAdminSession();
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     luxmoEnsureCustomerSession();
