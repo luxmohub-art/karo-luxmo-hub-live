@@ -1,5 +1,12 @@
+// api/create-shipment.js
+// LUXMO HUB - Secure Shipment Creation API
+
 import { getFirestore } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "../lib/firebase-admin.js";
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function cleanDocId(value) {
   return String(value || "")
@@ -9,39 +16,52 @@ function cleanDocId(value) {
 }
 
 function getBaseUrl(req) {
-  const configured =
-    process.env.NEXT_PUBLIC_SITE_URL;
+  const configured = String(
+    process.env.NEXT_PUBLIC_SITE_URL || ""
+  ).trim();
 
   if (configured) {
     return configured.replace(/\/$/, "");
   }
 
-  const vercel =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const productionUrl = String(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL || ""
+  ).trim();
 
-  if (vercel) {
-    return `https://${vercel.replace(
+  if (productionUrl) {
+    return `https://${productionUrl.replace(
       /^https?:\/\//,
       ""
     )}`;
   }
 
-  const host =
-    req.headers?.host;
+  const host = String(
+    req.headers?.["x-forwarded-host"] ||
+      req.headers?.host ||
+      ""
+  ).trim();
 
   if (!host) {
     throw new Error(
-      "Unable to determine application URL"
+      "Unable to determine application URL."
     );
   }
 
-  return `https://${host}`;
+  const forwardedProto = String(
+    req.headers?.["x-forwarded-proto"] || ""
+  )
+    .split(",")[0]
+    .trim();
+
+  const protocol =
+    forwardedProto ||
+    (host.includes("localhost") ? "http" : "https");
+
+  return `${protocol}://${host}`;
 }
 
 function normalizeProvider(value) {
-  const provider = String(
-    value || ""
-  )
+  const provider = String(value || "")
     .trim()
     .toLowerCase();
 
@@ -57,22 +77,46 @@ function normalizeProvider(value) {
   return "shiprocket";
 }
 
-export default async function handler(
-  req,
-  res
-) {
+function sendJson(res, status, data) {
+  return res.status(status).json(data);
+}
+
+async function parseResponse(response) {
+  const contentType = String(
+    response.headers.get("content-type") || ""
+  ).toLowerCase();
+
+  if (contentType.includes("application/json")) {
+    return response.json().catch(() => ({}));
+  }
+
+  const text = await response.text().catch(() => "");
+
+  if (!text) {
+    return {};
+  }
+
+  return {
+    message: text.slice(0, 2000),
+  };
+}
+
+/* =========================================================
+   MAIN HANDLER
+========================================================= */
+
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
 
-    return res.status(405).json({
+    return sendJson(res, 405, {
       success: false,
-      error: "Method not allowed",
+      error: "Method not allowed.",
     });
   }
 
   try {
-    const body =
-      req.body || {};
+    const body = req.body || {};
 
     const {
       provider,
@@ -82,111 +126,121 @@ export default async function handler(
       razorpay_payment_id,
     } = body;
 
-    /*
-     * Provider:
-     * Shiprocket OR iThink Logistics
-     */
-    const selectedProvider =
-      normalizeProvider(
-        provider ||
-          order?.provider ||
-          order?.courierProvider ||
-          process.env
-            .DEFAULT_LOGISTICS_PROVIDER ||
-          "shiprocket"
-      );
+    /* =====================================================
+       PROVIDER
+    ===================================================== */
 
-    if (
-      !razorpay_order_id ||
-      !razorpay_payment_id
-    ) {
-      return res.status(400).json({
+    const selectedProvider = normalizeProvider(
+      provider ||
+        order?.provider ||
+        order?.courierProvider ||
+        process.env.DEFAULT_LOGISTICS_PROVIDER ||
+        "shiprocket"
+    );
+
+    /* =====================================================
+       PAYMENT VALIDATION
+    ===================================================== */
+
+    const razorpayOrderId = String(
+      razorpay_order_id || ""
+    ).trim();
+
+    const razorpayPaymentId = String(
+      razorpay_payment_id || ""
+    ).trim();
+
+    if (!razorpayOrderId || !razorpayPaymentId) {
+      return sendJson(res, 400, {
         success: false,
         error:
           "Verified Razorpay order and payment IDs are required.",
       });
     }
 
-    /*
-     * Firebase Admin
-     */
-    const db =
-      getFirestore(
-        getFirebaseAdmin()
+    /* =====================================================
+       FIREBASE
+    ===================================================== */
+
+    const firebaseAdmin = getFirebaseAdmin();
+
+    if (!firebaseAdmin) {
+      throw new Error(
+        "Firebase Admin initialization failed."
       );
+    }
+
+    const db = getFirestore(firebaseAdmin);
 
     const ordersCollection =
       db.collection("orders");
 
-    let orderSnapshot =
-      null;
+    let orderSnapshot = null;
 
-    /*
-     * Find order using website order ID
-     */
-    const suppliedWebsiteOrderId =
-      String(
-        order?.id ||
-          order?.websiteOrderId ||
-          orderId ||
-          ""
-      ).trim();
+    /* =====================================================
+       WEBSITE ORDER ID
+    ===================================================== */
 
-    if (
-      suppliedWebsiteOrderId
-    ) {
-      const ref =
-        ordersCollection.doc(
-          cleanDocId(
-            suppliedWebsiteOrderId
-          )
-        );
+    const suppliedWebsiteOrderId = String(
+      order?.id ||
+        order?.websiteOrderId ||
+        orderId ||
+        ""
+    ).trim();
 
-      const snapshot =
-        await ref.get();
+    if (suppliedWebsiteOrderId) {
+      const docId = cleanDocId(
+        suppliedWebsiteOrderId
+      );
 
-      if (snapshot.exists) {
-        orderSnapshot = {
-          ref,
-          data:
-            snapshot.data(),
-        };
+      if (docId) {
+        const ref =
+          ordersCollection.doc(docId);
+
+        const snapshot =
+          await ref.get();
+
+        if (snapshot.exists) {
+          orderSnapshot = {
+            ref,
+            data: snapshot.data() || {},
+          };
+        }
       }
     }
 
-    /*
-     * Fallback:
-     * Find using Razorpay Order ID
-     */
+    /* =====================================================
+       FALLBACK - RAZORPAY ORDER ID
+    ===================================================== */
+
     if (!orderSnapshot) {
       const querySnapshot =
         await ordersCollection
           .where(
             "razorpayOrderId",
             "==",
-            String(
-              razorpay_order_id
-            )
+            razorpayOrderId
           )
           .limit(1)
           .get();
 
-      if (
-        !querySnapshot.empty
-      ) {
+      if (!querySnapshot.empty) {
         const doc =
           querySnapshot.docs[0];
 
         orderSnapshot = {
           ref: doc.ref,
-          data:
-            doc.data(),
+          data: doc.data() || {},
         };
       }
     }
 
+    /* =====================================================
+       ORDER NOT FOUND
+    ===================================================== */
+
     if (!orderSnapshot) {
-      return res.status(409).json({
+      return sendJson(res, 409, {
         success: false,
         error:
           "Verified payment order was not found in Firebase.",
@@ -196,39 +250,52 @@ export default async function handler(
     const dbOrder =
       orderSnapshot.data || {};
 
-    /*
-     * SECURITY:
-     * Shipment is allowed ONLY
-     * after successful server-side
-     * payment verification.
-     */
+    /* =====================================================
+       PAYMENT SECURITY CHECK
+    ===================================================== */
+
+    const storedRazorpayOrderId =
+      String(
+        dbOrder.razorpayOrderId || ""
+      ).trim();
+
+    const storedRazorpayPaymentId =
+      String(
+        dbOrder.razorpayPaymentId || ""
+      ).trim();
+
+    const paymentVerified =
+      dbOrder.paymentVerified === true;
+
+    const paymentStatus =
+      String(
+        dbOrder.paymentStatus || ""
+      ).trim();
+
     if (
-      dbOrder.paymentVerified !==
-        true ||
-      dbOrder.paymentStatus !==
-        "Paid" ||
-      dbOrder.razorpayOrderId !==
-        razorpay_order_id ||
-      dbOrder.razorpayPaymentId !==
-        razorpay_payment_id
+      !paymentVerified ||
+      paymentStatus !== "Paid" ||
+      storedRazorpayOrderId !==
+        razorpayOrderId ||
+      storedRazorpayPaymentId !==
+        razorpayPaymentId
     ) {
-      return res.status(403).json({
+      return sendJson(res, 403, {
         success: false,
         error:
           "Payment is not verified for this order. Shipment creation blocked.",
       });
     }
 
-    /*
-     * Prevent duplicate shipment
-     */
+    /* =====================================================
+       DUPLICATE SHIPMENT PROTECTION
+    ===================================================== */
+
     if (
-      dbOrder.shipmentStatus ===
-        "Created" ||
-      dbOrder.shipmentStatus ===
-        "Shipped"
+      dbOrder.shipmentStatus === "Created" ||
+      dbOrder.shipmentStatus === "Shipped"
     ) {
-      return res.status(200).json({
+      return sendJson(res, 200, {
         success: true,
 
         provider:
@@ -236,67 +303,66 @@ export default async function handler(
           selectedProvider,
 
         shipmentId:
-          dbOrder.shipmentId ||
-          null,
+          dbOrder.shipmentId || null,
 
         awb:
-          dbOrder.awb ||
-          null,
+          dbOrder.awb || null,
 
         courier:
-          dbOrder.courier ||
-          null,
+          dbOrder.courier || null,
 
         trackingUrl:
-          dbOrder.trackingUrl ||
-          null,
+          dbOrder.trackingUrl || null,
 
         orderId:
           dbOrder.websiteOrderId ||
           dbOrder.id ||
-          razorpay_order_id,
+          suppliedWebsiteOrderId ||
+          razorpayOrderId,
 
         message:
           "Shipment already created for this order.",
 
-        alreadyProcessed:
-          true,
+        alreadyProcessed: true,
       });
     }
 
-    /*
-     * Firebase is the trusted
-     * source for customer/order data.
-     */
-    const trustedOrder = {
-      ...(dbOrder.order &&
-      typeof dbOrder.order ===
-        "object"
+    /* =====================================================
+       TRUSTED ORDER DATA
+    ===================================================== */
+
+    const originalOrder =
+      dbOrder.order &&
+      typeof dbOrder.order === "object"
         ? dbOrder.order
-        : dbOrder),
+        : dbOrder;
+
+    const trustedOrder = {
+      ...originalOrder,
 
       id:
         dbOrder.websiteOrderId ||
         dbOrder.id ||
         suppliedWebsiteOrderId ||
-        razorpay_order_id,
+        razorpayOrderId,
 
       orderId:
         dbOrder.websiteOrderId ||
         dbOrder.id ||
         suppliedWebsiteOrderId ||
-        razorpay_order_id,
+        razorpayOrderId,
 
       websiteOrderId:
         dbOrder.websiteOrderId ||
         dbOrder.id ||
-        suppliedWebsiteOrderId,
+        suppliedWebsiteOrderId ||
+        "",
 
       razorpayOrderId:
-        razorpay_order_id,
+        razorpayOrderId,
 
       razorpayPaymentId:
-        razorpay_payment_id,
+        razorpayPaymentId,
 
       paymentMethod:
         "razorpay",
@@ -314,63 +380,63 @@ export default async function handler(
         selectedProvider,
     };
 
-    /*
-     * IMPORTANT:
-     *
-     * Shiprocket:
-     * /api/shiprocket
-     *
-     * iThink Logistics:
-     * /api/ithink
-     */
+    /* =====================================================
+       PROVIDER ENDPOINT
+    ===================================================== */
+
     const endpoint =
-      selectedProvider ===
-      "ithink"
+      selectedProvider === "ithink"
         ? "/api/ithink"
         : "/api/shiprocket";
 
     const baseUrl =
       getBaseUrl(req);
 
-    const response =
-      await fetch(
-        `${baseUrl}${endpoint}`,
-        {
-          method: "POST",
+    const providerUrl =
+      `${baseUrl}${endpoint}`;
 
-          headers: {
-            "Content-Type":
-              "application/json",
+    /* =====================================================
+       CREATE SHIPMENT
+    ===================================================== */
 
-            Accept:
-              "application/json",
-          },
+    const response = await fetch(
+      providerUrl,
+      {
+        method: "POST",
 
-          body:
-            JSON.stringify({
-              order:
-                trustedOrder,
+        headers: {
+          "Content-Type":
+            "application/json",
 
-              orderId:
-                trustedOrder.orderId,
+          Accept:
+            "application/json",
+        },
 
-              paymentId:
-                razorpay_payment_id,
+        body: JSON.stringify({
+          order: trustedOrder,
 
-              provider:
-                selectedProvider,
-            }),
-        }
-      );
+          orderId:
+            trustedOrder.orderId,
+
+          paymentId:
+            razorpayPaymentId,
+
+          provider:
+            selectedProvider,
+        }),
+      }
+    );
 
     const data =
-      await response
-        .json()
-        .catch(() => ({}));
+      await parseResponse(response);
+
+    /* =====================================================
+       PROVIDER ERROR
+    ===================================================== */
 
     if (
       !response.ok ||
-      data.success === false
+      data?.success === false
     ) {
       const errorMessage =
         data?.error ||
@@ -396,59 +462,64 @@ export default async function handler(
         }
       );
 
-      return res.status(
-        response.status || 500
-      ).json({
-        success: false,
+      return sendJson(
+        res,
+        response.status >= 400
+          ? response.status
+          : 500,
+        {
+          success: false,
 
-        provider:
-          selectedProvider,
+          provider:
+            selectedProvider,
 
-        error:
-          errorMessage,
+          error:
+            errorMessage,
 
-        details:
-          data,
-      });
+          details:
+            data || null,
+        }
+      );
     }
 
-    /*
-     * Normalize both providers'
-     * responses.
-     */
+    /* =====================================================
+       NORMALIZE PROVIDER RESPONSE
+    ===================================================== */
+
     const shipmentId =
-      data.shipmentId ||
-      data.shipment_id ||
-      data.referenceNumber ||
-      data.refnum ||
-      data.orderId ||
-      data.order_id ||
+      data?.shipmentId ||
+      data?.shipment_id ||
+      data?.referenceNumber ||
+      data?.refnum ||
+      data?.orderId ||
+      data?.order_id ||
       null;
 
     const awb =
-      data.awb ||
-      data.awbCode ||
-      data.awb_code ||
-      data.waybill ||
+      data?.awb ||
+      data?.awbCode ||
+      data?.awb_code ||
+      data?.waybill ||
       null;
 
     const courier =
-      data.courier ||
-      data.courier_name ||
-      data.logistic_name ||
+      data?.courier ||
+      data?.courier_name ||
+      data?.logistic_name ||
       null;
 
     const trackingUrl =
-      data.trackingUrl ||
-      data.tracking_url ||
+      data?.trackingUrl ||
+      data?.tracking_url ||
       null;
 
     const now =
       new Date().toISOString();
 
-    /*
-     * Update the SAME Firebase order.
-     */
+    /* =====================================================
+       SAVE SHIPMENT TO SAME ORDER
+    ===================================================== */
+
     await orderSnapshot.ref.set(
       {
         paymentStatus:
@@ -466,13 +537,17 @@ export default async function handler(
         courierProvider:
           selectedProvider,
 
-        courier,
+        courier:
+          courier,
 
-        shipmentId,
+        shipmentId:
+          shipmentId,
 
-        awb,
+        awb:
+          awb,
 
-        trackingUrl,
+        trackingUrl:
+          trackingUrl,
 
         shipmentError:
           "",
@@ -488,25 +563,34 @@ export default async function handler(
       }
     );
 
-    return res.status(200).json({
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
+
+    return sendJson(res, 200, {
       success: true,
 
       provider:
         selectedProvider,
 
-      shipmentId,
+      shipmentId:
+
+        shipmentId,
 
       orderId:
         trustedOrder.orderId,
 
-      awb,
+      awb:
+        awb,
 
-      courier,
+      courier:
+        courier,
 
-      trackingUrl,
+      trackingUrl:
+        trackingUrl,
 
       message:
-        data.message ||
+        data?.message ||
         `${selectedProvider} shipment created successfully.`,
 
       alreadyProcessed:
@@ -518,12 +602,18 @@ export default async function handler(
       error
     );
 
-    return res.status(500).json({
+    return sendJson(res, 500, {
       success: false,
 
       error:
         error?.message ||
-        "Internal server error",
+        "Internal server error.",
+
+      details:
+        process.env.NODE_ENV ===
+        "development"
+          ? String(error?.stack || "")
+          : undefined,
     });
   }
-          }
+}
