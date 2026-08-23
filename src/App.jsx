@@ -2018,7 +2018,12 @@ function LuxmoPincodeChecker({ cartItems }) {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data.success !== true) {
-        throw new Error(data.error || data.message || "Unable to check delivery availability right now.");
+        throw new Error(
+          luxmoApiErrorMessage(
+            data.error,
+            data.message || "Unable to check delivery availability right now."
+          )
+        );
       }
 
       if (!data.serviceable) {
@@ -2036,7 +2041,13 @@ function LuxmoPincodeChecker({ cartItems }) {
       }
     } catch (error) {
       console.error("Pincode serviceability check failed:", error);
-      setResult({ ok: false, message: error?.message || "Unable to check delivery availability right now. Please try again." });
+      setResult({
+        ok: false,
+        message: luxmoApiErrorMessage(
+          error,
+          "Unable to check delivery availability right now. Please try again."
+        ),
+      });
     } finally {
       setChecking(false);
     }
@@ -2349,17 +2360,45 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    if (
-      !draft.name.trim() ||
-      !luxmoValidateIndianMobile(draft.phone) ||
-      !draft.line1.trim() ||
-      !draft.city.trim() ||
-      !luxmoValidatePincode(draft.pincode)
-    ) {
-      return alert(
-        "Please complete valid delivery details."
-      );
+    // Validate checkout data before creating any order.
+    // Address line 2 is optional; all other delivery fields are required.
+    const name = String(draft?.name || "").trim();
+    const phone = String(draft?.phone || "").replace(/\D/g, "");
+    const line1 = String(draft?.line1 || "").trim();
+    const city = String(draft?.city || "").trim();
+    const state = String(draft?.state || "").trim();
+    const pincode = luxmoNormalizePincode(draft?.pincode || "");
+
+    if (!name) {
+      return alert("Please enter your full name.");
     }
+    if (!luxmoValidateIndianMobile(phone)) {
+      return alert("Please enter a valid 10-digit Indian mobile number.");
+    }
+    if (!line1) {
+      return alert("Please enter your complete delivery address.");
+    }
+    if (!city) {
+      return alert("Please enter your city.");
+    }
+    if (!state) {
+      return alert("Please enter your state.");
+    }
+    if (!luxmoValidatePincode(pincode)) {
+      return alert("Please enter a valid 6-digit delivery pincode.");
+    }
+
+    // Keep the normalized values in the order payload.
+    const validatedAddress = {
+      ...draft,
+      name,
+      phone,
+      line1,
+      city,
+      state,
+      pincode,
+    };
+    setDraft(validatedAddress);
 
     if (
       payment === "cod" &&
@@ -2418,7 +2457,7 @@ function LuxmoCheckout({
       shippingMode:
         effectiveShippingMode,
 
-      address: draft,
+      address: validatedAddress,
 
       courierProvider:
         "Pending Assignment",
@@ -2863,8 +2902,52 @@ function LuxmoOrderCenter({ orders, setOrders }) {
 
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
   const [draft, setDraft] = useState({ productId: products[0]?.id || "", name: "", rating: 5, text: "" });
-  const submit = () => { if (!draft.productId || !draft.name.trim() || !draft.text.trim()) return alert("Please select a product and complete your review."); const review = { ...draft, id: `rev-${Date.now()}`, createdAt: new Date().toISOString(), status: "Pending" }; const next=[review,...reviews]; setReviews(next); safeWriteJSON(LUXMO_PRO_STORAGE.reviews,next); setDraft({ ...draft, name:"", text:"" }); alert("Review submitted for moderation."); };
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">Submit Review</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!draft.productId || !draft.name.trim() || !draft.text.trim()) {
+      return alert("Please select a product and complete your review.");
+    }
+    if (submitting) return;
+
+    setSubmitting(true);
+    try {
+      const response = await luxmoApi("/api/reviews", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: draft.productId,
+          name: draft.name.trim(),
+          rating: Number(draft.rating || 5),
+          text: draft.text.trim()
+        })
+      });
+
+      const review =
+        response?.review ||
+        response?.data?.review ||
+        response?.data ||
+        {
+          ...draft,
+          id: `rev-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          status: "Pending"
+        };
+
+      setReviews(prev => [
+        review,
+        ...prev.filter(item => item?.id !== review?.id)
+      ]);
+      setDraft({ ...draft, name: "", text: "" });
+      alert("Review submitted for moderation.");
+    } catch (error) {
+      console.error("Review submission failed:", error);
+      alert(error?.message || "Unable to submit review. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} disabled={submitting} className="bg-blue-600 disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-bold">{submitting ? "Submitting…" : "Submit Review"}</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
 }
 
 function LuxmoStockAlerts({ products, alerts, setAlerts }) {
@@ -2925,8 +3008,8 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
   const [customer,setCustomer]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.customer,{name:"",email:"",phone:""}));
-  const [orders,setOrders]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.orders,[]));
-  const [reviews,setReviews]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.reviews,[]));
+  const [orders,setOrders]=useState([]);
+  const [reviews,setReviews]=useState([]);
   const [recent,setRecent]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]));
   const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
@@ -3389,11 +3472,8 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
         createdAt: new Date().toISOString()
       };
 
-      try {
-        const saved = JSON.parse(localStorage.getItem("luxmo_warranty_registrations") || "[]");
-        const list = Array.isArray(saved) ? saved : [];
-        localStorage.setItem("luxmo_warranty_registrations", JSON.stringify([registration, ...list].slice(0, 50)));
-      } catch {}
+      // Warranty registration is stored by /api/warranty-registration.
+      // Do not duplicate customer warranty records in browser localStorage.
 
       setMessage({
         type: "success",
@@ -4014,23 +4094,14 @@ export default function LuxmoHubApp() {
   // Secure Admin authentication — Google Authenticator (TOTP).
   // IMPORTANT: the TOTP secret stays ONLY in Vercel as ADMIN_TOTP_SECRET.
   // The browser sends only the current 6-digit code to the server API.
-  // Admin UI is available only when the dedicated admin entry URL was explicitly requested.
-  // A normal public visit must never expose Store Tools, Dashboard, or the Admin Console,
-  // even if an admin session cookie still exists in the same browser.
-  const [adminAccessRequested, setAdminAccessRequested] = useState(() => {
-    if (typeof window === "undefined") return false;
-    const path = window.location.pathname.replace(/\/+$/, "");
-    return path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
-  });
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [adminSessionChecking, setAdminSessionChecking] = useState(false);
+  const [adminSessionChecking, setAdminSessionChecking] = useState(true);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminOtp, setAdminOtp] = useState("");
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [showMobileNav, setShowMobileNav] = useState(false);
-  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [openMobileNavSection, setOpenMobileNavSection] = useState("");
   const [openMobileShopSubsection, setOpenMobileShopSubsection] = useState("");
   useEffect(() => {
@@ -4069,22 +4140,14 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    const syncAdminEntry = () => {
-      const path = window.location.pathname.replace(/\/+$/, "");
-      const requested = path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
-      setAdminAccessRequested(requested);
-      if (!requested) {
-        setAdminSessionChecking(false);
-        setIsAdminLoggedIn(false);
-        if (activeTab === "admin") setActiveTab("home");
-        return;
-      }
-      verifyAdminSession();
-    };
-    syncAdminEntry();
-    window.addEventListener("popstate", syncAdminEntry);
-    return () => window.removeEventListener("popstate", syncAdminEntry);
-  }, []);
+    if (activeTab !== "admin") {
+      setAdminSessionChecking(false);
+      setIsAdminLoggedIn(false);
+      return;
+    }
+
+    verifyAdminSession();
+  }, [activeTab]);
 
   useEffect(() => {
     luxmoEnsureCustomerSession();
@@ -4092,7 +4155,7 @@ export default function LuxmoHubApp() {
     luxmoServerFirstProducts().then(remote => {
       if (!cancelled && remote) {
         setProducts(remote);
-        try { localStorage.setItem("luxmo_products", JSON.stringify(remote)); } catch {}
+        // API is authoritative; localStorage is only a convenience cache.
       }
     });
     return () => { cancelled = true; };
@@ -4164,11 +4227,6 @@ export default function LuxmoHubApp() {
       console.error("Admin logout API error:", error);
     } finally {
       setIsAdminLoggedIn(false);
-      setAdminAccessRequested(false);
-      try {
-        const cleanUrl = window.location.pathname + (window.location.hash || "");
-        window.history.replaceState({}, "", cleanUrl || "/");
-      } catch {}
       setAdminOtp("");
       setAuthError("");
       setAuthMessage("");
@@ -4178,20 +4236,19 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    if (adminAccessRequested && activeTab === "admin" && !adminSessionChecking && !isAdminLoggedIn) {
+    if (activeTab === "admin" && !adminSessionChecking && !isAdminLoggedIn) {
       openAdminLogin();
       setActiveTab("home");
     }
-  }, [activeTab, adminSessionChecking, isAdminLoggedIn, adminAccessRequested]);
+  }, [activeTab, adminSessionChecking, isAdminLoggedIn]);
 
   // Admin login is intentionally not exposed in the public navigation.
-  // Only /admin or /?admin=1 can activate the admin UI; normal public visits stay customer-only.
+  // Both /admin and /?admin=1 open the secure TOTP login.
   useEffect(() => {
     const path = window.location.pathname.replace(/\/+$/, "");
     const adminRequested = path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
     if (!adminRequested || adminSessionChecking) return;
 
-    setAdminAccessRequested(true);
     if (isAdminLoggedIn) {
       setActiveTab("admin");
     } else {
@@ -4212,7 +4269,6 @@ export default function LuxmoHubApp() {
   });
   const [formError, setFormError] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
-  const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -4305,7 +4361,7 @@ export default function LuxmoHubApp() {
         hasAny(a.material, filterMaterial) && hasFeature && hasAny(a.color, filterColor) &&
         hasAny(a.voltage, filterVoltage) && hasAny(a.chargeController, filterChargeController) &&
         hasAny(a.frequency, filterFrequency) && hasAny(a.mounting, filterMounting) &&
-        hasAny(a.smartFeature, filterSmartFeature) && matchesPrice && (adminAccessRequested && isAdminLoggedIn || p.published);
+        hasAny(a.smartFeature, filterSmartFeature) && matchesPrice && (isAdminLoggedIn || p.published);
     });
   }, [products, selectedCategory, selectedMainCategory, selectedSubCategory, selectedModelFilter, searchQuery,
       filterMaterial, filterFeature, filterColor, filterVoltage, filterChargeController, filterFrequency,
@@ -4356,11 +4412,9 @@ export default function LuxmoHubApp() {
     }));
   };
 
-  const validateAndSaveProduct = async (e) => {
+  const validateAndSaveProduct = (e) => {
     e.preventDefault();
     setFormError('');
-
-    if (isSavingProduct) return;
 
     if (FORBIDDEN_TERMS.some(term => formData.title.toLowerCase().includes(term))) {
       setFormError('Product title contains prohibited terms.');
@@ -4451,33 +4505,13 @@ export default function LuxmoHubApp() {
       }
     };
 
-    const nextProducts = editingProduct
-      ? products.map(p => p.id === editingProduct.id ? productPayload : p)
-      : [productPayload, ...products];
-
-    // IMPORTANT: do not treat React/localStorage state as a successful save.
-    // The live website reads products from /api/products -> Firestore.
-    // Wait for the database API to confirm the write before updating the UI.
-    setIsSavingProduct(true);
-    try {
-      const data = await luxmoApi('/api/products', {
-        method: 'PUT',
-        body: JSON.stringify({ products: nextProducts })
-      });
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Product database save failed.');
-      }
-
-      setProducts(nextProducts);
-      resetForm();
-      setFormError('Product saved to database successfully. It is now available to the live website.');
-    } catch (error) {
-      console.error('Product database save failed:', error);
-      setFormError(`Product was NOT saved to the live database: ${error?.message || 'Unknown API error'}`);
-    } finally {
-      setIsSavingProduct(false);
+    if (editingProduct) {
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? productPayload : p));
+    } else {
+      setProducts(prev => [productPayload, ...prev]);
     }
+
+    resetForm();
   };
 
   const resetForm = () => {
@@ -4679,10 +4713,12 @@ export default function LuxmoHubApp() {
           sku: item.sku || "",
           qty: Number(item.qty || 1)
         })),
+        // IMPORTANT: this handler is outside CheckoutModal, so the
+        // CheckoutModal `coupon` state is not in scope here.
+        // Use only the coupon stored on the pending order.
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
-          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
@@ -5065,20 +5101,9 @@ export default function LuxmoHubApp() {
             <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
-            {adminAccessRequested && isAdminLoggedIn && (
+            {isAdminLoggedIn && (
               <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
             )}
-
-            {/* Mobile/tablet search button — the full search field is hidden below lg. */}
-            <button
-              type="button"
-              aria-label="Search products"
-              aria-expanded={showMobileSearch}
-              onClick={() => setShowMobileSearch(v => !v)}
-              className={`p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0 ${showMobileSearch ? "bg-blue-50 text-blue-600" : ""}`}
-            >
-              <Search className="w-6 h-6" />
-            </button>
 
             <button onClick={() => setActiveTab("cart")} className="relative p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0">
               <ShoppingBag className="w-6 h-6" />
@@ -5100,7 +5125,7 @@ export default function LuxmoHubApp() {
               <Menu className="w-6 h-6" />
             </button>
 
-            {adminAccessRequested && isAdminLoggedIn && (
+            {isAdminLoggedIn && (
               <>
                 <LuxmoLowStockBadge
                   products={products}
@@ -5113,33 +5138,6 @@ export default function LuxmoHubApp() {
               </>
             )}
           </div>
-
-          {/* Mobile/tablet search field. Keeps the header compact until the user taps Search. */}
-          {showMobileSearch && (
-            <div className="w-full lg:hidden relative order-3 pt-1 pb-0.5">
-              <input
-                type="search"
-                autoFocus
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const term = String(searchQuery || "").trim();
-                    if (term) {
-                      const next = [term, ...recentSearches.filter(x => x.toLowerCase() !== term.toLowerCase())].slice(0, 8);
-                      setRecentSearches(next);
-                      safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, next);
-                    }
-                    setActiveTab("catalog");
-                    setShowMobileSearch(false);
-                  }
-                }}
-                placeholder="Search products, category, model or SKU..."
-                className="w-full pl-10 pr-4 py-2.5 text-sm bg-white text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <Search className="w-5 h-5 absolute left-3 top-3.5 text-slate-400" />
-            </div>
-          )}
         </div>
       </header>
 
@@ -5395,7 +5393,7 @@ export default function LuxmoHubApp() {
                 <span>Blog</span><ChevronRight className="w-4 h-4" />
               </button>
 
-              {adminAccessRequested && isAdminLoggedIn && (
+              {isAdminLoggedIn && (
                 <div className="pt-3 mt-2 border-t border-slate-200">
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
                   <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
@@ -6363,7 +6361,7 @@ export default function LuxmoHubApp() {
         )}
 
         {/* ADMIN DASHBOARD VIEW */}
-        {activeTab === "admin" && adminAccessRequested && isAdminLoggedIn && (
+        {activeTab === "admin" && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b pb-4">
               <div>
@@ -6652,9 +6650,7 @@ export default function LuxmoHubApp() {
                 </div>
 
                 <div className="md:col-span-2 flex gap-2">
-                  <button type="submit" disabled={isSavingProduct || isCompressing} className={`bg-blue-600 hover:bg-blue-500 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold px-5 py-2.5 rounded-md text-xs`}>
-                    {isSavingProduct ? 'Saving to Database…' : (editingProduct ? 'Update Product' : 'Save Product')}
-                  </button>
+                  <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2.5 rounded-md text-xs">Save Product</button>
                   {editingProduct && <button type="button" onClick={resetForm} className="bg-slate-200 text-slate-800 px-4 py-2.5 rounded-md text-xs font-bold">Cancel</button>}
                 </div>
               </form>
@@ -6708,7 +6704,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-        {showStoreTools && adminAccessRequested && isAdminLoggedIn && (
+        {showStoreTools && isAdminLoggedIn && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm p-2 md:p-5 overflow-auto" role="dialog" aria-modal="true" aria-label="LUXMO HUB Store Tools">
             <div className="max-w-7xl mx-auto my-2 md:my-5">
               <div className="flex justify-end mb-2">
