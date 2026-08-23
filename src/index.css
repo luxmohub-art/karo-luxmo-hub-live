@@ -1,40 +1,23 @@
-/* =========================================================
-   LUXMO HUB - GLOBAL STYLES
-========================================================= */
+@import "tailwindcss";
 
 :root {
-  font-family:
-    Inter,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-
   color: #0f172a;
   background: #ffffff;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* =========================================================
-   RESET
-========================================================= */
-
-*,
-*::before,
-*::after {
+* {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
 html {
   width: 100%;
   min-height: 100%;
-  margin: 0;
-  padding: 0;
   background: #ffffff;
 }
 
@@ -42,33 +25,18 @@ body {
   width: 100%;
   min-width: 320px;
   min-height: 100vh;
-  margin: 0;
-  padding: 0;
-
   overflow-x: hidden;
-
-  background:
-    linear-gradient(
-      180deg,
-      #ffffff 0%,
-      #f8fafc 100%
-    );
-
+  background: #ffffff;
   color: #0f172a;
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
-  margin: 0;
-  padding: 0;
 }
 
-/* =========================================================
-   COMMON ELEMENTS
-========================================================= */
-
 button,
+a,
 input,
 select,
 textarea {
@@ -77,7 +45,16 @@ textarea {
 
 button {
   cursor: pointer;
-  border: 0;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
 input,
@@ -86,115 +63,33 @@ textarea {
   outline: none;
 }
 
-img,
-svg,
-video {
-  max-width: 100%;
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
 }
-
-img {
-  display: block;
-}
-
-/* =========================================================
-   LINKS
-========================================================= */
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: none;
-}
-
-/* =========================================================
-   BUTTON TRANSITION
-========================================================= */
-
-button,
-a {
-  transition:
-    color 0.2s ease,
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-/* =========================================================
-   SELECTION
-========================================================= */
 
 ::selection {
   background: #f59e0b;
   color: #020617;
 }
 
-/* =========================================================
-   SCROLLBAR
-========================================================= */
-
 ::-webkit-scrollbar {
   width: 8px;
-  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #e2e8f0;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #f59e0b;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* =========================================================
-   MOBILE
-========================================================= */
-
-@media (max-width: 768px) {
-  html {
-    font-size: 15px;
-  }
-
-  body {
-    min-width: 320px;
-  }
-}
-
-/* =========================================================
-   DARK MODE SUPPORT
-========================================================= */
-
-.dark {
-  color-scheme: dark;
-}
-
-.dark body {
-  background:
-    linear-gradient(
-      180deg,
-      #020617 0%,
-      #0f172a 100%
-    );
-
-  color: #f8fafc;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: #d97706;
 }
