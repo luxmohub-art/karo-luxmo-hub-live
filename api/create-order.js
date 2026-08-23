@@ -1,20 +1,43 @@
 // api/create-order.js
-// LUXMO HUB — Razorpay Order Creation
-// Fixes:
-// 1. Invalid subtotal
-// 2. Empty coupon
-// 3. Coupon validation
-// 4. Product price calculation
-// 5. Shipping calculation
-// 6. Razorpay amount validation
+// LUXMO HUB — COMPLETE CHECKOUT API
+//
+// Supports:
+// 1. Razorpay order creation
+// 2. Coupon quote
+// 3. Optional coupon
+// 4. Firestore product pricing
+// 5. Variant pricing
+// 6. Shipping calculation
+// 7. Pincode serviceability
+//
+// IMPORTANT:
+// Do NOT create another API file for serviceability.
+// This single API handles both GET and POST.
+
+import { getFirestore } from "firebase-admin/firestore";
+import { getFirebaseAdmin } from "../lib/firebase-admin.js";
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function sendJson(res, status, data) {
+  return res.status(status).json(data);
+}
 
 function parseMoney(value) {
-  if (value === undefined || value === null || value === "") {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
     return NaN;
   }
 
   if (typeof value === "number") {
-    return Number.isFinite(value) ? value : NaN;
+    return Number.isFinite(value)
+      ? value
+      : NaN;
   }
 
   const cleaned = String(value)
@@ -29,7 +52,13 @@ function parseMoney(value) {
 
   const number = Number(cleaned);
 
-  return Number.isFinite(number) ? number : NaN;
+  return Number.isFinite(number)
+    ? number
+    : NaN;
+}
+
+function normalizeId(value) {
+  return String(value || "").trim();
 }
 
 function normalizeCoupon(value) {
@@ -38,452 +67,915 @@ function normalizeCoupon(value) {
     .toUpperCase();
 }
 
-function normalizeId(value) {
-  return String(value || "").trim();
-}
+function getQty(item) {
+  const qty = Number(
+    item?.qty ??
+    item?.quantity ??
+    1
+  );
 
-function getItemPrice(item) {
-  const salePrice = parseMoney(item?.salePrice);
-
-  if (Number.isFinite(salePrice) && salePrice >= 0) {
-    return salePrice;
+  if (
+    !Number.isFinite(qty) ||
+    qty <= 0
+  ) {
+    return 1;
   }
 
-  const price = parseMoney(item?.price);
+  return Math.max(
+    1,
+    Math.floor(qty)
+  );
+}
 
-  if (Number.isFinite(price) && price >= 0) {
-    return price;
+function cleanError(value) {
+  if (!value) {
+    return "Request failed.";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return value.message || "Request failed.";
+  }
+
+  if (typeof value === "object") {
+    return (
+      value.message ||
+      value.error ||
+      value.description ||
+      "Request failed."
+    );
+  }
+
+  return String(value);
+}
+
+/* =========================================================
+   PRODUCT PRICE
+========================================================= */
+
+function getPriceFromObject(product) {
+  const candidates = [
+    product?.salePrice,
+    product?.sellingPrice,
+    product?.selling_price,
+    product?.price,
+    product?.amount,
+  ];
+
+  for (const value of candidates) {
+    const price = parseMoney(value);
+
+    if (
+      Number.isFinite(price) &&
+      price > 0
+    ) {
+      return price;
+    }
   }
 
   return NaN;
 }
 
-function getItemQty(item) {
-  const qty = Number(item?.qty ?? item?.quantity ?? 1);
+async function getTrustedCartItems(items) {
+  const firebaseAdmin =
+    getFirebaseAdmin();
 
-  if (!Number.isFinite(qty) || qty <= 0) {
-    return 1;
+  const db =
+    getFirestore(firebaseAdmin);
+
+  const productsRef =
+    db.collection("products");
+
+  const trustedItems = [];
+
+  for (const item of items) {
+    const productId =
+      normalizeId(item?.id);
+
+    const sku =
+      String(item?.sku || "").trim();
+
+    let productDoc = null;
+
+    /* -------------------------------------------------------
+       FIND PRODUCT BY ID
+    ------------------------------------------------------- */
+
+    if (productId) {
+      const snapshot =
+        await productsRef
+          .doc(productId)
+          .get();
+
+      if (snapshot.exists) {
+        productDoc = snapshot;
+      }
+    }
+
+    /* -------------------------------------------------------
+       FIND PRODUCT BY SKU
+    ------------------------------------------------------- */
+
+    if (!productDoc && sku) {
+      const snapshot =
+        await productsRef
+          .where("sku", "==", sku)
+          .limit(1)
+          .get();
+
+      if (!snapshot.empty) {
+        productDoc =
+          snapshot.docs[0];
+      }
+    }
+
+    if (!productDoc) {
+      throw new Error(
+        `Product not found. ID: ${
+          productId || "N/A"
+        }`
+      );
+    }
+
+    const product = {
+      id: productDoc.id,
+      ...productDoc.data(),
+    };
+
+    const qty = getQty(item);
+
+    let price = NaN;
+
+    /* -------------------------------------------------------
+       VARIANT PRICE
+    ------------------------------------------------------- */
+
+    if (
+      Array.isArray(product.variants) &&
+      product.variants.length
+    ) {
+      const variant =
+        product.variants.find(
+          (v) =>
+            sku &&
+            String(v?.sku || "")
+              .trim()
+              .toLowerCase() ===
+              sku.toLowerCase()
+        );
+
+      if (variant) {
+        price =
+          getPriceFromObject(
+            variant
+          );
+      }
+    }
+
+    /* -------------------------------------------------------
+       PRODUCT PRICE
+    ------------------------------------------------------- */
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      price =
+        getPriceFromObject(
+          product
+        );
+    }
+
+    /* -------------------------------------------------------
+       LAST COMPATIBILITY FALLBACK
+       Existing checkout data may contain price.
+    ------------------------------------------------------- */
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      price =
+        getPriceFromObject(
+          item
+        );
+    }
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      throw new Error(
+        `Invalid product price for ${
+          product.title ||
+          product.name ||
+          product.id
+        }.`
+      );
+    }
+
+    trustedItems.push({
+      id: product.id,
+
+      sku:
+        sku ||
+        String(
+          product.sku || ""
+        ).trim(),
+
+      title:
+        product.title ||
+        product.name ||
+        "",
+
+      category:
+        product.category ||
+        "",
+
+      productCategory:
+        product.productCategory ||
+        product.category ||
+        "",
+
+      model:
+        item?.model ||
+        product.model ||
+        "",
+
+      colour:
+        item?.colour ||
+        item?.color ||
+        product.colour ||
+        "",
+
+      qty,
+
+      price,
+
+      hsn:
+        product.hsn ||
+        product.hsnCode ||
+        "",
+
+      brand:
+        product.brand ||
+        "LUXMO HUB",
+
+      tax:
+        Number(
+          product.gstRate || 0
+        ),
+    });
   }
 
-  return Math.max(1, Math.floor(qty));
+  return trustedItems;
 }
 
-function isSolarInverter(item) {
-  const category = String(
-    item?.category ||
-      item?.productCategory ||
-      item?.mainCategory ||
-      ""
-  ).toLowerCase();
+/* =========================================================
+   COUPONS
+========================================================= */
 
-  const title = String(
-    item?.title ||
-      item?.name ||
-      ""
-  ).toLowerCase();
+const COUPONS = {
+  WELCOME5: {
+    code: "WELCOME5",
+    type: "percent",
+    value: 5,
+    minOrder: 499,
+    maxDiscount: 500,
+  },
 
-  return (
-    category.includes("hybrid solar inverter") ||
-    category.includes("solar inverter") ||
-    title.includes("hybrid solar inverter") ||
-    title.includes("solar inverter")
-  );
+  SOLAR500: {
+    code: "SOLAR500",
+    type: "flat",
+    value: 500,
+    minOrder: 15000,
+    maxDiscount: 500,
+    solarOnly: true,
+  },
+
+  LUXMO100: {
+    code: "LUXMO100",
+    type: "flat",
+    value: 100,
+    minOrder: 1999,
+    maxDiscount: 100,
+  },
+};
+
+function isSolarOrder(items) {
+  return items.some((item) => {
+    const category =
+      String(
+        item?.category ||
+        item?.productCategory ||
+        ""
+      ).toLowerCase();
+
+    const title =
+      String(
+        item?.title || ""
+      ).toLowerCase();
+
+    return (
+      category.includes(
+        "solar inverter"
+      ) ||
+      title.includes(
+        "solar inverter"
+      )
+    );
+  });
 }
 
-/*
- * ---------------------------------------------------------
- * SHIPPING
- * ---------------------------------------------------------
- */
+function calculateDiscount(
+  couponCode,
+  subtotal,
+  items
+) {
+  const code =
+    normalizeCoupon(
+      couponCode
+    );
 
-function calculateShipping(body, subtotal) {
-  const mode = String(
-    body?.shippingMode || "standard"
-  )
-    .trim()
-    .toLowerCase();
+  if (!code) {
+    return {
+      discount: 0,
+      appliedCoupon: "",
+    };
+  }
+
+  const coupon =
+    COUPONS[code];
+
+  if (!coupon) {
+    throw new Error(
+      "Invalid or inactive coupon code."
+    );
+  }
+
+  if (
+    subtotal <
+    coupon.minOrder
+  ) {
+    throw new Error(
+      `Minimum order value for ${code} is ₹${coupon.minOrder.toLocaleString(
+        "en-IN"
+      )}.`
+    );
+  }
+
+  if (
+    coupon.solarOnly &&
+    !isSolarOrder(items)
+  ) {
+    throw new Error(
+      "SOLAR500 is applicable only to Hybrid Solar Inverter orders."
+    );
+  }
+
+  let discount = 0;
+
+  if (
+    coupon.type ===
+    "percent"
+  ) {
+    discount =
+      subtotal *
+      coupon.value /
+      100;
+  }
+
+  if (
+    coupon.type ===
+    "flat"
+  ) {
+    discount =
+      coupon.value;
+  }
+
+  discount =
+    Math.min(
+      Math.max(
+        0,
+        discount
+      ),
+      coupon.maxDiscount ||
+        discount,
+      subtotal
+    );
+
+  return {
+    discount,
+    appliedCoupon:
+      code,
+  };
+}
+
+/* =========================================================
+   SHIPPING
+========================================================= */
+
+function calculateShipping(
+  body,
+  subtotal
+) {
+  const mode =
+    String(
+      body?.shippingMode ||
+      "standard"
+    )
+      .trim()
+      .toLowerCase();
 
   if (
     mode === "free" ||
-    mode === "free_shipping" ||
     mode === "pickup" ||
     mode === "store_pickup"
   ) {
     return 0;
   }
 
-  const suppliedShipping = parseMoney(
-    body?.shippingFee
-  );
+  const supplied =
+    parseMoney(
+      body?.shippingFee
+    );
 
   if (
-    Number.isFinite(suppliedShipping) &&
-    suppliedShipping >= 0
+    Number.isFinite(
+      supplied
+    ) &&
+    supplied >= 0
   ) {
-    return suppliedShipping;
+    return supplied;
   }
-
-  /*
-   * Environment variable can override shipping.
-   *
-   * Example:
-   * LUXMO_STANDARD_SHIPPING_FEE=79
-   */
-
-  const configuredShipping = parseMoney(
-    process.env.LUXMO_STANDARD_SHIPPING_FEE
-  );
 
   if (
-    Number.isFinite(configuredShipping) &&
-    configuredShipping >= 0
+    mode === "express"
   ) {
-    return configuredShipping;
+    const express =
+      parseMoney(
+        process.env
+          .LUXMO_EXPRESS_SHIPPING_FEE
+      );
+
+    if (
+      Number.isFinite(
+        express
+      ) &&
+      express >= 0
+    ) {
+      return express;
+    }
+
+    return subtotal > 0
+      ? 149
+      : 0;
   }
 
-  // Default Luxmo Hub standard shipping
-  return subtotal > 0 ? 79 : 0;
+  const standard =
+    parseMoney(
+      process.env
+        .LUXMO_STANDARD_SHIPPING_FEE
+    );
+
+  if (
+    Number.isFinite(
+      standard
+    ) &&
+    standard >= 0
+  ) {
+    return standard;
+  }
+
+  return subtotal > 0
+    ? 79
+    : 0;
 }
 
-/*
- * ---------------------------------------------------------
- * MAIN HANDLER
- * ---------------------------------------------------------
- */
+/* =========================================================
+   CALCULATE PRICING
+========================================================= */
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-
-    return res.status(405).json({
-      success: false,
-      error: "Method not allowed",
-    });
-  }
-
-  try {
-    const body = req.body || {};
-
-    /*
-     * -------------------------------------------------------
-     * CART ITEMS
-     * -------------------------------------------------------
-     */
-
-    const items = Array.isArray(body.items)
+async function calculatePricing(body) {
+  const items =
+    Array.isArray(
+      body?.items
+    )
       ? body.items
       : [];
 
-    if (items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Your cart is empty.",
-      });
-    }
+  if (!items.length) {
+    throw new Error(
+      "Your cart is empty."
+    );
+  }
 
-    /*
-     * -------------------------------------------------------
-     * CALCULATE SUBTOTAL
-     *
-     * IMPORTANT:
-     * Frontend may send only:
-     *
-     * id
-     * sku
-     * qty
-     *
-     * Therefore we calculate subtotal from the supplied
-     * product price when available.
-     * -------------------------------------------------------
-     */
-
-    let subtotal = 0;
-
-    let hasSolarInverter = false;
-
-    const normalizedItems = [];
-
-    for (const item of items) {
-      const qty = getItemQty(item);
-
-      let unitPrice = getItemPrice(item);
-
-      /*
-       * If frontend did not send price, try the item's
-       * other common price fields.
-       */
-
-      if (!Number.isFinite(unitPrice)) {
-        unitPrice = parseMoney(
-          item?.sellingPrice
-        );
-      }
-
-      if (!Number.isFinite(unitPrice)) {
-        unitPrice = parseMoney(
-          item?.amount
-        );
-      }
-
-      if (
-        !Number.isFinite(unitPrice) ||
-        unitPrice < 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid product price.",
-          productId:
-            normalizeId(item?.id) || null,
-          productName:
-            item?.title ||
-            item?.name ||
-            null,
-        });
-      }
-
-      subtotal += unitPrice * qty;
-
-      if (isSolarInverter(item)) {
-        hasSolarInverter = true;
-      }
-
-      normalizedItems.push({
-        id: normalizeId(item?.id),
-        sku: String(item?.sku || "").trim(),
-        title:
-          item?.title ||
-          item?.name ||
-          "",
-        qty,
-        price: unitPrice,
-        model: String(item?.model || ""),
-        colour: String(
-          item?.colour ||
-            item?.color ||
-            ""
-        ),
-      });
-    }
-
-    /*
-     * -------------------------------------------------------
-     * FALLBACK SUBTOTAL
-     *
-     * This keeps compatibility with older checkout requests.
-     * -------------------------------------------------------
-     */
-
-    if (
-      !Number.isFinite(subtotal) ||
-      subtotal <= 0
-    ) {
-      subtotal = parseMoney(
-        body.subtotal
-      );
-    }
-
-    if (
-      !Number.isFinite(subtotal) ||
-      subtotal <= 0
-    ) {
-      subtotal = parseMoney(
-        body.amount
-      );
-    }
-
-    if (
-      !Number.isFinite(subtotal) ||
-      subtotal <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid subtotal",
-      });
-    }
-
-    /*
-     * -------------------------------------------------------
-     * COUPONS
-     * -------------------------------------------------------
-     */
-
-    const COUPONS = {
-      WELCOME5: {
-        code: "WELCOME5",
-        type: "percent",
-        value: 5,
-        minOrder: 499,
-        maxDiscount: 500,
-      },
-
-      SOLAR500: {
-        code: "SOLAR500",
-        type: "flat",
-        value: 500,
-        minOrder: 15000,
-        maxDiscount: 500,
-        solarOnly: true,
-      },
-
-      LUXMO100: {
-        code: "LUXMO100",
-        type: "flat",
-        value: 100,
-        minOrder: 1999,
-        maxDiscount: 100,
-      },
-    };
-
-    /*
-     * IMPORTANT:
-     * Coupon optional hai.
-     *
-     * Coupon blank:
-     *   -> koi error nahi
-     *
-     * Coupon filled:
-     *   -> validate hoga
-     */
-
-    const couponCode = normalizeCoupon(
-      body.couponCode ||
-        body.coupon ||
-        ""
+  const trustedItems =
+    await getTrustedCartItems(
+      items
     );
 
-    let discount = 0;
+  let subtotal = 0;
 
-    let appliedCoupon = "";
+  for (
+    const item of trustedItems
+  ) {
+    subtotal +=
+      item.price *
+      item.qty;
+  }
 
-    if (couponCode) {
-      const coupon =
-        COUPONS[couponCode];
+  if (
+    !Number.isFinite(
+      subtotal
+    ) ||
+    subtotal <= 0
+  ) {
+    throw new Error(
+      "Invalid subtotal."
+    );
+  }
 
-      if (!coupon) {
-        return res.status(400).json({
+  const {
+    discount,
+    appliedCoupon,
+  } =
+    calculateDiscount(
+      body?.couponCode ||
+      body?.coupon ||
+      "",
+      subtotal,
+      trustedItems
+    );
+
+  const shippingFee =
+    calculateShipping(
+      body,
+      subtotal
+    );
+
+  const total =
+    Math.max(
+      0,
+      subtotal -
+        discount +
+        shippingFee
+    );
+
+  if (
+    !Number.isFinite(
+      total
+    ) ||
+    total <= 0
+  ) {
+    throw new Error(
+      "Invalid final amount."
+    );
+  }
+
+  return {
+    items:
+      trustedItems,
+
+    subtotal,
+
+    discount,
+
+    shippingFee,
+
+    total,
+
+    couponCode:
+      appliedCoupon ||
+      null,
+  };
+}
+
+/* =========================================================
+   SHIPROCKET SERVICEABILITY
+========================================================= */
+
+async function checkServiceability(
+  req
+) {
+  const pincode =
+    String(
+      req.query?.pincode ||
+      ""
+    ).replace(
+      /\D/g,
+      ""
+    );
+
+  if (
+    !/^[1-9]\d{5}$/.test(
+      pincode
+    )
+  ) {
+    return {
+      status: 400,
+      data: {
+        success: false,
+        error:
+          "Enter a valid 6-digit pincode.",
+      },
+    };
+  }
+
+  const pickupPincode =
+    String(
+      process.env
+        .SHIPROCKET_PICKUP_PINCODE ||
+        "274405"
+    ).replace(
+      /\D/g,
+      ""
+    );
+
+  const email =
+    String(
+      process.env
+        .SHIPROCKET_EMAIL ||
+      ""
+    ).trim();
+
+  const password =
+    String(
+      process.env
+        .SHIPROCKET_PASSWORD ||
+      ""
+    ).trim();
+
+  if (
+    !email ||
+    !password
+  ) {
+    return {
+      status: 500,
+      data: {
+        success: false,
+        error:
+          "Shiprocket credentials are missing in Vercel Environment Variables.",
+      },
+    };
+  }
+
+  const loginResponse =
+    await fetch(
+      "https://apiv2.shiprocket.in/v1/external/auth/login",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+          Accept:
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      }
+    );
+
+  const loginData =
+    await loginResponse
+      .json()
+      .catch(() => ({}));
+
+  if (
+    !loginResponse.ok ||
+    !loginData?.token
+  ) {
+    return {
+      status: 502,
+      data: {
+        success: false,
+        error:
+          loginData?.message ||
+          loginData?.error ||
+          "Shiprocket authentication failed.",
+      },
+    };
+  }
+
+  const weight =
+    Number(
+      req.query?.weight || 0.5
+    );
+
+  const cod =
+    String(
+      req.query?.cod || "0"
+    ) === "1"
+      ? 1
+      : 0;
+
+  const url =
+    "https://apiv2.shiprocket.in/v1/external/courier/serviceability" +
+    `?pickup_postcode=${encodeURIComponent(
+      pickupPincode
+    )}` +
+    `&delivery_postcode=${encodeURIComponent(
+      pincode
+    )}` +
+    `&cod=${cod}` +
+    `&weight=${encodeURIComponent(
+      Number.isFinite(weight) &&
+      weight > 0
+        ? weight
+        : 0.5
+    )}`;
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: "GET",
+
+        headers: {
+          Accept:
+            "application/json",
+
+          Authorization:
+            `Bearer ${loginData.token}`,
+        },
+      }
+    );
+
+  const data =
+    await response
+      .json()
+      .catch(() => ({}));
+
+  if (!response.ok) {
+    return {
+      status:
+        response.status >= 400
+          ? response.status
+          : 502,
+
+      data: {
+        success: false,
+
+        error:
+          data?.message ||
+          data?.error ||
+          "Delivery serviceability check failed.",
+
+        details: data,
+      },
+    };
+  }
+
+  const couriers =
+    Array.isArray(
+      data?.data
+        ?.available_courier_companies
+    )
+      ? data.data
+          .available_courier_companies
+      : [];
+
+  return {
+    status: 200,
+
+    data: {
+      success: true,
+
+      available:
+        couriers.length > 0,
+
+      pincode,
+
+      pickupPincode,
+
+      courierCount:
+        couriers.length,
+
+      message:
+        couriers.length > 0
+          ? `Delivery is available for pincode ${pincode}.`
+          : `Delivery is not available for pincode ${pincode}.`,
+    },
+  };
+}
+
+/* =========================================================
+   MAIN HANDLER
+========================================================= */
+
+export default async function handler(
+  req,
+  res
+) {
+  try {
+    res.setHeader(
+      "Cache-Control",
+      "no-store"
+    );
+
+    /* =====================================================
+       GET SERVICEABILITY
+    ===================================================== */
+
+    if (
+      req.method === "GET"
+    ) {
+      const result =
+        await checkServiceability(
+          req
+        );
+
+      return sendJson(
+        res,
+        result.status,
+        result.data
+      );
+    }
+
+    /* =====================================================
+       POST CHECK
+    ===================================================== */
+
+    if (
+      req.method !== "POST"
+    ) {
+      res.setHeader(
+        "Allow",
+        "GET, POST"
+      );
+
+      return sendJson(
+        res,
+        405,
+        {
           success: false,
           error:
-            "Invalid or inactive coupon code.",
-        });
-      }
-
-      if (
-        subtotal < coupon.minOrder
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            `Minimum order value for ${couponCode} is ₹${coupon.minOrder.toLocaleString("en-IN")}.`,
-        });
-      }
-
-      if (
-        coupon.solarOnly &&
-        !hasSolarInverter
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "SOLAR500 is applicable only to Hybrid Solar Inverter orders.",
-        });
-      }
-
-      if (
-        coupon.type === "percent"
-      ) {
-        discount =
-          (subtotal * coupon.value) /
-          100;
-
-        if (
-          coupon.maxDiscount > 0 &&
-          discount > coupon.maxDiscount
-        ) {
-          discount =
-            coupon.maxDiscount;
+            "Method not allowed.",
         }
-      }
-
-      if (
-        coupon.type === "flat"
-      ) {
-        discount = coupon.value;
-      }
-
-      discount = Math.min(
-        Math.max(0, discount),
-        subtotal
       );
-
-      appliedCoupon = couponCode;
     }
 
-    /*
-     * -------------------------------------------------------
-     * SHIPPING
-     * -------------------------------------------------------
-     */
+    const body =
+      req.body || {};
 
-    const shippingFee =
-      calculateShipping(
-        body,
-        subtotal
+    /* =====================================================
+       PRICING
+    ===================================================== */
+
+    const pricing =
+      await calculatePricing(
+        body
       );
 
-    /*
-     * -------------------------------------------------------
-     * FINAL AMOUNT
-     * -------------------------------------------------------
-     */
-
-    const finalAmount =
-      Math.max(
-        0,
-        subtotal -
-          discount +
-          shippingFee
-      );
+    /* =====================================================
+       QUOTE ONLY
+       Coupon Apply button uses action=quote.
+       DO NOT create Razorpay order here.
+    ===================================================== */
 
     if (
-      !Number.isFinite(
-        finalAmount
-      ) ||
-      finalAmount <= 0
+      body?.action ===
+      "quote"
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Invalid final amount",
-      });
-    }
+      return sendJson(
+        res,
+        200,
+        {
+          success: true,
 
-    /*
-     * Razorpay amount is paise.
-     */
+          pricing: {
+            subtotal:
+              pricing.subtotal,
 
-    const amountPaise =
-      Math.round(
-        finalAmount * 100
+            discount:
+              pricing.discount,
+
+            shippingFee:
+              pricing.shippingFee,
+
+            total:
+              pricing.total,
+
+            couponCode:
+              pricing.couponCode,
+          },
+
+          items:
+            pricing.items,
+        }
       );
-
-    if (
-      !Number.isInteger(
-        amountPaise
-      ) ||
-      amountPaise < 100
-    ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Minimum payment amount is ₹1",
-      });
     }
 
-    /*
-     * -------------------------------------------------------
-     * RAZORPAY CONFIG
-     * -------------------------------------------------------
-     */
+    /* =====================================================
+       CREATE RAZORPAY ORDER
+    ===================================================== */
 
     const razorpayKeyId =
       process.env
@@ -497,38 +989,50 @@ export default async function handler(req, res) {
       !razorpayKeyId ||
       !razorpayKeySecret
     ) {
-      console.error(
-        "Razorpay environment variables are missing."
+      return sendJson(
+        res,
+        500,
+        {
+          success: false,
+          error:
+            "Razorpay server configuration missing.",
+        }
       );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Razorpay server configuration missing.",
-      });
     }
 
-    /*
-     * -------------------------------------------------------
-     * RAZORPAY AUTH
-     * -------------------------------------------------------
-     */
+    const amountPaise =
+      Math.round(
+        pricing.total * 100
+      );
+
+    if (
+      !Number.isInteger(
+        amountPaise
+      ) ||
+      amountPaise < 100
+    ) {
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
+          error:
+            "Minimum payment amount is ₹1.",
+        }
+      );
+    }
 
     const auth =
       Buffer.from(
         `${razorpayKeyId}:${razorpayKeySecret}`
-      ).toString("base64");
-
-    /*
-     * -------------------------------------------------------
-     * RECEIPT
-     * -------------------------------------------------------
-     */
+      ).toString(
+        "base64"
+      );
 
     const websiteOrderId =
       String(
-        body.websiteOrderId ||
-          ""
+        body?.websiteOrderId ||
+        ""
       ).trim();
 
     const receiptBase =
@@ -543,12 +1047,6 @@ export default async function handler(req, res) {
           "_"
         )
         .slice(0, 40);
-
-    /*
-     * -------------------------------------------------------
-     * CREATE RAZORPAY ORDER
-     * -------------------------------------------------------
-     */
 
     const razorpayResponse =
       await fetch(
@@ -582,27 +1080,27 @@ export default async function handler(req, res) {
                 receipt,
 
               coupon_code:
-                appliedCoupon ||
+                pricing.couponCode ||
                 "NONE",
 
               subtotal:
                 String(
-                  subtotal
+                  pricing.subtotal
                 ),
 
               discount:
                 String(
-                  discount
+                  pricing.discount
                 ),
 
               shipping_fee:
                 String(
-                  shippingFee
+                  pricing.shippingFee
                 ),
 
               final_amount:
                 String(
-                  finalAmount
+                  pricing.total
                 ),
 
               source:
@@ -612,97 +1110,65 @@ export default async function handler(req, res) {
         }
       );
 
-    /*
-     * -------------------------------------------------------
-     * RAZORPAY RESPONSE
-     * -------------------------------------------------------
-     */
-
-    const data =
+    const razorpayData =
       await razorpayResponse
         .json()
-        .catch(
-          () => ({})
-        );
-
-    /*
-     * -------------------------------------------------------
-     * RAZORPAY ERROR
-     * -------------------------------------------------------
-     */
+        .catch(() => ({}));
 
     if (
       !razorpayResponse.ok
     ) {
       console.error(
         "Razorpay order error:",
-        data
+        razorpayData
       );
 
-      return res.status(
-        razorpayResponse.status
-      ).json({
-        success: false,
+      return sendJson(
+        res,
+        razorpayResponse.status,
+        {
+          success: false,
 
-        error:
-          data?.error
-            ?.description ||
-          data?.error?.code ||
-          "Razorpay order creation failed.",
-      });
+          error:
+            razorpayData?.error
+              ?.description ||
+            razorpayData?.error
+              ?.code ||
+            "Razorpay order creation failed.",
+        }
+      );
     }
 
-    /*
-     * -------------------------------------------------------
-     * SUCCESS
-     * -------------------------------------------------------
-     */
+    return sendJson(
+      res,
+      200,
+      {
+        success: true,
 
-    return res.status(200).json({
-      success: true,
+        orderId:
+          razorpayData.id,
 
-      orderId:
-        data.id,
+        amount:
+          razorpayData.amount,
 
-      amount:
-        data.amount,
+        currency:
+          razorpayData.currency,
 
-      currency:
-        data.currency,
+        receipt:
+          razorpayData.receipt,
 
-      receipt:
-        data.receipt,
+        pricing: {
+          subtotal:
+            pricing.subtotal,
 
-      pricing: {
-        subtotal,
+          discount:
+            pricing.discount,
 
-        discount,
+          shippingFee:
+            pricing.shippingFee,
 
-        shippingFee,
+          total:
+            pricing.total,
 
-        total:
-          finalAmount,
-
-        couponCode:
-          appliedCoupon ||
-          null,
-      },
-
-      items:
-        normalizedItems,
-    });
-  } catch (error) {
-    console.error(
-      "Create order error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-
-      error:
-        error?.message ||
-        "Internal server error.",
-    });
-  }
-      }
+          couponCode:
+            pricin
