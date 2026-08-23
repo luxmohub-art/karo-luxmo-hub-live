@@ -2349,45 +2349,17 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    // Validate checkout data before creating any order.
-    // Address line 2 is optional; all other delivery fields are required.
-    const name = String(draft?.name || "").trim();
-    const phone = String(draft?.phone || "").replace(/\D/g, "");
-    const line1 = String(draft?.line1 || "").trim();
-    const city = String(draft?.city || "").trim();
-    const state = String(draft?.state || "").trim();
-    const pincode = luxmoNormalizePincode(draft?.pincode || "");
-
-    if (!name) {
-      return alert("Please enter your full name.");
+    if (
+      !draft.name.trim() ||
+      !luxmoValidateIndianMobile(draft.phone) ||
+      !draft.line1.trim() ||
+      !draft.city.trim() ||
+      !luxmoValidatePincode(draft.pincode)
+    ) {
+      return alert(
+        "Please complete valid delivery details."
+      );
     }
-    if (!luxmoValidateIndianMobile(phone)) {
-      return alert("Please enter a valid 10-digit Indian mobile number.");
-    }
-    if (!line1) {
-      return alert("Please enter your complete delivery address.");
-    }
-    if (!city) {
-      return alert("Please enter your city.");
-    }
-    if (!state) {
-      return alert("Please enter your state.");
-    }
-    if (!luxmoValidatePincode(pincode)) {
-      return alert("Please enter a valid 6-digit delivery pincode.");
-    }
-
-    // Keep the normalized values in the order payload.
-    const validatedAddress = {
-      ...draft,
-      name,
-      phone,
-      line1,
-      city,
-      state,
-      pincode,
-    };
-    setDraft(validatedAddress);
 
     if (
       payment === "cod" &&
@@ -2446,7 +2418,7 @@ function LuxmoCheckout({
       shippingMode:
         effectiveShippingMode,
 
-      address: validatedAddress,
+      address: draft,
 
       courierProvider:
         "Pending Assignment",
@@ -2891,52 +2863,8 @@ function LuxmoOrderCenter({ orders, setOrders }) {
 
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
   const [draft, setDraft] = useState({ productId: products[0]?.id || "", name: "", rating: 5, text: "" });
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async () => {
-    if (!draft.productId || !draft.name.trim() || !draft.text.trim()) {
-      return alert("Please select a product and complete your review.");
-    }
-    if (submitting) return;
-
-    setSubmitting(true);
-    try {
-      const response = await luxmoApi("/api/reviews", {
-        method: "POST",
-        body: JSON.stringify({
-          productId: draft.productId,
-          name: draft.name.trim(),
-          rating: Number(draft.rating || 5),
-          text: draft.text.trim()
-        })
-      });
-
-      const review =
-        response?.review ||
-        response?.data?.review ||
-        response?.data ||
-        {
-          ...draft,
-          id: `rev-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          status: "Pending"
-        };
-
-      setReviews(prev => [
-        review,
-        ...prev.filter(item => item?.id !== review?.id)
-      ]);
-      setDraft({ ...draft, name: "", text: "" });
-      alert("Review submitted for moderation.");
-    } catch (error) {
-      console.error("Review submission failed:", error);
-      alert(error?.message || "Unable to submit review. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} disabled={submitting} className="bg-blue-600 disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-bold">{submitting ? "Submitting…" : "Submit Review"}</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
+  const submit = () => { if (!draft.productId || !draft.name.trim() || !draft.text.trim()) return alert("Please select a product and complete your review."); const review = { ...draft, id: `rev-${Date.now()}`, createdAt: new Date().toISOString(), status: "Pending" }; const next=[review,...reviews]; setReviews(next); safeWriteJSON(LUXMO_PRO_STORAGE.reviews,next); setDraft({ ...draft, name:"", text:"" }); alert("Review submitted for moderation."); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">Submit Review</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
 }
 
 function LuxmoStockAlerts({ products, alerts, setAlerts }) {
@@ -2997,8 +2925,8 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
   const [customer,setCustomer]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.customer,{name:"",email:"",phone:""}));
-  const [orders,setOrders]=useState([]);
-  const [reviews,setReviews]=useState([]);
+  const [orders,setOrders]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.orders,[]));
+  const [reviews,setReviews]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.reviews,[]));
   const [recent,setRecent]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]));
   const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
@@ -3461,8 +3389,11 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
         createdAt: new Date().toISOString()
       };
 
-      // Warranty registration is stored by /api/warranty-registration.
-      // Do not duplicate customer warranty records in browser localStorage.
+      try {
+        const saved = JSON.parse(localStorage.getItem("luxmo_warranty_registrations") || "[]");
+        const list = Array.isArray(saved) ? saved : [];
+        localStorage.setItem("luxmo_warranty_registrations", JSON.stringify([registration, ...list].slice(0, 50)));
+      } catch {}
 
       setMessage({
         type: "success",
@@ -4091,6 +4022,7 @@ export default function LuxmoHubApp() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [showMobileNav, setShowMobileNav] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [openMobileNavSection, setOpenMobileNavSection] = useState("");
   const [openMobileShopSubsection, setOpenMobileShopSubsection] = useState("");
   useEffect(() => {
@@ -4129,14 +4061,8 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    if (activeTab !== "admin") {
-      setAdminSessionChecking(false);
-      setIsAdminLoggedIn(false);
-      return;
-    }
-
     verifyAdminSession();
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     luxmoEnsureCustomerSession();
@@ -4144,7 +4070,7 @@ export default function LuxmoHubApp() {
     luxmoServerFirstProducts().then(remote => {
       if (!cancelled && remote) {
         setProducts(remote);
-        // API is authoritative; localStorage is only a convenience cache.
+        try { localStorage.setItem("luxmo_products", JSON.stringify(remote)); } catch {}
       }
     });
     return () => { cancelled = true; };
@@ -4702,12 +4628,10 @@ export default function LuxmoHubApp() {
           sku: item.sku || "",
           qty: Number(item.qty || 1)
         })),
-        // IMPORTANT: this handler is outside CheckoutModal, so the
-        // CheckoutModal `coupon` state is not in scope here.
-        // Use only the coupon stored on the pending order.
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
+          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
@@ -5094,6 +5018,17 @@ export default function LuxmoHubApp() {
               <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
             )}
 
+            {/* Mobile/tablet search button — the full search field is hidden below lg. */}
+            <button
+              type="button"
+              aria-label="Search products"
+              aria-expanded={showMobileSearch}
+              onClick={() => setShowMobileSearch(v => !v)}
+              className={`p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0 ${showMobileSearch ? "bg-blue-50 text-blue-600" : ""}`}
+            >
+              <Search className="w-6 h-6" />
+            </button>
+
             <button onClick={() => setActiveTab("cart")} className="relative p-2 rounded-xl hover:bg-slate-100 hover:text-blue-600 text-slate-700 shrink-0">
               <ShoppingBag className="w-6 h-6" />
               {cart.length > 0 && (
@@ -5127,6 +5062,33 @@ export default function LuxmoHubApp() {
               </>
             )}
           </div>
+
+          {/* Mobile/tablet search field. Keeps the header compact until the user taps Search. */}
+          {showMobileSearch && (
+            <div className="w-full lg:hidden relative order-3 pt-1 pb-0.5">
+              <input
+                type="search"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const term = String(searchQuery || "").trim();
+                    if (term) {
+                      const next = [term, ...recentSearches.filter(x => x.toLowerCase() !== term.toLowerCase())].slice(0, 8);
+                      setRecentSearches(next);
+                      safeWriteJSON(LUXMO_PRO_STORAGE.recentSearches, next);
+                    }
+                    setActiveTab("catalog");
+                    setShowMobileSearch(false);
+                  }
+                }}
+                placeholder="Search products, category, model or SKU..."
+                className="w-full pl-10 pr-4 py-2.5 text-sm bg-white text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <Search className="w-5 h-5 absolute left-3 top-3.5 text-slate-400" />
+            </div>
+          )}
         </div>
       </header>
 
