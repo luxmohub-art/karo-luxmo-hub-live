@@ -11,6 +11,10 @@
     {
       "source": "/api/products",
       "destination": "/api/publish?products=1"
+    },
+    {
+      "source": "/api/check-serviceability",
+      "destination": "/api/create-order?serviceability=1"
     }
   ]
 }
