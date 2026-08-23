@@ -4014,8 +4014,16 @@ export default function LuxmoHubApp() {
   // Secure Admin authentication — Google Authenticator (TOTP).
   // IMPORTANT: the TOTP secret stays ONLY in Vercel as ADMIN_TOTP_SECRET.
   // The browser sends only the current 6-digit code to the server API.
+  // Admin UI is available only when the dedicated admin entry URL was explicitly requested.
+  // A normal public visit must never expose Store Tools, Dashboard, or the Admin Console,
+  // even if an admin session cookie still exists in the same browser.
+  const [adminAccessRequested, setAdminAccessRequested] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const path = window.location.pathname.replace(/\/+$/, "");
+    return path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
+  });
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [adminSessionChecking, setAdminSessionChecking] = useState(true);
+  const [adminSessionChecking, setAdminSessionChecking] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminOtp, setAdminOtp] = useState("");
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
@@ -4061,7 +4069,21 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    verifyAdminSession();
+    const syncAdminEntry = () => {
+      const path = window.location.pathname.replace(/\/+$/, "");
+      const requested = path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
+      setAdminAccessRequested(requested);
+      if (!requested) {
+        setAdminSessionChecking(false);
+        setIsAdminLoggedIn(false);
+        if (activeTab === "admin") setActiveTab("home");
+        return;
+      }
+      verifyAdminSession();
+    };
+    syncAdminEntry();
+    window.addEventListener("popstate", syncAdminEntry);
+    return () => window.removeEventListener("popstate", syncAdminEntry);
   }, []);
 
   useEffect(() => {
@@ -4142,6 +4164,11 @@ export default function LuxmoHubApp() {
       console.error("Admin logout API error:", error);
     } finally {
       setIsAdminLoggedIn(false);
+      setAdminAccessRequested(false);
+      try {
+        const cleanUrl = window.location.pathname + (window.location.hash || "");
+        window.history.replaceState({}, "", cleanUrl || "/");
+      } catch {}
       setAdminOtp("");
       setAuthError("");
       setAuthMessage("");
@@ -4151,19 +4178,20 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    if (activeTab === "admin" && !adminSessionChecking && !isAdminLoggedIn) {
+    if (adminAccessRequested && activeTab === "admin" && !adminSessionChecking && !isAdminLoggedIn) {
       openAdminLogin();
       setActiveTab("home");
     }
-  }, [activeTab, adminSessionChecking, isAdminLoggedIn]);
+  }, [activeTab, adminSessionChecking, isAdminLoggedIn, adminAccessRequested]);
 
   // Admin login is intentionally not exposed in the public navigation.
-  // Both /admin and /?admin=1 open the secure TOTP login.
+  // Only /admin or /?admin=1 can activate the admin UI; normal public visits stay customer-only.
   useEffect(() => {
     const path = window.location.pathname.replace(/\/+$/, "");
     const adminRequested = path === "/admin" || new URLSearchParams(window.location.search).get("admin") === "1";
     if (!adminRequested || adminSessionChecking) return;
 
+    setAdminAccessRequested(true);
     if (isAdminLoggedIn) {
       setActiveTab("admin");
     } else {
@@ -4276,7 +4304,7 @@ export default function LuxmoHubApp() {
         hasAny(a.material, filterMaterial) && hasFeature && hasAny(a.color, filterColor) &&
         hasAny(a.voltage, filterVoltage) && hasAny(a.chargeController, filterChargeController) &&
         hasAny(a.frequency, filterFrequency) && hasAny(a.mounting, filterMounting) &&
-        hasAny(a.smartFeature, filterSmartFeature) && matchesPrice && (isAdminLoggedIn || p.published);
+        hasAny(a.smartFeature, filterSmartFeature) && matchesPrice && (adminAccessRequested && isAdminLoggedIn || p.published);
     });
   }, [products, selectedCategory, selectedMainCategory, selectedSubCategory, selectedModelFilter, searchQuery,
       filterMaterial, filterFeature, filterColor, filterVoltage, filterChargeController, filterFrequency,
@@ -5014,7 +5042,7 @@ export default function LuxmoHubApp() {
             <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
-            {isAdminLoggedIn && (
+            {adminAccessRequested && isAdminLoggedIn && (
               <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
             )}
 
@@ -5049,7 +5077,7 @@ export default function LuxmoHubApp() {
               <Menu className="w-6 h-6" />
             </button>
 
-            {isAdminLoggedIn && (
+            {adminAccessRequested && isAdminLoggedIn && (
               <>
                 <LuxmoLowStockBadge
                   products={products}
@@ -5344,7 +5372,7 @@ export default function LuxmoHubApp() {
                 <span>Blog</span><ChevronRight className="w-4 h-4" />
               </button>
 
-              {isAdminLoggedIn && (
+              {adminAccessRequested && isAdminLoggedIn && (
                 <div className="pt-3 mt-2 border-t border-slate-200">
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
                   <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
@@ -6312,7 +6340,7 @@ export default function LuxmoHubApp() {
         )}
 
         {/* ADMIN DASHBOARD VIEW */}
-        {activeTab === "admin" && isAdminLoggedIn && (
+        {activeTab === "admin" && adminAccessRequested && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b pb-4">
               <div>
@@ -6655,7 +6683,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-        {showStoreTools && isAdminLoggedIn && (
+        {showStoreTools && adminAccessRequested && isAdminLoggedIn && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm p-2 md:p-5 overflow-auto" role="dialog" aria-modal="true" aria-label="LUXMO HUB Store Tools">
             <div className="max-w-7xl mx-auto my-2 md:my-5">
               <div className="flex justify-end mb-2">
