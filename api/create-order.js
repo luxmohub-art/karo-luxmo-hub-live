@@ -1133,6 +1133,3 @@ export default async function handler(
           }),
         }
       );
-
-    const razorpayData =
-      await razorpayResponse
