@@ -5,6 +5,10 @@ import crypto from "crypto";
 
 const COOKIE_NAME = "luxmo_admin_session";
 
+/* =========================================================
+   COOKIE
+========================================================= */
+
 function getCookie(req, name) {
   const cookieHeader = req.headers?.cookie || "";
 
@@ -15,60 +19,102 @@ function getCookie(req, name) {
   const cookies = cookieHeader.split(";");
 
   for (const cookie of cookies) {
-    const [key, ...valueParts] =
-      cookie.trim().split("=");
+    const index = cookie.indexOf("=");
+
+    if (index === -1) {
+      continue;
+    }
+
+    const key = cookie
+      .slice(0, index)
+      .trim();
+
+    const value = cookie
+      .slice(index + 1)
+      .trim();
 
     if (key === name) {
-      return decodeURIComponent(
-        valueParts.join("=")
-      );
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
     }
   }
 
   return null;
 }
 
+/* =========================================================
+   BASE64URL
+========================================================= */
+
 function base64UrlDecode(value) {
+  if (!value) {
+    return null;
+  }
+
   try {
     return Buffer.from(
       value,
       "base64url"
     ).toString("utf8");
-  } catch {
+  } catch (error) {
+    console.error(
+      "Session payload decode failed:",
+      error
+    );
+
     return null;
   }
 }
 
+/* =========================================================
+   SAFE STRING COMPARISON
+========================================================= */
+
 function safeEqual(a, b) {
+  if (
+    typeof a !== "string" ||
+    typeof b !== "string"
+  ) {
+    return false;
+  }
+
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
   try {
-    const aBuffer = Buffer.from(a);
-    const bBuffer = Buffer.from(b);
-
-    if (
-      aBuffer.length !==
-      bBuffer.length
-    ) {
-      return false;
-    }
-
     return crypto.timingSafeEqual(
-      aBuffer,
-      bBuffer
+      left,
+      right
     );
   } catch {
     return false;
   }
 }
 
+/* =========================================================
+   VERIFY ADMIN TOKEN
+========================================================= */
+
 function verifySessionToken(
   token,
   secret
 ) {
-  if (!token || !secret) {
+  if (
+    !token ||
+    !secret
+  ) {
     return null;
   }
 
-  const parts = token.split(".");
+  const parts =
+    String(token).split(".");
 
   if (parts.length !== 3) {
     return null;
@@ -76,9 +122,21 @@ function verifySessionToken(
 
   const [
     encodedPayload,
-    expiresAt,
+    expiresAtText,
     signature,
   ] = parts;
+
+  if (
+    !encodedPayload ||
+    !expiresAtText ||
+    !signature
+  ) {
+    return null;
+  }
+
+  /* -------------------------------------------------------
+     SIGNATURE
+  ------------------------------------------------------- */
 
   const expectedSignature =
     crypto
@@ -87,7 +145,7 @@ function verifySessionToken(
         secret
       )
       .update(
-        `${encodedPayload}.${expiresAt}`
+        `${encodedPayload}.${expiresAtText}`
       )
       .digest("base64url");
 
@@ -100,27 +158,38 @@ function verifySessionToken(
     return null;
   }
 
-  const expiry =
-    Number(expiresAt);
+  /* -------------------------------------------------------
+     EXPIRY
+  ------------------------------------------------------- */
 
-  if (!Number.isFinite(expiry)) {
+  const expiresAt =
+    Number(expiresAtText);
+
+  if (
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= 0
+  ) {
     return null;
   }
 
-  if (Date.now() >= expiry) {
+  if (Date.now() >= expiresAt) {
+    return null;
+  }
+
+  /* -------------------------------------------------------
+     PAYLOAD
+  ------------------------------------------------------- */
+
+  const payloadText =
+    base64UrlDecode(
+      encodedPayload
+    );
+
+  if (!payloadText) {
     return null;
   }
 
   try {
-    const payloadText =
-      base64UrlDecode(
-        encodedPayload
-      );
-
-    if (!payloadText) {
-      return null;
-    }
-
     const payload =
       JSON.parse(payloadText);
 
@@ -131,26 +200,54 @@ function verifySessionToken(
       return null;
     }
 
-    return payload;
-  } catch {
+    return {
+      payload,
+      expiresAt,
+    };
+  } catch (error) {
+    console.error(
+      "Admin session JSON parse failed:",
+      error
+    );
+
     return null;
   }
 }
+
+/* =========================================================
+   JSON RESPONSE
+========================================================= */
 
 function sendJson(
   res,
   status,
   data
 ) {
+  res.setHeader(
+    "Content-Type",
+    "application/json; charset=utf-8"
+  );
+
   return res
     .status(status)
     .json(data);
 }
 
+/* =========================================================
+   LOGOUT
+========================================================= */
+
 function logoutAdmin(res) {
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`
+    [
+      `${COOKIE_NAME}=`,
+      "Path=/",
+      "HttpOnly",
+      "Secure",
+      "SameSite=Strict",
+      "Max-Age=0",
+    ].join("; ")
   );
 
   return sendJson(
@@ -165,23 +262,27 @@ function logoutAdmin(res) {
   );
 }
 
+/* =========================================================
+   MAIN HANDLER
+========================================================= */
+
 export default function handler(
   req,
   res
 ) {
-  /*
-   * Logout compatibility:
-   *
-   * /api/admin-logout
-   * will be rewritten to this handler
-   * with ?logout=1
-   */
-  const isLogout =
+  /* -------------------------------------------------------
+     LOGOUT
+     
+     Supports:
+     /api/admin-session?logout=1
+  ------------------------------------------------------- */
+
+  const logout =
     String(
       req.query?.logout || ""
-    ) === "1";
+    ).trim() === "1";
 
-  if (isLogout) {
+  if (logout) {
     if (
       req.method !== "GET" &&
       req.method !== "POST"
@@ -196,6 +297,7 @@ export default function handler(
         405,
         {
           success: false,
+          authenticated: false,
           error:
             "Method not allowed.",
         }
@@ -205,10 +307,12 @@ export default function handler(
     return logoutAdmin(res);
   }
 
-  /*
-   * Normal session verification
-   * Only GET is allowed.
-   */
+  /* -------------------------------------------------------
+     SESSION CHECK
+     
+     Only GET allowed
+  ------------------------------------------------------- */
+
   if (req.method !== "GET") {
     res.setHeader(
       "Allow",
@@ -220,18 +324,25 @@ export default function handler(
       405,
       {
         success: false,
+        authenticated: false,
         error:
-          "Method not allowed",
+          "Method not allowed.",
       }
     );
   }
 
+  /* -------------------------------------------------------
+     SECRET
+  ------------------------------------------------------- */
+
   const secret =
-    process.env.ADMIN_SESSION_SECRET;
+    String(
+      process.env.ADMIN_SESSION_SECRET || ""
+    ).trim();
 
   if (!secret) {
     console.error(
-      "ADMIN_SESSION_SECRET is not configured."
+      "ADMIN_SESSION_SECRET is missing."
     );
 
     return sendJson(
@@ -241,10 +352,14 @@ export default function handler(
         success: false,
         authenticated: false,
         error:
-          "Server configuration error",
+          "ADMIN_SESSION_SECRET is not configured on the server.",
       }
     );
   }
+
+  /* -------------------------------------------------------
+     COOKIE
+  ------------------------------------------------------- */
 
   const token =
     getCookie(
@@ -252,22 +367,45 @@ export default function handler(
       COOKIE_NAME
     );
 
-  const session =
-    verifySessionToken(
-      token,
-      secret
-    );
-
-  if (!session) {
+  if (!token) {
     return sendJson(
       res,
       401,
       {
         success: false,
         authenticated: false,
+        error:
+          "Admin session cookie not found.",
       }
     );
   }
+
+  /* -------------------------------------------------------
+     VERIFY
+  ------------------------------------------------------- */
+
+  const verified =
+    verifySessionToken(
+      token,
+      secret
+    );
+
+  if (!verified) {
+    return sendJson(
+      res,
+      401,
+      {
+        success: false,
+        authenticated: false,
+        error:
+          "Invalid or expired admin session.",
+      }
+    );
+  }
+
+  /* -------------------------------------------------------
+     SUCCESS
+  ------------------------------------------------------- */
 
   return sendJson(
     res,
@@ -281,7 +419,7 @@ export default function handler(
       },
 
       expiresAt:
-        session.exp,
+        verified.expiresAt,
     }
   );
 }
