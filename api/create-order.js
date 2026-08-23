@@ -113,6 +113,30 @@ function cleanError(value) {
 }
 
 /* =========================================================
+   ERROR -> HTTP STATUS MAPPING
+   These are expected, "your input was wrong" style errors.
+   Anything not matched here falls back to 500 (real server bug).
+========================================================= */
+
+function statusForError(message) {
+  const text = String(message || "").toLowerCase();
+
+  if (text.includes("cart is empty")) return 400;
+  if (text.includes("product not found")) return 404;
+  if (text.includes("invalid or inactive coupon")) return 400;
+  if (text.includes("minimum order value")) return 400;
+  if (text.includes("applicable only to")) return 400;
+  if (text.includes("missing firebase environment")) return 500;
+  if (text.includes("razorpay server configuration")) return 500;
+  if (text.includes("minimum payment amount")) return 400;
+  if (text.includes("invalid product price")) return 500;
+  if (text.includes("invalid subtotal")) return 500;
+  if (text.includes("invalid final amount")) return 500;
+
+  return 500;
+}
+
+/* =========================================================
    PRODUCT PRICE
 ========================================================= */
 
@@ -1112,63 +1136,3 @@ export default async function handler(
 
     const razorpayData =
       await razorpayResponse
-        .json()
-        .catch(() => ({}));
-
-    if (
-      !razorpayResponse.ok
-    ) {
-      console.error(
-        "Razorpay order error:",
-        razorpayData
-      );
-
-      return sendJson(
-        res,
-        razorpayResponse.status,
-        {
-          success: false,
-
-          error:
-            razorpayData?.error
-              ?.description ||
-            razorpayData?.error
-              ?.code ||
-            "Razorpay order creation failed.",
-        }
-      );
-    }
-
-    return sendJson(
-      res,
-      200,
-      {
-        success: true,
-
-        orderId:
-          razorpayData.id,
-
-        amount:
-          razorpayData.amount,
-
-        currency:
-          razorpayData.currency,
-
-        receipt:
-          razorpayData.receipt,
-
-        pricing: {
-          subtotal:
-            pricing.subtotal,
-
-          discount:
-            pricing.discount,
-
-          shippingFee:
-            pricing.shippingFee,
-
-          total:
-            pricing.total,
-
-          couponCode:
-            pricin
