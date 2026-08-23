@@ -1732,19 +1732,6 @@ const luxmoCodEligibility = (items, subtotal, pincode, storeSettings = LUXMO_DEF
   return { allowed: true, reason: "COD may be available subject to courier serviceability." };
 };
 
-const luxmoApplyCoupon = (couponCode, subtotal, items) => {
-  const code = String(couponCode || "").trim().toUpperCase();
-  if (!code) return { valid: false, discount: 0, message: "Enter a coupon code." };
-  const managedCoupons = safeReadJSON("luxmo_master_admin_settings_v2", { coupons: LUXMO_COUPONS })?.coupons || LUXMO_COUPONS;
-  const coupon = managedCoupons.find(c => c.code === code && c.enabled !== false);
-  if (!coupon) return { valid: false, discount: 0, message: "Invalid coupon code." };
-  if (subtotal < coupon.min) return { valid: false, discount: 0, message: `Minimum order value is ${luxmoMoney(coupon.min)}.` };
-  if (coupon.category && !items.some(item => item.category === coupon.category)) return { valid: false, discount: 0, message: "This coupon is not applicable to the selected products." };
-  const raw = coupon.type === "percent" ? subtotal * coupon.value / 100 : coupon.value;
-  const discount = Math.min(raw, coupon.maxDiscount || raw, subtotal);
-  return { valid: true, discount, coupon, message: `${coupon.label} applied.` };
-};
-
 const LUXMO_FAQ = [
   { q: "How can I select my phone model and colour?", a: "Open the product, choose your exact device model, then choose the available colour. The selected combination should be treated as a separate variant/SKU." },
   { q: "Do you support COD?", a: "COD can be offered for eligible orders and pincodes. High-value inverter orders should use prepaid or partial COD according to your business rules." },
@@ -1970,17 +1957,6 @@ function LuxmoCompare({ products, compareIds, setCompareIds, onSelect }) {
 function LuxmoRecentlyViewed({ products, ids, onSelect, onClear }) {
   const items = ids.map(id => products.find(p => p.id === id)).filter(Boolean);
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="History" title="Recently Viewed" action={items.length ? <button onClick={onClear} className="text-xs font-bold text-red-600">Clear</button> : null} />{items.length === 0 ? <p className="text-sm text-slate-500">Products you view will appear here.</p> : <div className="flex gap-3 overflow-x-auto pb-2">{items.map(p => <button key={p.id} onClick={() => onSelect(p)} className="w-44 shrink-0 border rounded-xl overflow-hidden text-left"><img src={p.images?.[0] || p.image} alt={p.title} className="w-full h-32 object-cover"/><div className="p-2"><div className="text-xs font-bold line-clamp-2">{p.title}</div><div className="text-xs font-black mt-1">{luxmoMoney(luxmoProductPrice(p))}</div></div></button>)}</div>}</div>;
-}
-
-function LuxmoCouponBox({ subtotal, items, onDiscountChange }) {
-  const [code, setCode] = useState("");
-  const [message, setMessage] = useState("");
-  const apply = () => {
-    const result = luxmoApplyCoupon(code, subtotal, items);
-    setMessage(result.message);
-    onDiscountChange(result.valid ? result.discount : 0, result.valid ? result.coupon.code : "");
-  };
-  return <div className="border rounded-xl p-4 bg-slate-50"><div className="text-sm font-black">Have a coupon?</div><div className="flex gap-2 mt-2"><input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Coupon code" className="flex-1 border rounded-lg px-3 py-2 text-sm bg-white"/><button onClick={apply} className="bg-slate-900 text-white rounded-lg px-4 text-xs font-bold">Apply</button></div>{message && <div className="text-xs mt-2 text-slate-600">{message}</div>}<div className="flex flex-wrap gap-2 mt-3">{LUXMO_COUPONS.map(c => <button key={c.code} onClick={() => setCode(c.code)} className="text-[10px] border rounded-full px-2 py-1 bg-white">{c.code}</button>)}</div></div>;
 }
 
 function LuxmoPincodeChecker({ cartItems }) {
@@ -2450,11 +2426,7 @@ function LuxmoCheckout({
 
       coupon,
 
-couponCode: String(coupon || "").trim().toUpperCase(),
-
-shippingFee: shipping.fee,
-
-      
+      shippingFee: shipping.fee,
 
       total,
 
