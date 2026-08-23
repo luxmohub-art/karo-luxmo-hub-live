@@ -2450,7 +2450,11 @@ function LuxmoCheckout({
 
       coupon,
 
-      shippingFee: shipping.fee,
+couponCode: String(coupon || "").trim().toUpperCase(),
+
+shippingFee: shipping.fee,
+
+      
 
       total,
 
