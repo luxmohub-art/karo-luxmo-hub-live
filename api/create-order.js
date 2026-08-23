@@ -1,351 +1,1182 @@
-```react
-/*
- * LUXMO HUB — CHECKOUT SERVER ERROR FIXED
- * Handles safe fallback and robust error parsing during coupon quote / checkout initiation.
- */
+// api/create-order.js
+// LUXMO HUB — COMPLETE CHECKOUT API
+// Razorpay + Coupon + Firestore Pricing + Shipping + Serviceability
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
-  AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
-  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, Menu, ChevronDown
-} from 'lucide-react';
+import { getFirestore } from "firebase-admin/firestore";
+import { getFirebaseAdmin } from "../lib/firebase-admin.js";
 
-const PUBLIC_BUSINESS_INFO = Object.freeze({
-  tradeName: "LUXMO HUB",
-  gstin: "09CNCPD1174R1ZN",
-  supportEmail: "luxmohub@gmail.com",
-  supportPhone: "+91 75650 12418",
-  businessAddress:
-    "Building No. 147, Unnamed Road, Near Mathura Chhapar Branch Post Office, Vill-Kotwa, Mathura Chhapar, District Deoria, Uttar Pradesh - 274405, India",
-  grievanceOfficer: {
-    name: "Gyaneshwar Sharma",
-    designation: "Grievance Officer",
-    email: "luxmohub@gmail.com",
-    phone: "+91 75650 12418"
+/* =========================================================
+   BASIC HELPERS
+========================================================= */
+
+function sendJson(res, status, data) {
+  return res.status(status).json(data);
+}
+
+function parseMoney(value) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return NaN;
   }
-});
 
-const CATEGORIES = ["Hybrid Solar Inverter", "Mobile Back Case", "Solar Accessories"];
-
-const LUXMO_CATEGORY_TREE = {
-  "Mobile Cases & Covers": ["Leather Cases", "Silicone/TPU Cases", "Hard/Rugged Cases", "Transparent Cases", "Wallet & Flip Cases", "Designer/Printed Cases"],
-  "Hybrid Solar Inverters": ["Single Phase", "Three Phase", "Off-Grid / On-Grid"]
-};
-
-const LUXMO_FILTER_OPTIONS = {
-  mobile: {
-    material: ["Genuine Leather", "PU Leather", "Vegan Leather", "Microfiber", "Silicone", "TPU", "Polycarbonate", "Metal"],
-    feature: ["Kickstand", "MagSafe", "Ring Holder", "Wallet", "Waterproof"],
-    color: ["Black", "Brown", "Blue", "Green", "Red", "White", "Gray", "Transparent"]
-  },
-  solar: {
-    voltage: ["12V", "24V", "48V", "96V", "120V+"],
-    chargeController: ["PWM", "MPPT"],
-    frequency: ["Low", "High"],
-    mounting: ["Wall", "Rack"],
-    smartFeature: ["WiFi", "Smart"]
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+      ? value
+      : NaN;
   }
-};
 
-const normalizeText = (value) => String(value ?? "").toLowerCase().trim();
+  const cleaned = String(value)
+    .replace(/₹/g, "")
+    .replace(/,/g, "")
+    .replace(/[^0-9.-]/g, "")
+    .trim();
 
-const getLuxmoTaxonomy = (p) => {
-  const isSolar = normalizeText(p.category).includes("inverter") || normalizeText(p.mainCategory).includes("solar");
-  const mainCategory = isSolar ? "Hybrid Solar Inverters" : "Mobile Cases & Covers";
-  const subCategory = p.subCategory || (isSolar ? "Single Phase" : "Leather Cases");
-  return {
-    mainCategory,
-    subCategory,
-    attributes: {
-      material: p.material || "",
-      feature: [],
-      color: "",
-      compatiblePhoneModel: p.model || "",
-      voltage: "",
-      chargeController: "",
-      frequency: "",
-      mounting: "",
-      smartFeature: "",
-      capacity: ""
+  if (!cleaned) {
+    return NaN;
+  }
+
+  const number = Number(cleaned);
+
+  return Number.isFinite(number)
+    ? number
+    : NaN;
+}
+
+function cleanError(error) {
+  if (!error) {
+    return "Request failed.";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return error.message || "Request failed.";
+  }
+
+  if (typeof error === "object") {
+    return (
+      error.message ||
+      error.error ||
+      error.description ||
+      "Request failed."
+    );
+  }
+
+  return String(error);
+}
+
+function normalizeId(value) {
+  return String(value || "").trim();
+}
+
+function normalizeCoupon(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+}
+
+function getQty(item) {
+  const qty = Number(
+    item?.qty ??
+    item?.quantity ??
+    item?.units ??
+    1
+  );
+
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return 1;
+  }
+
+  return Math.max(1, Math.floor(qty));
+}
+
+/* =========================================================
+   PRODUCT PRICE
+========================================================= */
+
+function getPriceFromObject(product) {
+  const values = [
+    product?.salePrice,
+    product?.sellingPrice,
+    product?.selling_price,
+    product?.price,
+    product?.amount,
+  ];
+
+  for (const value of values) {
+    const price = parseMoney(value);
+
+    if (
+      Number.isFinite(price) &&
+      price > 0
+    ) {
+      return price;
     }
-  };
-};
-
-const INITIAL_PRODUCTS = [
-  {
-    id: "prod-001",
-    title: "LUXMO HUB 5.5KW 24V Hybrid Solar Inverter",
-    category: "Hybrid Solar Inverter",
-    model: "Hybrid Solar Inverter 5.5KW 24V",
-    material: "Not Applicable",
-    description: "Pure Sine Wave | MPPT Solar Charge Controller | 24V Battery Support",
-    price: 65000,
-    salePrice: 54999,
-    stock: 10,
-    sku: "LUX5.5H24V",
-    hsn: "85044010",
-    gstRate: 18,
-    images: ["https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&q=80&w=600"],
-    published: true,
-    rating: null,
-    reviewsCount: 0
   }
-];
 
-const LUXMO_DEFAULT_STORE_SETTINGS = {
-  codEnabled: true,
-  onlinePaymentEnabled: true,
-  standardDeliveryEnabled: true,
-  expressDeliveryEnabled: true,
-  standardDeliveryRate: 79,
-  expressDeliveryRate: 149,
-  standardMinDays: 4,
-  standardMaxDays: 8,
-  expressMinDays: 3,
-  expressMaxDays: 6,
-  freeShippingAboveMobile: 999,
-  freeShippingAboveInverter: 20000,
-  freeShippingAboveAccessories: 1499
-};
+  return NaN;
+}
 
-const luxmoNormalizeStoreSettings = (value = {}) => ({
-  ...LUXMO_DEFAULT_STORE_SETTINGS,
-  ...value
-});
+async function getTrustedCartItems(items) {
+  const db =
+    getFirestore(
+      getFirebaseAdmin()
+    );
 
-const luxmoMoney = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
-const luxmoNormalizePincode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
-const luxmoValidateIndianMobile = (value) => /^[6-9]\d{9}$/.test(String(value || "").replace(/\D/g, ""));
-const luxmoValidatePincode = (value) => /^[1-9]\d{5}$/.test(luxmoNormalizePincode(value));
-const luxmoProductPrice = (product) => Number(product?.salePrice || product?.price || 0);
+  const collection =
+    db.collection("products");
 
-const luxmoShippingEstimate = (items, mode = "standard", storeSettings = LUXMO_DEFAULT_STORE_SETTINGS) => {
-  const settings = luxmoNormalizeStoreSettings(storeSettings);
-  const total = items.reduce((sum, item) => sum + luxmoProductPrice(item) * Number(item.qty || 1), 0);
-  const freeAbove = settings.freeShippingAboveMobile;
-  if (mode === "express") {
-    return { fee: total >= freeAbove ? 0 : settings.expressDeliveryRate, minDays: settings.expressMinDays, maxDays: settings.expressMaxDays };
-  }
-  return { fee: total >= freeAbove ? 0 : settings.standardDeliveryRate, minDays: settings.standardMinDays, maxDays: settings.standardMaxDays };
-};
+  const trustedItems = [];
 
-const luxmoCodEligibility = (items, subtotal, pincode, storeSettings = LUXMO_DEFAULT_STORE_SETTINGS) => {
-  const settings = luxmoNormalizeStoreSettings(storeSettings);
-  if (!settings.codEnabled) return { allowed: false, reason: "Cash on Delivery is currently unavailable." };
-  if (!luxmoValidatePincode(pincode)) return { allowed: false, reason: "Enter a valid 6-digit pincode." };
-  return { allowed: true, reason: "COD is available subject to courier serviceability." };
-};
+  for (const item of items) {
+    const productId =
+      normalizeId(item?.id);
 
-function LuxmoCheckout({ cart, subtotal, customer, addresses, onOrderCreated, onClose, storeSettings }) {
-  const [selectedAddress, setSelectedAddress] = useState(addresses[0]?.id || "");
-  const [draft, setDraft] = useState(() => addresses[0] || { name: customer?.name || "", phone: customer?.phone || "", line1: "", city: "", state: "Uttar Pradesh", pincode: "" });
-  const [payment, setPayment] = useState(storeSettings.onlinePaymentEnabled ? "razorpay" : "cod");
-  const [shippingMode, setShippingMode] = useState("standard");
-  const [discount, setDiscount] = useState(0);
-  const [coupon, setCoupon] = useState("");
-  const [couponMessage, setCouponMessage] = useState("");
-  const [couponError, setCouponError] = useState("");
+    const sku =
+      String(item?.sku || "").trim();
 
-  const shipping = luxmoShippingEstimate(cart, shippingMode, storeSettings);
-  const total = Math.max(0, subtotal - discount + shipping.fee);
-  const cod = luxmoCodEligibility(cart, subtotal, draft.pincode, storeSettings);
+    let productDoc = null;
 
-  const applyCoupon = async () => {
-    const enteredCode = String(coupon || "").trim().toUpperCase();
-    setCouponError("");
-    setCouponMessage("");
+    /* -------------------------------------------------------
+       FIND BY FIRESTORE DOCUMENT ID
+    ------------------------------------------------------- */
 
-    if (!enteredCode) {
-      setCouponError("Kripya coupon code darj karein.");
-      return;
-    }
+    if (productId) {
+      const snapshot =
+        await collection
+          .doc(productId)
+          .get();
 
-    try {
-      const response = await fetch("/api/create-order", {
-        method: "POST",
-        credentials: "include",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "quote",
-          items: cart.map(item => ({ id: item.id, sku: item.sku || "", qty: Number(item.qty || 1) })),
-          subtotal: Number(subtotal || 0),
-          couponCode: enteredCode
-        })
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      // Safe fallback agar server quote endpoint fail ho ya JSON error de
-      if (!response.ok || !data?.success) {
-        // Agar coupon code test/dummy hai ya backend quote fail hua toh local fallback apply kar sakte hain ya error dikhayein
-        if (enteredCode === "WELCOME5") {
-          const d = Math.round(subtotal * 0.05);
-          setDiscount(d);
-          setCouponMessage(`WELCOME5 applied — ₹${d} discount.`);
-          return;
-        }
-        throw new Error(data?.error || data?.message || "Invalid coupon code.");
+      if (snapshot.exists) {
+        productDoc = snapshot;
       }
-
-      const serverDiscount = Number(data?.pricing?.discount || 0);
-      setDiscount(serverDiscount);
-      setCouponMessage(`${enteredCode} applied successfully.`);
-    } catch (error) {
-      // Server error aane par crash nahi hoga, balki error message show hoga
-      if (enteredCode === "WELCOME5") {
-        const d = Math.round(subtotal * 0.05);
-        setDiscount(d);
-        setCouponMessage(`WELCOME5 applied — ₹${d} discount.`);
-        return;
-      }
-      setDiscount(0);
-      setCouponError(error?.message || "Coupon validation fail ho gayi.");
     }
-  };
 
-  const removeCoupon = () => {
-    setCoupon("");
-    setDiscount(0);
-    setCouponMessage("");
-    setCouponError("");
-  };
+    /* -------------------------------------------------------
+       FIND BY SKU
+    ------------------------------------------------------- */
 
-  const submit = () => {
-    const name = String(draft?.name || "").trim();
-    const phone = String(draft?.phone || "").replace(/\D/g, "");
-    const line1 = String(draft?.line1 || "").trim();
-    const city = String(draft?.city || "").trim();
-    const state = String(draft?.state || "").trim();
-    const pincode = luxmoNormalizePincode(draft?.pincode || "");
+    if (!productDoc && sku) {
+      const snapshot =
+        await collection
+          .where("sku", "==", sku)
+          .limit(1)
+          .get();
 
-    if (!name) return alert("Kripya apna poora naam darj karein.");
-    if (!luxmoValidateIndianMobile(phone)) return alert("Kripya valid 10-digit mobile number darj karein.");
-    if (!line1) return alert("Kripya delivery address darj karein.");
-    if (!city || !state || !luxmoValidatePincode(pincode)) return alert("Kripya city, state aur valid 6-digit pincode darj karein.");
+      if (!snapshot.empty) {
+        productDoc =
+          snapshot.docs[0];
+      }
+    }
 
-    const order = {
-      id: `LMH${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      status: payment === "razorpay" ? "Pending Payment" : "Confirmed",
-      paymentMethod: payment,
-      items: cart,
-      subtotal,
-      discount,
-      shippingFee: shipping.fee,
-      total,
-      address: { ...draft, name, phone, line1, city, state, pincode }
+    if (!productDoc) {
+      throw new Error(
+        `Product not found. ID: ${
+          productId || "N/A"
+        }`
+      );
+    }
+
+    const product = {
+      id: productDoc.id,
+      ...productDoc.data(),
     };
-    onOrderCreated(order);
+
+    const quantity =
+      getQty(item);
+
+    let price = NaN;
+
+    /* -------------------------------------------------------
+       VARIANT PRICE
+    ------------------------------------------------------- */
+
+    if (
+      Array.isArray(
+        product.variants
+      )
+    ) {
+      const variant =
+        product.variants.find(
+          (variant) => {
+            const variantSku =
+              String(
+                variant?.sku || ""
+              )
+                .trim()
+                .toLowerCase();
+
+            return (
+              sku &&
+              variantSku ===
+                sku.toLowerCase()
+            );
+          }
+        );
+
+      if (variant) {
+        price =
+          getPriceFromObject(
+            variant
+          );
+      }
+    }
+
+    /* -------------------------------------------------------
+       PRODUCT PRICE
+    ------------------------------------------------------- */
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      price =
+        getPriceFromObject(
+          product
+        );
+    }
+
+    /* -------------------------------------------------------
+       FRONTEND FALLBACK
+    ------------------------------------------------------- */
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      price =
+        getPriceFromObject(
+          item
+        );
+    }
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      throw new Error(
+        `Invalid product price for ${
+          product.title ||
+          product.name ||
+          product.id
+        }.`
+      );
+    }
+
+    trustedItems.push({
+      id: product.id,
+
+      sku:
+        sku ||
+        String(
+          product.sku || ""
+        ).trim(),
+
+      title:
+        product.title ||
+        product.name ||
+        "LUXMO Product",
+
+      category:
+        product.category ||
+        "",
+
+      productCategory:
+        product.productCategory ||
+        product.category ||
+        "",
+
+      model:
+        item?.model ||
+        product.model ||
+        "",
+
+      colour:
+        item?.colour ||
+        item?.color ||
+        product.colour ||
+        product.color ||
+        "",
+
+      qty: quantity,
+
+      price,
+
+      hsn:
+        product.hsn ||
+        product.hsnCode ||
+        "",
+
+      brand:
+        product.brand ||
+        "LUXMO HUB",
+
+      tax:
+        Number(
+          product.gstRate || 0
+        ),
+    });
+  }
+
+  return trustedItems;
+}
+
+/* =========================================================
+   COUPONS
+========================================================= */
+
+const COUPONS = {
+  WELCOME5: {
+    code: "WELCOME5",
+    type: "percent",
+    value: 5,
+    minOrder: 499,
+    maxDiscount: 500,
+  },
+
+  SOLAR500: {
+    code: "SOLAR500",
+    type: "flat",
+    value: 500,
+    minOrder: 15000,
+    maxDiscount: 500,
+    solarOnly: true,
+  },
+
+  LUXMO100: {
+    code: "LUXMO100",
+    type: "flat",
+    value: 100,
+    minOrder: 1999,
+    maxDiscount: 100,
+  },
+};
+
+function isSolarOrder(items) {
+  return items.some((item) => {
+    const category =
+      String(
+        item?.category ||
+        item?.productCategory ||
+        ""
+      ).toLowerCase();
+
+    const title =
+      String(
+        item?.title || ""
+      ).toLowerCase();
+
+    return (
+      category.includes(
+        "solar"
+      ) ||
+      title.includes(
+        "solar inverter"
+      ) ||
+      title.includes(
+        "hybrid inverter"
+      )
+    );
+  });
+}
+
+function calculateDiscount(
+  couponCode,
+  subtotal,
+  items
+) {
+  const code =
+    normalizeCoupon(
+      couponCode
+    );
+
+  /* NO COUPON = NO ERROR */
+  if (!code) {
+    return {
+      discount: 0,
+      appliedCoupon: "",
+    };
+  }
+
+  const coupon =
+    COUPONS[code];
+
+  if (!coupon) {
+    throw new Error(
+      "Invalid or inactive coupon code."
+    );
+  }
+
+  if (
+    subtotal <
+    coupon.minOrder
+  ) {
+    throw new Error(
+      `Minimum order value for ${code} is ₹${coupon.minOrder.toLocaleString(
+        "en-IN"
+      )}.`
+    );
+  }
+
+  if (
+    coupon.solarOnly &&
+    !isSolarOrder(items)
+  ) {
+    throw new Error(
+      "SOLAR500 is applicable only to Hybrid Solar Inverter orders."
+    );
+  }
+
+  let discount = 0;
+
+  if (
+    coupon.type ===
+    "percent"
+  ) {
+    discount =
+      (subtotal *
+        coupon.value) /
+      100;
+  }
+
+  if (
+    coupon.type ===
+    "flat"
+  ) {
+    discount =
+      coupon.value;
+  }
+
+  discount = Math.min(
+    Math.max(0, discount),
+    coupon.maxDiscount ||
+      discount,
+    subtotal
+  );
+
+  return {
+    discount,
+    appliedCoupon: code,
   };
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto">
-      <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden p-6 space-y-6">
-        <div className="flex items-center justify-between border-b pb-4">
-          <h2 className="text-xl font-black">Secure Checkout & Payment</h2>
-          <button onClick={onClose} className="text-xl font-black">×</button>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <h3 className="font-bold text-sm">Delivery Address</h3>
-            <input value={draft.name || ""} onChange={e => setDraft({...draft, name: e.target.value})} placeholder="Full Name" className="w-full border rounded-xl p-3 text-sm" />
-            <input value={draft.phone || ""} onChange={e => setDraft({...draft, phone: e.target.value})} placeholder="Mobile Number" className="w-full border rounded-xl p-3 text-sm" />
-            <input value={draft.line1 || ""} onChange={e => setDraft({...draft, line1: e.target.value})} placeholder="Address Line 1" className="w-full border rounded-xl p-3 text-sm" />
-            <div className="grid grid-cols-2 gap-2">
-              <input value={draft.city || ""} onChange={e => setDraft({...draft, city: e.target.value})} placeholder="City" className="border rounded-xl p-3 text-sm" />
-              <input value={draft.pincode || ""} onChange={e => setDraft({...draft, pincode: e.target.value})} placeholder="Pincode" maxLength={6} className="border rounded-xl p-3 text-sm" />
-            </div>
-
-            <h3 className="font-bold text-sm pt-2">Payment Method</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setPayment("razorpay")} className={`border rounded-xl p-3 text-left font-bold text-xs ${payment === "razorpay" ? "border-blue-600 bg-blue-50" : ""}`}>Online Payment (Razorpay / UPI)</button>
-              <button onClick={() => setPayment("cod")} className={`border rounded-xl p-3 text-left font-bold text-xs ${payment === "cod" ? "border-blue-600 bg-blue-50" : ""}`}>Cash on Delivery (COD)</button>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 p-5 rounded-2xl border space-y-4">
-            <h3 className="font-bold text-sm">Order Summary</h3>
-            <div className="space-y-2 text-xs max-h-40 overflow-auto">
-              {cart.map((item, idx) => (
-                <div key={idx} className="flex justify-between">
-                  <span>{item.title} × {item.qty}</span>
-                  <b>{luxmoMoney(luxmoProductPrice(item) * item.qty)}</b>
-                </div>
-              ))}
-            </div>
-
-            <div className="border-t pt-3 space-y-1 text-xs">
-              <div className="flex gap-2 mb-2">
-                <input value={coupon} onChange={e => setCoupon(e.target.value)} placeholder="Coupon code" className="flex-1 border rounded-lg px-2 py-1.5 uppercase" />
-                {discount > 0 ? <button onClick={removeCoupon} className="bg-slate-900 text-white px-3 py-1 rounded-lg">Remove</button> : <button onClick={applyCoupon} className="bg-blue-600 text-white px-3 py-1 rounded-lg">Apply</button>}
-              </div>
-              {couponMessage && <div className="text-emerald-600 font-bold">{couponMessage}</div>}
-              {couponError && <div className="text-red-600 font-bold">{couponError}</div>}
-
-              <div className="flex justify-between pt-2"><span>Subtotal</span><b>{luxmoMoney(subtotal)}</b></div>
-              <div className="flex justify-between"><span>Discount</span><b className="text-emerald-600">-{luxmoMoney(discount)}</b></div>
-              <div className="flex justify-between"><span>Shipping</span><b>{shipping.fee ? luxmoMoney(shipping.fee) : "FREE"}</b></div>
-              <div className="flex justify-between text-base font-black pt-2 border-t"><span>Total</span><b className="text-blue-600">{luxmoMoney(total)}</b></div>
-            </div>
-
-            <button onClick={submit} className="w-full bg-blue-600 text-white rounded-xl py-3 font-black text-sm">Place Order ({luxmoMoney(total)})</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
-export default function LuxmoHubApp() {
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
-  const [cart, setCart] = useState([]);
-  const [activeTab, setActiveTab] = useState("home");
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+/* =========================================================
+   SHIPPING
+========================================================= */
 
-  const subtotal = cart.reduce((acc, item) => acc + luxmoProductPrice(item) * item.qty, 0);
+function calculateShipping(
+  body,
+  subtotal
+) {
+  const mode =
+    String(
+      body?.shippingMode ||
+      "standard"
+    )
+      .trim()
+      .toLowerCase();
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans p-6">
-      <header className="flex justify-between items-center max-w-6xl mx-auto bg-white p-4 rounded-2xl border shadow-sm mb-6">
-        <h1 className="font-black text-lg text-blue-600">LUXMO HUB</h1>
-        <div className="flex gap-4 items-center">
-          <button onClick={() => setActiveTab("home")} className="font-bold text-sm">Home</button>
-          <button onClick={() => setActiveTab("catalog")} className="font-bold text-sm">Products</button>
-          <button onClick={() => setShowCheckoutModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black">Cart ({cart.length})</button>
-        </div>
-      </header>
+  if (
+    mode === "free" ||
+    mode === "pickup" ||
+    mode === "store_pickup"
+  ) {
+    return 0;
+  }
 
-      <main className="max-w-6xl mx-auto space-y-6">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {products.map(p => (
-            <div key={p.id} className="bg-white border rounded-2xl p-4 shadow-sm">
-              <img src={p.images[0]} alt={p.title} className="w-full aspect-square object-cover rounded-xl" />
-              <h3 className="font-bold text-sm mt-3">{p.title}</h3>
-              <div className="text-base font-black mt-1">₹{p.salePrice || p.price}</div>
-              <button onClick={() => { setCart([...cart, { ...p, qty: 1 }]); setShowCheckoutModal(true); }} className="w-full mt-3 bg-blue-600 text-white py-2.5 rounded-xl text-xs font-black">Proceed to Secure Checkout</button>
-            </div>
-          ))}
-        </div>
-      </main>
+  const frontendShipping =
+    parseMoney(
+      body?.shippingFee
+    );
 
-      {showCheckoutModal && (
-        <LuxmoCheckout
-          cart={cart}
-          subtotal={subtotal}
-          customer={{ name: "", phone: "" }}
-          addresses={[]}
-          storeSettings={LUXMO_DEFAULT_STORE_SETTINGS}
-          onOrderCreated={(order) => {
-            alert(`Order ${order.id} placed successfully!`);
-            setCart([]);
-            setShowCheckoutModal(false);
-          }}
-          onClose={() => setShowCheckoutModal(false)}
-        />
-      )}
-    </div>
-  );
+  if (
+    Number.isFinite(
+      frontendShipping
+    ) &&
+    frontendShipping >= 0
+  ) {
+    return frontendShipping;
+  }
+
+  if (
+    mode === "express"
+  ) {
+    const express =
+      parseMoney(
+        process.env
+          .LUXMO_EXPRESS_SHIPPING_FEE
+      );
+
+    return Number.isFinite(
+      express
+    )
+      ? Math.max(
+          0,
+          express
+        )
+      : 149;
+  }
+
+  const standard =
+    parseMoney(
+      process.env
+        .LUXMO_STANDARD_SHIPPING_FEE
+    );
+
+  return Number.isFinite(
+    standard
+  )
+    ? Math.max(
+        0,
+        standard
+      )
+    : 79;
 }
-```
+
+/* =========================================================
+   PRICING
+========================================================= */
+
+async function calculatePricing(body) {
+  const items =
+    Array.isArray(
+      body?.items
+    )
+      ? body.items
+      : [];
+
+  if (!items.length) {
+    throw new Error(
+      "Your cart is empty."
+    );
+  }
+
+  const trustedItems =
+    await getTrustedCartItems(
+      items
+    );
+
+  const subtotal =
+    trustedItems.reduce(
+      (
+        total,
+        item
+      ) =>
+        total +
+        item.price *
+          item.qty,
+      0
+    );
+
+  if (
+    !Number.isFinite(
+      subtotal
+    ) ||
+    subtotal <= 0
+  ) {
+    throw new Error(
+      "Invalid subtotal."
+    );
+  }
+
+  const couponValue =
+    body?.couponCode ??
+    body?.coupon ??
+    "";
+
+  const couponResult =
+    calculateDiscount(
+      couponValue,
+      subtotal,
+      trustedItems
+    );
+
+  const shippingFee =
+    calculateShipping(
+      body,
+      subtotal
+    );
+
+  const total = Math.max(
+    0,
+    subtotal -
+      couponResult.discount +
+      shippingFee
+  );
+
+  if (
+    !Number.isFinite(
+      total
+    ) ||
+    total <= 0
+  ) {
+    throw new Error(
+      "Invalid final amount."
+    );
+  }
+
+  return {
+    items: trustedItems,
+
+    subtotal,
+
+    discount:
+      couponResult.discount,
+
+    shippingFee,
+
+    total,
+
+    couponCode:
+      couponResult.appliedCoupon ||
+      null,
+  };
+}
+
+/* =========================================================
+   SHIPROCKET SERVICEABILITY
+========================================================= */
+
+async function checkServiceability(
+  req
+) {
+  const pincode =
+    String(
+      req.query?.pincode ||
+      ""
+    ).replace(
+      /\D/g,
+      ""
+    );
+
+  if (
+    !/^[1-9]\d{5}$/.test(
+      pincode
+    )
+  ) {
+    return {
+      status: 400,
+
+      data: {
+        success: false,
+        serviceable: false,
+        available: false,
+        error:
+          "Enter a valid 6-digit pincode.",
+      },
+    };
+  }
+
+  const pickupPincode =
+    String(
+      process.env
+        .SHIPROCKET_PICKUP_PINCODE ||
+        "274405"
+    ).replace(
+      /\D/g,
+      ""
+    );
+
+  const email =
+    String(
+      process.env
+        .SHIPROCKET_EMAIL ||
+      ""
+    ).trim();
+
+  const password =
+    String(
+      process.env
+        .SHIPROCKET_PASSWORD ||
+      ""
+    ).trim();
+
+  if (
+    !email ||
+    !password
+  ) {
+    return {
+      status: 500,
+
+      data: {
+        success: false,
+        serviceable: false,
+        available: false,
+        error:
+          "Shiprocket credentials are missing in Vercel Environment Variables.",
+      },
+    };
+  }
+
+  /* -------------------------------------------------------
+     SHIPROCKET LOGIN
+  ------------------------------------------------------- */
+
+  const loginResponse =
+    await fetch(
+      "https://apiv2.shiprocket.in/v1/external/auth/login",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Accept:
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      }
+    );
+
+  const loginData =
+    await loginResponse
+      .json()
+      .catch(() => ({}));
+
+  if (
+    !loginResponse.ok ||
+    !loginData?.token
+  ) {
+    return {
+      status: 502,
+
+      data: {
+        success: false,
+        serviceable: false,
+        available: false,
+
+        error:
+          loginData?.message ||
+          loginData?.error ||
+          "Shiprocket authentication failed.",
+      },
+    };
+  }
+
+  const weightNumber =
+    Number(
+      req.query?.weight ||
+      0.5
+    );
+
+  const weight =
+    Number.isFinite(
+      weightNumber
+    ) &&
+    weightNumber > 0
+      ? weightNumber
+      : 0.5;
+
+  const cod =
+    String(
+      req.query?.cod ||
+      "0"
+    ) === "1"
+      ? 1
+      : 0;
+
+  const url =
+    "https://apiv2.shiprocket.in/v1/external/courier/serviceability" +
+    `?pickup_postcode=${encodeURIComponent(
+      pickupPincode
+    )}` +
+    `&delivery_postcode=${encodeURIComponent(
+      pincode
+    )}` +
+    `&cod=${cod}` +
+    `&weight=${encodeURIComponent(
+      weight
+    )}`;
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: "GET",
+
+        headers: {
+          Accept:
+            "application/json",
+
+          Authorization:
+            `Bearer ${loginData.token}`,
+        },
+      }
+    );
+
+  const data =
+    await response
+      .json()
+      .catch(() => ({}));
+
+  if (!response.ok) {
+    return {
+      status:
+        response.status >= 400
+          ? response.status
+          : 502,
+
+      data: {
+        success: false,
+        serviceable: false,
+        available: false,
+
+        error:
+          data?.message ||
+          data?.error ||
+          "Delivery serviceability check failed.",
+
+        details: data,
+      },
+    };
+  }
+
+  const couriers =
+    Array.isArray(
+      data?.data
+        ?.available_courier_companies
+    )
+      ? data.data
+          .available_courier_companies
+      : [];
+
+  const serviceable =
+    couriers.length > 0;
+
+  return {
+    status: 200,
+
+    data: {
+      success: true,
+
+      serviceable,
+
+      available:
+        serviceable,
+
+      pincode,
+
+      pickupPincode,
+
+      courierCount:
+        couriers.length,
+
+      message:
+        serviceable
+          ? `Delivery is available for pincode ${pincode}.`
+          : `Delivery is not available for pincode ${pincode}.`,
+    },
+  };
+}
+
+/* =========================================================
+   RAZORPAY ORDER
+========================================================= */
+
+async function createRazorpayOrder(
+  pricing,
+  body
+) {
+  const keyId =
+    process.env
+      .RAZORPAY_KEY_ID;
+
+  const keySecret =
+    process.env
+      .RAZORPAY_KEY_SECRET;
+
+  if (
+    !keyId ||
+    !keySecret
+  ) {
+    throw new Error(
+      "Razorpay server configuration missing."
+    );
+  }
+
+  const amountPaise =
+    Math.round(
+      pricing.total * 100
+    );
+
+  if (
+    !Number.isInteger(
+      amountPaise
+    ) ||
+    amountPaise < 100
+  ) {
+    throw new Error(
+      "Minimum payment amount is ₹1."
+    );
+  }
+
+  const credentials =
+    Buffer.from(
+      `${keyId}:${keySecret}`
+    ).toString(
+      "base64"
+    );
+
+  const websiteOrderId =
+    String(
+      body?.websiteOrderId ||
+      ""
+    ).trim();
+
+  const receiptBase =
+    websiteOrderId
+      ? `luxmo_${websiteOrderId}`
+      : `luxmo_${Date.now()}`;
+
+  const receipt =
+    receiptBase
+      .replace(
+        /[^a-zA-Z0-9_-]/g,
+        "_"
+      )
+      .slice(0, 40);
+
+  const response =
+    await fetch(
+      "https://api.razorpay.com/v1/orders",
+      {
+        method: "POST",
+
+        headers: {
+          Authorization:
+            `Basic ${credentials}`,
+
+          "Content-Type":
+            "application/json",
+
+          Accept:
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          amount:
+            amountPaise,
+
+          currency:
+            "INR",
+
+          receipt,
+
+          notes: {
+            website_order_id:
+              websiteOrderId ||
+              receipt,
+
+            coupon_code:
+              pricing.couponCode ||
+              "NONE",
+
+            subtotal:
+              String(
+                pricing.subtotal
+              ),
+
+            discount:
+              String(
+                pricing.discount
+              ),
+
+            shipping_fee:
+              String(
+                pricing.shippingFee
+              ),
+
+            final_amount:
+              String(
+                pricing.total
+              ),
+
+            source:
+              "luxmo-website",
+          },
+        }),
+      }
+    );
+
+  const data =
+    await response
+      .json()
+      .catch(() => ({}));
+
+  if (!response.ok) {
+    const razorpayError =
+      data?.error
+        ?.description ||
+      data?.error
+        ?.message ||
+      data?.message ||
+      data?.error ||
+      "Razorpay order creation failed.";
+
+    throw new Error(
+      cleanError(
+        razorpayError
+      )
+    );
+  }
+
+  if (!data?.id) {
+    throw new Error(
+      "Razorpay did not return an order ID."
+    );
+  }
+
+  return {
+    id: data.id,
+
+    amount:
+      data.amount,
+
+    currency:
+      data.currency,
+
+    receipt:
+      data.receipt,
+  };
+}
+
+/* =========================================================
+   MAIN HANDLER
+========================================================= */
+
+export default async function handler(
+  req,
+  res
+) {
+  try {
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate"
+    );
+
+    /* =====================================================
+       GET = PINCODE SERVICEABILITY
+    ===================================================== */
+
+    if (
+      req.method === "GET"
+    ) {
+      const result =
+        await checkServiceability(
+          req
+        );
+
+      return sendJson(
+        res,
+        result.status,
+        result.data
+      );
+    }
+
+    /* =====================================================
+       ONLY POST AFTER THIS
+    ===================================================== */
+
+    if (
+      req.method !== "POST"
+    ) {
+      res.setHeader(
+        "Allow",
+        "GET, POST"
+      );
+
+      return sendJson(
+        res,
+        405,
+        {
+          success: false,
+          error:
+            "Method not allowed.",
+        }
+      );
+    }
+
+    let body =
+      req.body || {};
+
+    if (
+      typeof body ===
+      "string"
+    ) {
+      try {
+        body =
+          JSON.parse(body);
+      } catch {
+        return sendJson(
+          res,
+          400,
+          {
+            success: false,
+            error:
+              "Invalid JSON request body.",
+          }
+        );
+      }
+    }
+
+    /* =====================================================
+       CALCULATE TRUSTED PRICE
+    ===================================================== */
+
+    const pricing =
+      await calculatePricing(
+        body
+      );
+
+    /* =====================================================
+       COUPON QUOTE
+    ===================================================== */
+
+    if (
+      String(
+        body?.action || ""
+      ).toLowerCase() ===
+      "quote"
+    ) {
+      return sendJson(
+        res,
+        200,
+        {
+          success: true,
+
+          pricing: {
+            subtotal:
+              pricing.subtotal,
+
+            discount:
+              pricing.discount,
+
+            shippingFee:
+              pricing.shippingFee,
+
+            total:
+              pricing.total,
+
+            couponCode:
+              pricing.couponCode,
+          },
+
+          items:
+            pricing.items,
+        }
+      );
+    }
+
+    /* =====================================================
+       RAZORPAY ORDER
+    =
