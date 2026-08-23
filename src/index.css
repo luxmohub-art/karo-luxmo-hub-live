@@ -3,47 +3,67 @@
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
     sans-serif;
+
   color: #0f172a;
   background: #ffffff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  width: 100%;
-  min-height: 100%;
 }
 
 html {
+  width: 100%;
+  min-height: 100%;
   background: #ffffff;
 }
 
 body {
+  width: 100%;
   min-height: 100vh;
   overflow-x: hidden;
   background: #ffffff;
   color: #0f172a;
 }
 
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
 button {
   cursor: pointer;
-  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 input,
 select,
 textarea {
-  font: inherit;
   outline: none;
 }
 
@@ -55,6 +75,7 @@ a {
 img {
   display: block;
   max-width: 100%;
+  height: auto;
 }
 
 button:focus-visible,
@@ -66,8 +87,14 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+::selection {
+  background: #f59e0b;
+  color: #020617;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -83,7 +110,25 @@ textarea:focus-visible {
   background: #d97706;
 }
 
-::selection {
-  background: #f59e0b;
-  color: #020617;
+/* Prevent accidental horizontal overflow */
+html,
+body {
+  max-width: 100%;
+}
+
+/* Mobile improvements */
+@media (max-width: 640px) {
+  body {
+    min-width: 0;
+  }
+
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
