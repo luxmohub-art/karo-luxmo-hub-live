@@ -4212,6 +4212,7 @@ export default function LuxmoHubApp() {
   });
   const [formError, setFormError] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -4355,9 +4356,11 @@ export default function LuxmoHubApp() {
     }));
   };
 
-  const validateAndSaveProduct = (e) => {
+  const validateAndSaveProduct = async (e) => {
     e.preventDefault();
     setFormError('');
+
+    if (isSavingProduct) return;
 
     if (FORBIDDEN_TERMS.some(term => formData.title.toLowerCase().includes(term))) {
       setFormError('Product title contains prohibited terms.');
@@ -4448,13 +4451,33 @@ export default function LuxmoHubApp() {
       }
     };
 
-    if (editingProduct) {
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? productPayload : p));
-    } else {
-      setProducts(prev => [productPayload, ...prev]);
-    }
+    const nextProducts = editingProduct
+      ? products.map(p => p.id === editingProduct.id ? productPayload : p)
+      : [productPayload, ...products];
 
-    resetForm();
+    // IMPORTANT: do not treat React/localStorage state as a successful save.
+    // The live website reads products from /api/products -> Firestore.
+    // Wait for the database API to confirm the write before updating the UI.
+    setIsSavingProduct(true);
+    try {
+      const data = await luxmoApi('/api/products', {
+        method: 'PUT',
+        body: JSON.stringify({ products: nextProducts })
+      });
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Product database save failed.');
+      }
+
+      setProducts(nextProducts);
+      resetForm();
+      setFormError('Product saved to database successfully. It is now available to the live website.');
+    } catch (error) {
+      console.error('Product database save failed:', error);
+      setFormError(`Product was NOT saved to the live database: ${error?.message || 'Unknown API error'}`);
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
   const resetForm = () => {
@@ -6629,7 +6652,9 @@ export default function LuxmoHubApp() {
                 </div>
 
                 <div className="md:col-span-2 flex gap-2">
-                  <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2.5 rounded-md text-xs">Save Product</button>
+                  <button type="submit" disabled={isSavingProduct || isCompressing} className={`bg-blue-600 hover:bg-blue-500 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold px-5 py-2.5 rounded-md text-xs`}>
+                    {isSavingProduct ? 'Saving to Database…' : (editingProduct ? 'Update Product' : 'Save Product')}
+                  </button>
                   {editingProduct && <button type="button" onClick={resetForm} className="bg-slate-200 text-slate-800 px-4 py-2.5 rounded-md text-xs font-bold">Cancel</button>}
                 </div>
               </form>
