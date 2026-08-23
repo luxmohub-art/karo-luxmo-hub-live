@@ -7,6 +7,10 @@
     {
       "source": "/api/admin/master-settings",
       "destination": "/api/publish?master=1"
+    },
+    {
+      "source": "/api/products",
+      "destination": "/api/publish?products=1"
     }
   ]
 }
