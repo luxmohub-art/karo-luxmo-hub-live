@@ -32,7 +32,7 @@ async function fetchAuthoritativeProducts(params = {}) {
   const response = await luxmoSecurityFetch(`/api/products${query.toString() ? `?${query}` : ""}`);
   if (!response.ok) throw new Error("Unable to fetch authoritative product data.");
   const data = await response.json();
-  if (!data?.success) throw new Error(data?.error || "Product data request failed.");
+  if (!data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Product data request failed."));
   return Array.isArray(data.products) ? data.products : [];
 }
 
@@ -40,7 +40,7 @@ async function fetchPublicStoreConfig() {
   const response = await luxmoSecurityFetch("/api/config");
   if (!response.ok) throw new Error("Unable to fetch store configuration.");
   const data = await response.json();
-  if (!data?.success) throw new Error(data?.error || "Store configuration request failed.");
+  if (!data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Store configuration request failed."));
   return data;
 }
 
@@ -50,7 +50,7 @@ async function requestOrderAccess(orderId, phone) {
     body: JSON.stringify({ action: "request-access", orderId, phone }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to verify order access.");
+  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to verify order access."));
   return data;
 }
 
@@ -60,7 +60,7 @@ async function fetchAuthenticatedOrder(orderId, accessToken) {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to retrieve order.");
+  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to retrieve order."));
   return data;
 }
 
@@ -70,7 +70,7 @@ async function createAuthoritativeOrder(payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to create order.");
+  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to create order."));
   return data;
 }
 
@@ -80,7 +80,7 @@ async function createAuthoritativeShipment(payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to create shipment.");
+  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to create shipment."));
   return data;
 }
 
@@ -1617,7 +1617,7 @@ const luxmoApi = async (url, options = {}) => {
     ...options
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || data.message || `API ${response.status}`);
+  if (!response.ok) throw new Error(luxmoApiErrorMessage(data.error || data.message, `API ${response.status}`));
   return data;
 };
 const luxmoEnsureCustomerSession = () =>
@@ -2284,9 +2284,10 @@ function LuxmoCheckout({
         setDiscount(0);
 
         setCouponError(
-          data?.error ||
-            data?.message ||
+          luxmoApiErrorMessage(
+            data?.error || data?.message,
             "Invalid or inactive coupon code."
+          )
         );
 
         return;
@@ -3242,7 +3243,7 @@ function LuxmoOrderTrackingModal({ onClose }) {
       }
 
       if (!response.ok || data.success === false) {
-        throw new Error(data.error || data.message || "Order tracking failed.");
+        throw new Error(luxmoApiErrorMessage(data.error || data.message, "Order tracking failed."));
       }
 
       setResult(normalizeTracking(data));
@@ -3438,7 +3439,7 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
       }
 
       if (!response.ok || data.success === false) {
-        throw new Error(data.error || data.message || "Warranty registration failed.");
+        throw new Error(luxmoApiErrorMessage(data.error || data.message, "Warranty registration failed."));
       }
 
       const registration = {
@@ -4169,7 +4170,7 @@ export default function LuxmoHubApp() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data.success !== true) {
-        throw new Error(data.error || data.message || "Invalid or expired Google Authenticator code.");
+        throw new Error(luxmoApiErrorMessage(data.error || data.message, "Invalid or expired Google Authenticator code."));
       }
 
       const authenticated = await verifyAdminSession();
@@ -4774,7 +4775,7 @@ export default function LuxmoHubApp() {
             if (!verifyResponse.ok || !verifyData.success) {
               console.error("Razorpay verification failed:", verifyData);
               localStorage.removeItem(shipmentLockKey);
-              alert(verifyData.error || "Payment verification failed.");
+              alert(luxmoApiErrorMessage(verifyData.error, "Payment verification failed."));
               return;
             }
 
@@ -4878,7 +4879,7 @@ export default function LuxmoHubApp() {
                 courierProvider: provider,
                 shipmentStatus: "Pending",
                 shipmentError:
-                  shipmentData.error || "Shipment creation failed",
+                  luxmoApiErrorMessage(shipmentData.error, "Shipment creation failed"),
                 updatedAt: new Date().toISOString()
               };
 
@@ -7489,7 +7490,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
 
       if (!response.ok || !data.success) {
         throw new Error(
-          data.error || "Unable to load orders"
+          luxmoApiErrorMessage(data.error, "Unable to load orders")
         );
       }
 
@@ -7521,7 +7522,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
         headers: { Accept: "application/json" }
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data.success) throw new Error(data.error || "Unable to load Master Admin settings.");
+      if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, "Unable to load Master Admin settings."));
       const db = data.settings || {};
       setSettings(prev => ({ ...prev, ...db }));
       if (db.policies) setPolicies(db.policies);
@@ -7547,7 +7548,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
         body: JSON.stringify(payload)
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data.success) throw new Error(data.error || "Master settings save failed.");
+      if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, "Master settings save failed."));
       setSettings(data.settings || payload);
       setSaved("Saved to database");
       window.dispatchEvent(new Event("luxmo-master-settings-updated"));
