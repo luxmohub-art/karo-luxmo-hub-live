@@ -1,9 +1,12 @@
+// api/shiprocket.js
+// LUXMO HUB - Shiprocket Shipment API
+
 const SHIPROCKET_BASE =
   "https://apiv2.shiprocket.in/v1/external";
 
-/* =====================================================
+/* =========================================================
    HELPERS
-===================================================== */
+========================================================= */
 
 function firstValue(...values) {
   for (const value of values) {
@@ -19,15 +22,26 @@ function firstValue(...values) {
   return "";
 }
 
-function numberValue(
+function numberValue(value, fallback = 0) {
+  const n = Number(value);
+
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function positiveNumber(
   value,
-  fallback = 0
+  fallback
 ) {
   const n = Number(value);
 
-  return Number.isFinite(n)
-    ? n
-    : fallback;
+  if (
+    Number.isFinite(n) &&
+    n > 0
+  ) {
+    return n;
+  }
+
+  return fallback;
 }
 
 function getItems(order) {
@@ -53,15 +67,15 @@ function getOrderId(
   order,
   suppliedOrderId
 ) {
-  const value =
-    firstValue(
-      suppliedOrderId,
-      order?.orderId,
-      order?.order_id,
-      order?.razorpayOrderId,
-      order?.razorpay_order_id,
-      order?.id
-    );
+  const value = firstValue(
+    suppliedOrderId,
+    order?.websiteOrderId,
+    order?.orderId,
+    order?.order_id,
+    order?.razorpayOrderId,
+    order?.razorpay_order_id,
+    order?.id
+  );
 
   if (!value) {
     throw new Error(
@@ -71,8 +85,13 @@ function getOrderId(
 
   return String(value)
     .trim()
+    .replace(/\s+/g, "-")
     .slice(0, 50);
 }
+
+/* =========================================================
+   FETCH JSON
+========================================================= */
 
 async function fetchJson(
   url,
@@ -82,23 +101,20 @@ async function fetchJson(
   const controller =
     new AbortController();
 
-  const timer =
-    setTimeout(
-      () =>
-        controller.abort(),
-      timeoutMs
-    );
+  const timer = setTimeout(
+    () => controller.abort(),
+    timeoutMs
+  );
 
   try {
-    const response =
-      await fetch(
-        url,
-        {
-          ...options,
-          signal:
-            controller.signal,
-        }
-      );
+    const response = await fetch(
+      url,
+      {
+        ...options,
+        signal:
+          controller.signal,
+      }
+    );
 
     const text =
       await response.text();
@@ -106,10 +122,9 @@ async function fetchJson(
     let data = {};
 
     try {
-      data =
-        text
-          ? JSON.parse(text)
-          : {};
+      data = text
+        ? JSON.parse(text)
+        : {};
     } catch {
       data = {
         raw: text,
@@ -136,67 +151,71 @@ async function fetchJson(
   }
 }
 
-/* =====================================================
-   SHIPROCKET AUTH
-===================================================== */
+/* =========================================================
+   SHIPROCKET LOGIN
+========================================================= */
 
 async function getShiprocketToken() {
-  const email =
-    process.env
-      .SHIPROCKET_EMAIL;
+  const email = String(
+    process.env.SHIPROCKET_EMAIL ||
+      ""
+  ).trim();
 
-  const password =
-    process.env
-      .SHIPROCKET_PASSWORD;
+  const password = String(
+    process.env.SHIPROCKET_PASSWORD ||
+      ""
+  ).trim();
 
   if (!email || !password) {
     throw new Error(
-      "Shiprocket credentials are missing."
+      "SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD is missing in Vercel Environment Variables."
     );
   }
 
   const {
     response,
     data,
-  } =
-    await fetchJson(
-      `${SHIPROCKET_BASE}/auth/login`,
-      {
-        method: "POST",
+  } = await fetchJson(
+    `${SHIPROCKET_BASE}/auth/login`,
+    {
+      method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json",
+      headers: {
+        "Content-Type":
+          "application/json",
+        Accept:
+          "application/json",
+      },
 
-          Accept:
-            "application/json",
-        },
-
-        body:
-          JSON.stringify({
-            email,
-            password,
-          }),
-      }
-    );
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    }
+  );
 
   if (
     !response.ok ||
     !data?.token
   ) {
+    console.error(
+      "Shiprocket login response:",
+      data
+    );
+
     throw new Error(
       data?.message ||
         data?.error ||
-        "Shiprocket authentication failed."
+        `Shiprocket authentication failed (${response.status}).`
     );
   }
 
   return data.token;
 }
 
-/* =====================================================
-   SHIPROCKET REQUEST
-===================================================== */
+/* =========================================================
+   SHIPROCKET API REQUEST
+========================================================= */
 
 async function shiprocketRequest(
   endpoint,
@@ -206,57 +225,66 @@ async function shiprocketRequest(
   const {
     response,
     data,
-  } =
-    await fetchJson(
-      `${SHIPROCKET_BASE}${endpoint}`,
-      {
-        method: "POST",
+  } = await fetchJson(
+    `${SHIPROCKET_BASE}${endpoint}`,
+    {
+      method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json",
+      headers: {
+        "Content-Type":
+          "application/json",
 
-          Authorization:
-            `Bearer ${token}`,
+        Accept:
+          "application/json",
 
-          Accept:
-            "application/json",
-        },
+        Authorization:
+          `Bearer ${token}`,
+      },
 
-        body:
-          JSON.stringify(body),
-      }
-    );
+      body: JSON.stringify(body),
+    }
+  );
 
   if (!response.ok) {
+    console.error(
+      `Shiprocket ${endpoint} error:`,
+      data
+    );
+
     throw new Error(
       data?.message ||
         data?.error ||
-        `Shiprocket API failed (${response.status}).`
+        data?.errors
+          ? JSON.stringify(
+              data.errors ||
+                data
+            )
+          : `Shiprocket API failed with status ${response.status}.`
     );
   }
 
   return data;
 }
 
-/* =====================================================
-   CREATE SHIPROCKET SHIPMENT
-===================================================== */
+/* =========================================================
+   CREATE ORDER
+========================================================= */
 
-async function createShiprocket(
+async function createShiprocketOrder(
   order,
-  orderId
+  orderId,
+  token
 ) {
-  const token =
-    await getShiprocketToken();
-
   const pickupLocation =
-    process.env
-      .SHIPROCKET_PICKUP_LOCATION;
+    String(
+      process.env
+        .SHIPROCKET_PICKUP_LOCATION ||
+        ""
+    ).trim();
 
   if (!pickupLocation) {
     throw new Error(
-      "SHIPROCKET_PICKUP_LOCATION is missing."
+      "SHIPROCKET_PICKUP_LOCATION is missing in Vercel Environment Variables."
     );
   }
 
@@ -265,179 +293,394 @@ async function createShiprocket(
 
   const address =
     order?.shippingAddress ||
+    order?.shipping_address ||
     {};
 
-  const name =
+  /* -------------------------------------------------------
+     CUSTOMER
+  ------------------------------------------------------- */
+
+  const name = String(
     firstValue(
-      customer.name,
+      customer?.name,
       order?.customerName,
-      order?.name
-    );
+      order?.name,
+      address?.name
+    )
+  ).trim();
 
-  const phone =
+  const phone = String(
     firstValue(
-      customer.phone,
+      customer?.phone,
       order?.phone,
-      order?.mobile
-    );
+      order?.mobile,
+      address?.phone
+    )
+  ).trim();
 
-  const email =
+  const email = String(
     firstValue(
-      customer.email,
-      order?.email
-    );
+      customer?.email,
+      order?.email,
+      address?.email
+    )
+  ).trim();
 
-  const line1 =
+  /* -------------------------------------------------------
+     ADDRESS
+  ------------------------------------------------------- */
+
+  const line1 = String(
     firstValue(
-      address.line1,
-      address.address,
+      address?.line1,
+      address?.address,
+      address?.street,
       order?.address
-    );
+    )
+  ).trim();
 
-  const line2 =
+  const line2 = String(
     firstValue(
-      address.line2,
-      address.address2,
+      address?.line2,
+      address?.address2,
       order?.address2
-    );
+    )
+  ).trim();
 
-  const city =
+  const city = String(
     firstValue(
-      address.city,
+      address?.city,
       order?.city
-    );
+    )
+  ).trim();
 
-  const state =
+  const state = String(
     firstValue(
-      address.state,
+      address?.state,
       order?.state
-    );
+    )
+  ).trim();
 
-  const pincode =
+  const pincode = String(
     firstValue(
-      address.pincode,
-      address.pinCode,
+      address?.pincode,
+      address?.pinCode,
+      address?.postalCode,
       order?.pincode,
       order?.pinCode
-    );
+    )
+  ).trim();
 
-  if (
-    !name ||
-    !phone ||
-    !line1 ||
-    !city ||
-    !state ||
-    !pincode
-  ) {
+  /* -------------------------------------------------------
+     VALIDATION
+  ------------------------------------------------------- */
+
+  if (!name) {
     throw new Error(
-      "Complete customer shipping details are required."
+      "Customer name is missing."
     );
   }
+
+  if (!phone) {
+    throw new Error(
+      "Customer phone number is missing."
+    );
+  }
+
+  if (!line1) {
+    throw new Error(
+      "Customer shipping address is missing."
+    );
+  }
+
+  if (!city) {
+    throw new Error(
+      "Customer city is missing."
+    );
+  }
+
+  if (!state) {
+    throw new Error(
+      "Customer state is missing."
+    );
+  }
+
+  if (
+    !/^\d{6}$/.test(
+      pincode
+    )
+  ) {
+    throw new Error(
+      "Valid 6-digit shipping pincode is required."
+    );
+  }
+
+  /* -------------------------------------------------------
+     ITEMS
+  ------------------------------------------------------- */
 
   const items =
     getItems(order);
 
-  const total =
-    numberValue(
-      firstValue(
-        order?.total,
-        order?.totalAmount,
-        order?.grandTotal,
-        order?.amount
-      ),
-      0
-    );
-
-  if (total <= 0) {
-    throw new Error(
-      "Order total must be greater than zero."
-    );
-  }
-
   const orderItems =
     items.map(
-      (
-        item,
-        index
-      ) => ({
-        name:
-          firstValue(
-            item?.name,
-            item?.title,
-            item?.productName
-          ) ||
-          `LUXMO Product ${index + 1}`,
-
-        sku:
-          firstValue(
-            item?.sku,
-            item?.productSku,
-            item?.id
-          ) ||
-          `LUXMO-${index + 1}`,
-
-        units:
+      (item, index) => {
+        const quantity =
           Math.max(
             1,
-            numberValue(
-              firstValue(
-                item?.quantity,
-                item?.qty,
-                item?.units
-              ),
-              1
+            Math.floor(
+              numberValue(
+                firstValue(
+                  item?.quantity,
+                  item?.qty,
+                  item?.units
+                ),
+                1
+              )
             )
-          ),
+          );
 
-        selling_price:
-          numberValue(
+        const price =
+          positiveNumber(
             firstValue(
               item?.price,
               item?.salePrice,
-              item?.selling_price,
               item?.sellingPrice,
+              item?.selling_price,
               item?.unitPrice
             ),
             0
-          ),
+          );
 
-        discount:
-          numberValue(
-            item?.discount,
-            0
-          ),
+        if (price <= 0) {
+          throw new Error(
+            `Product ${index + 1} has an invalid price.`
+          );
+        }
 
-        tax:
-          numberValue(
-            item?.tax,
-            0
-          ),
+        return {
+          name:
+            String(
+              firstValue(
+                item?.name,
+                item?.title,
+                item?.productName
+              ) ||
+                `LUXMO HUB Product ${
+                  index + 1
+                }`
+            ).slice(0, 255),
 
-        hsn:
-          firstValue(
-            item?.hsn,
-            item?.hsnCode
-          ) || "",
+          sku:
+            String(
+              firstValue(
+                item?.sku,
+                item?.productSku,
+                item?.productId,
+                item?.id
+              ) ||
+                `LUXMO-${Date.now()}-${index}`
+            ).slice(0, 50),
 
-        brand:
-          firstValue(
-            item?.brand
-          ) ||
-          "LUXMO HUB",
-      })
+          units:
+            quantity,
+
+          selling_price:
+            price,
+
+          discount:
+            numberValue(
+              item?.discount,
+              0
+            ),
+
+          tax:
+            numberValue(
+              item?.tax,
+              0
+            ),
+
+          hsn:
+            String(
+              firstValue(
+                item?.hsn,
+                item?.hsnCode
+              ) || ""
+            ),
+
+          brand:
+            String(
+              firstValue(
+                item?.brand
+              ) ||
+                "LUXMO HUB"
+            ),
+        };
+      }
     );
 
-  const paymentMethod =
+  /* -------------------------------------------------------
+     CALCULATE SUBTOTAL
+     
+     Shiprocket requires the calculated subtotal.
+  ------------------------------------------------------- */
+
+  const calculatedSubtotal =
+    orderItems.reduce(
+      (
+        total,
+        item
+      ) => {
+        const itemTotal =
+          numberValue(
+            item.selling_price,
+            0
+          ) *
+          numberValue(
+            item.units,
+            1
+          );
+
+        const discount =
+          numberValue(
+            item.discount,
+            0
+          );
+
+        return (
+          total +
+          Math.max(
+            0,
+            itemTotal -
+              discount
+          )
+        );
+      },
+      0
+    );
+
+  if (
+    calculatedSubtotal <= 0
+  ) {
+    throw new Error(
+      "Calculated order subtotal must be greater than zero."
+    );
+  }
+
+  /* -------------------------------------------------------
+     SHIPPING / DISCOUNT
+  ------------------------------------------------------- */
+
+  const shippingCharges =
+    Math.max(
+      0,
+      numberValue(
+        order?.shippingCharges ||
+          order?.shipping_charges,
+        0
+      )
+    );
+
+  const totalDiscount =
+    Math.max(
+      0,
+      numberValue(
+        order?.discount ||
+          order?.totalDiscount ||
+          order?.total_discount,
+        0
+      )
+    );
+
+  /*
+   * IMPORTANT:
+   * Shiprocket wants sub_total as calculated
+   * product subtotal after item deductions.
+   */
+  const subTotal =
+    Math.max(
+      0,
+      calculatedSubtotal -
+        totalDiscount
+    );
+
+  if (subTotal <= 0) {
+    throw new Error(
+      "Shiprocket subtotal is zero after discount."
+    );
+  }
+
+  /* -------------------------------------------------------
+     PAYMENT
+  ------------------------------------------------------- */
+
+  const rawPayment =
     String(
-      order?.paymentMethod ||
-        order?.payment_method ||
+      firstValue(
+        order?.paymentMethod,
+        order?.payment_method,
         "PREPAID"
+      )
     )
       .trim()
-      .toLowerCase() ===
-    "cod"
+      .toUpperCase();
+
+  const paymentMethod =
+    rawPayment === "COD"
       ? "COD"
       : "PREPAID";
+
+  /* -------------------------------------------------------
+     PACKAGE
+  ------------------------------------------------------- */
+
+  const length =
+    positiveNumber(
+      firstValue(
+        order?.length,
+        order?.packageLength,
+        process.env
+          .DEFAULT_PACKAGE_LENGTH
+      ),
+      20
+    );
+
+  const breadth =
+    positiveNumber(
+      firstValue(
+        order?.breadth,
+        order?.packageBreadth,
+        process.env
+          .DEFAULT_PACKAGE_BREADTH
+      ),
+      15
+    );
+
+  const height =
+    positiveNumber(
+      firstValue(
+        order?.height,
+        order?.packageHeight,
+        process.env
+          .DEFAULT_PACKAGE_HEIGHT
+      ),
+      10
+    );
+
+  const weight =
+    positiveNumber(
+      firstValue(
+        order?.weight,
+        order?.packageWeight,
+        process.env
+          .DEFAULT_PACKAGE_WEIGHT
+      ),
+      1
+    );
+
+  /* -------------------------------------------------------
+     SHIPROCKET PAYLOAD
+  ------------------------------------------------------- */
 
   const payload = {
     order_id:
@@ -453,6 +696,9 @@ async function createShiprocket(
 
     comment:
       "LUXMO HUB Website Order",
+
+    reseller_name:
+      "LUXMO HUB",
 
     billing_customer_name:
       name,
@@ -479,10 +725,10 @@ async function createShiprocket(
       "India",
 
     billing_email:
-      email || "",
+      email,
 
     billing_phone:
-      String(phone),
+      phone,
 
     shipping_is_billing:
       false,
@@ -512,10 +758,10 @@ async function createShiprocket(
       "India",
 
     shipping_email:
-      email || "",
+      email,
 
     shipping_phone:
-      String(phone),
+      phone,
 
     order_items:
       orderItems,
@@ -524,91 +770,66 @@ async function createShiprocket(
       paymentMethod,
 
     shipping_charges:
-      numberValue(
-        order?.shippingCharges,
-        0
-      ),
+      shippingCharges,
+
+    giftwrap_charges:
+      0,
+
+    transaction_charges:
+      0,
 
     total_discount:
-      numberValue(
-        order?.discount,
-        0
-      ),
+      totalDiscount,
 
     sub_total:
-      total,
+      subTotal,
 
     length:
-      numberValue(
-        order?.length,
-        numberValue(
-          process.env
-            .DEFAULT_PACKAGE_LENGTH,
-          20
-        )
-      ),
+      length,
 
     breadth:
-      numberValue(
-        order?.breadth,
-        numberValue(
-          process.env
-            .DEFAULT_PACKAGE_BREADTH,
-          15
-        )
-      ),
+      breadth,
 
     height:
-      numberValue(
-        order?.height,
-        numberValue(
-          process.env
-            .DEFAULT_PACKAGE_HEIGHT,
-          10
-        )
-      ),
+      height,
 
     weight:
-      numberValue(
-        order?.weight,
-        numberValue(
-          process.env
-            .DEFAULT_PACKAGE_WEIGHT,
-          1
-        )
-      ),
+      weight,
   };
 
-  const created =
-    await shiprocketRequest(
-      "/orders/create/adhoc",
-      token,
-      payload
-    );
+  console.log(
+    "Creating Shiprocket order:",
+    {
+      orderId,
+      pickupLocation,
+      paymentMethod,
+      subTotal,
+      weight,
+    }
+  );
 
-  const shipmentId =
-    created?.shipment_id ||
-    created?.response
-      ?.shipment_id ||
-    created?.data
-      ?.shipment_id ||
-    null;
+  return shiprocketRequest(
+    "/orders/create/adhoc",
+    token,
+    payload
+  );
+}
 
-  const shiprocketOrderId =
-    created?.order_id ||
-    created?.response
-      ?.order_id ||
-    created?.data
-      ?.order_id ||
-    orderId;
+/* =========================================================
+   ASSIGN AWB
+========================================================= */
 
+async function assignAWB(
+  shipmentId,
+  token
+) {
   if (!shipmentId) {
     throw new Error(
-      "Shiprocket shipment ID was not returned."
+      "Shiprocket shipment ID is missing."
     );
   }
 
-  const awbResult =
+  const data =
     await shiprocketRequest(
       "/courier/assign/awb",
       token,
@@ -618,52 +839,54 @@ async function createShiprocket(
       }
     );
 
+  const responseData =
+    data?.response?.data ||
+    data?.response ||
+    data?.data ||
+    data ||
+    {};
+
   const awb =
-    awbResult?.response
-      ?.data?.awb_code ||
-    awbResult?.response
-      ?.awb_code ||
-    awbResult?.awb_code ||
-    awbResult?.data
-      ?.awb_code ||
-    null;
+    firstValue(
+      responseData?.awb_code,
+      responseData?.awb,
+      data?.awb_code,
+      data?.awb
+    );
 
   const courier =
-    awbResult?.response
-      ?.data?.courier_name ||
-    awbResult?.response
-      ?.courier_name ||
-    awbResult?.courier_name ||
-    null;
+    firstValue(
+      responseData?.courier_name,
+      responseData?.courier,
+      data?.courier_name,
+      data?.courier
+    );
+
+  if (!awb) {
+    console.error(
+      "Shiprocket AWB response:",
+      data
+    );
+
+    throw new Error(
+      data?.message ||
+        responseData?.message ||
+        "Shiprocket did not return an AWB number."
+    );
+  }
 
   return {
-    success: true,
-
-    provider:
-      "shiprocket",
-
-    orderId:
-      shiprocketOrderId,
-
-    shipmentId,
-
-    awb,
-
-    courier,
-
-    trackingUrl:
-      awb
-        ? `https://shiprocket.co/tracking/${awb}`
+    awb: String(awb),
+    courier:
+      courier
+        ? String(courier)
         : null,
-
-    message:
-      "Shiprocket shipment created successfully.",
   };
 }
 
-/* =====================================================
+/* =========================================================
    MAIN HANDLER
-===================================================== */
+========================================================= */
 
 export default async function handler(
   req,
@@ -678,7 +901,7 @@ export default async function handler(
     return res.status(405).json({
       success: false,
       error:
-        "Method not allowed",
+        "Method not allowed.",
     });
   }
 
@@ -689,16 +912,6 @@ export default async function handler(
     const order =
       body?.order || {};
 
-    const orderId =
-      getOrderId(
-        order,
-        body?.orderId
-      );
-
-    /*
-     * This endpoint is specifically
-     * for Shiprocket.
-     */
     const provider =
       String(
         body?.provider ||
@@ -710,20 +923,91 @@ export default async function handler(
         .toLowerCase();
 
     if (
-      provider !== "shiprocket"
+      provider !==
+      "shiprocket"
     ) {
       return res.status(400).json({
         success: false,
         error:
-          "Invalid provider for /api/shiprocket.",
+          "Invalid provider. This endpoint supports Shiprocket only.",
       });
     }
 
-    const result =
-      await createShiprocket(
+    const orderId =
+      getOrderId(
         order,
+        body?.orderId
+      );
+
+    /* -------------------------------------------------------
+       AUTH
+    ------------------------------------------------------- */
+
+    const token =
+      await getShiprocketToken();
+
+    /* -------------------------------------------------------
+       CREATE ORDER
+    ------------------------------------------------------- */
+
+    const created =
+      await createShiprocketOrder(
+        order,
+        orderId,
+        token
+      );
+
+    const shipmentId =
+      firstValue(
+        created?.shipment_id,
+        created?.response
+          ?.shipment_id,
+        created?.data
+          ?.shipment_id
+      );
+
+    const shiprocketOrderId =
+      firstValue(
+        created?.order_id,
+        created?.response
+          ?.order_id,
+        created?.data
+          ?.order_id,
         orderId
       );
+
+    if (!shipmentId) {
+      console.error(
+        "Shiprocket create response:",
+        created
+      );
+
+      throw new Error(
+        created?.message ||
+          "Shiprocket order was created but shipment ID was not returned."
+      );
+    }
+
+    /* -------------------------------------------------------
+       ASSIGN AWB
+    ------------------------------------------------------- */
+
+    const awbResult =
+      await assignAWB(
+        shipmentId,
+        token
+      );
+
+    const trackingUrl =
+      awbResult.awb
+        ? `https://shiprocket.co/tracking/${encodeURIComponent(
+            awbResult.awb
+          )}`
+        : null;
+
+    /* -------------------------------------------------------
+       SUCCESS
+    ------------------------------------------------------- */
 
     return res.status(200).json({
       success: true,
@@ -732,32 +1016,27 @@ export default async function handler(
         "shiprocket",
 
       orderId:
-        result.orderId ||
-        orderId,
+        String(
+          shiprocketOrderId
+        ),
 
       shipmentId:
-        result.shipmentId ||
-        null,
+        Number(shipmentId),
 
       awb:
-        result.awb ||
-        null,
+        awbResult.awb,
 
       courier:
-        result.courier ||
-        null,
+        awbResult.courier,
 
-      trackingUrl:
-        result.trackingUrl ||
-        null,
+      trackingUrl,
 
       message:
-        result.message ||
-        "Shiprocket shipment created successfully.",
+        "Shiprocket shipment created and AWB assigned successfully.",
     });
   } catch (error) {
     console.error(
-      "Shiprocket shipment error:",
+      "Shiprocket API error:",
       error
     );
 
