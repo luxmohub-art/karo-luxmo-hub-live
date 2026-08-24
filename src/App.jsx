@@ -2172,6 +2172,7 @@ function LuxmoCheckout({
       addresses[0] || {
         name: customer?.name || "",
         phone: customer?.phone || "",
+        email: customer?.email || "",
         line1: "",
         line2: "",
         city: "",
@@ -2367,15 +2368,25 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
+    const customerEmail = String(
+      draft.email || ""
+    ).trim().toLowerCase();
+
+    const validEmail =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        customerEmail
+      );
+
     if (
       !draft.name.trim() ||
       !luxmoValidateIndianMobile(draft.phone) ||
+      !validEmail ||
       !draft.line1.trim() ||
       !draft.city.trim() ||
       !luxmoValidatePincode(draft.pincode)
     ) {
       return alert(
-        "Please complete valid delivery details."
+        "Please enter a valid name, mobile number, email address, complete address and 6-digit pincode."
       );
     }
 
@@ -2407,6 +2418,22 @@ function LuxmoCheckout({
           : "Confirmed",
 
       paymentMethod: payment,
+
+      email: String(
+        draft.email || ""
+      ).trim().toLowerCase(),
+
+      customer: {
+        name: String(
+          draft.name || ""
+        ).trim(),
+        phone: String(
+          draft.phone || ""
+        ).trim(),
+        email: String(
+          draft.email || ""
+        ).trim().toLowerCase(),
+      },
 
       paymentStatus:
         payment === "razorpay"
@@ -2502,6 +2529,11 @@ function LuxmoCheckout({
                     if (address) {
                       setDraft({
                         ...address,
+                        email:
+                          address.email ||
+                          draft.email ||
+                          customer?.email ||
+                          "",
                         pincode:
                           luxmoNormalizePincode(
                             address.pincode
@@ -2532,6 +2564,7 @@ function LuxmoCheckout({
                 {[
                   ["name", "Full name"],
                   ["phone", "Mobile"],
+                  ["email", "Email address"],
                   ["line1", "Address"],
                   ["line2", "Address line 2"],
                   ["city", "City"],
@@ -2539,6 +2572,16 @@ function LuxmoCheckout({
                 ].map(([key, label]) => (
                   <input
                     key={key}
+                    type={key === "email" ? "email" : "text"}
+                    autoComplete={
+                      key === "email"
+                        ? "email"
+                        : key === "name"
+                          ? "name"
+                          : key === "phone"
+                            ? "tel"
+                            : "off"
+                    }
                     value={draft[key] || ""}
                     onChange={e =>
                       setDraft({
@@ -4781,7 +4824,6 @@ export default function LuxmoHubApp() {
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
-          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
@@ -4792,7 +4834,12 @@ export default function LuxmoHubApp() {
         customer: {
           name: address.name,
           phone: address.phone,
-          email: pendingOrder.email || address.email || ""
+          email: String(
+            pendingOrder.email ||
+            address.email ||
+            pendingOrder.customer?.email ||
+            ""
+          ).trim().toLowerCase()
         },
         shippingAddress: {
           name: address.name,
