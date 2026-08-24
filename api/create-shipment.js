@@ -1,40 +1,41 @@
 // api/create-shipment.js
-// LUXMO HUB — VERIFIED ORDER SHIPMENT + AWB + LABEL + INVOICE
+// LUXMO HUB
+// VERIFIED PAYMENT -> SHIPMENT -> AWB -> TRACKING -> DOCUMENTS
 //
-// Supports:
-// 1. Verified Razorpay payment check
-// 2. Shiprocket shipment creation
-// 3. iThink shipment creation
-// 4. AWB / courier / tracking
-// 5. Shiprocket pickup request
-// 6. Shipping label generation
-// 7. Invoice generation
-// 8. Combined label + invoice
-// 9. Firebase order update
-// 10. Duplicate shipment protection
+// Providers:
+//   1. Shiprocket
+//   2. iThink Logistics
+//
+// Important:
+// - Shipment is created ONLY after verified Razorpay payment.
+// - Duplicate shipment creation is blocked.
+// - Shiprocket label/invoice/combined document generation is supported.
+// - iThink label/invoice URLs are saved when iThink returns them.
+// - Notification/document failure never changes a Paid order to Failed.
 
 import { getFirestore } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "../lib/firebase-admin.js";
 
 /* =========================================================
-   HELPERS
+   BASIC HELPERS
 ========================================================= */
+
+function clean(value) {
+  return String(value ?? "").trim();
+}
+
+function cleanDocId(value) {
+  return clean(value)
+    .replace(/\//g, "_")
+    .slice(0, 120);
+}
 
 function sendJson(res, status, data) {
   return res.status(status).json(data);
 }
 
-function cleanDocId(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\//g, "_")
-    .slice(0, 120);
-}
-
 function normalizeProvider(value) {
-  const provider = String(value || "")
-    .trim()
-    .toLowerCase();
+  const provider = clean(value).toLowerCase();
 
   if (
     provider === "ithink" ||
@@ -48,13 +49,29 @@ function normalizeProvider(value) {
   return "shiprocket";
 }
 
-function cleanString(value) {
-  return String(value || "").trim();
+function toNumber(value, fallback = 0) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    const text = clean(value);
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
 }
 
 async function parseResponse(response) {
-  const contentType = String(
-    response.headers.get("content-type") || ""
+  const contentType = clean(
+    response.headers.get("content-type")
   ).toLowerCase();
 
   if (
@@ -73,7 +90,7 @@ async function parseResponse(response) {
 
   return text
     ? {
-        message: text.slice(0, 3000),
+        message: text.slice(0, 5000),
       }
     : {};
 }
@@ -83,11 +100,9 @@ async function parseResponse(response) {
 ========================================================= */
 
 function getBaseUrl(req) {
-  const configured =
-    String(
-      process.env.NEXT_PUBLIC_SITE_URL ||
-        ""
-    ).trim();
+  const configured = clean(
+    process.env.NEXT_PUBLIC_SITE_URL
+  );
 
   if (configured) {
     return configured.replace(
@@ -96,12 +111,10 @@ function getBaseUrl(req) {
     );
   }
 
-  const productionUrl =
-    String(
-      process.env
-        .VERCEL_PROJECT_PRODUCTION_URL ||
-        ""
-    ).trim();
+  const productionUrl = clean(
+    process.env
+      .VERCEL_PROJECT_PRODUCTION_URL
+  );
 
   if (productionUrl) {
     return `https://${productionUrl.replace(
@@ -110,13 +123,12 @@ function getBaseUrl(req) {
     )}`;
   }
 
-  const host = String(
+  const host = clean(
     req.headers?.[
       "x-forwarded-host"
     ] ||
-      req.headers?.host ||
-      ""
-  ).trim();
+      req.headers?.host
+  );
 
   if (!host) {
     throw new Error(
@@ -124,14 +136,13 @@ function getBaseUrl(req) {
     );
   }
 
-  const forwardedProto =
+  const forwardedProto = clean(
     String(
       req.headers?.[
         "x-forwarded-proto"
       ] || ""
-    )
-      .split(",")[0]
-      .trim();
+    ).split(",")[0]
+  );
 
   const protocol =
     forwardedProto ||
@@ -147,44 +158,45 @@ function getBaseUrl(req) {
 ========================================================= */
 
 async function getShiprocketToken() {
-  const email =
-    String(
-      process.env.SHIPROCKET_EMAIL ||
-        ""
-    ).trim();
+  const email = clean(
+    process.env.SHIPROCKET_EMAIL
+  );
 
-  const password =
-    String(
-      process.env.SHIPROCKET_PASSWORD ||
-        ""
-    ).trim();
+  const password = clean(
+    process.env.SHIPROCKET_PASSWORD
+  );
 
-  if (!email || !password) {
+  if (!email) {
     throw new Error(
-      "SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD is missing in Vercel Environment Variables."
+      "SHIPROCKET_EMAIL is missing in Vercel Environment Variables."
     );
   }
 
-  const response =
-    await fetch(
-      "https://apiv2.shiprocket.in/v1/external/auth/login",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          Accept:
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      }
+  if (!password) {
+    throw new Error(
+      "SHIPROCKET_PASSWORD is missing in Vercel Environment Variables."
     );
+  }
+
+  const response = await fetch(
+    "https://apiv2.shiprocket.in/v1/external/auth/login",
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+
+        Accept:
+          "application/json",
+      },
+
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    }
+  );
 
   const data =
     await response
@@ -206,7 +218,7 @@ async function getShiprocketToken() {
 }
 
 /* =========================================================
-   SHIPROCKET POST
+   SHIPROCKET REQUEST
 ========================================================= */
 
 async function shiprocketPost(
@@ -231,7 +243,8 @@ async function shiprocketPost(
             `Bearer ${token}`,
         },
 
-        body: JSON.stringify(body),
+        body:
+          JSON.stringify(body),
       }
     );
 
@@ -241,14 +254,20 @@ async function shiprocketPost(
       .catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
+    const errorText =
       data?.message ||
-        data?.error ||
+      data?.error ||
+      (
         data?.errors
           ? JSON.stringify(
-              data?.errors || data
+              data.errors
             )
-          : `Shiprocket API failed (${response.status}).`
+          : ""
+      ) ||
+      `Shiprocket API failed (${response.status}).`;
+
+    throw new Error(
+      errorText
     );
   }
 
@@ -256,7 +275,7 @@ async function shiprocketPost(
 }
 
 /* =========================================================
-   GENERATE SHIPPING LABEL
+   SHIPROCKET LABEL
 ========================================================= */
 
 async function generateShippingLabel({
@@ -268,7 +287,7 @@ async function generateShippingLabel({
       success: false,
       url: "",
       error:
-        "Shipment ID is required for label generation.",
+        "Shipment ID missing for label generation.",
     };
   }
 
@@ -288,17 +307,20 @@ async function generateShippingLabel({
       success: true,
 
       url:
-        data?.label_url ||
-        data?.labelUrl ||
-        data?.url ||
-        "",
+        firstValue(
+          data?.label_url,
+          data?.labelUrl,
+          data?.url
+        ),
 
       raw: data,
     };
   } catch (error) {
     return {
       success: false,
+
       url: "",
+
       error:
         error?.message ||
         "Shipping label generation failed.",
@@ -307,7 +329,7 @@ async function generateShippingLabel({
 }
 
 /* =========================================================
-   GENERATE INVOICE
+   SHIPROCKET INVOICE
 ========================================================= */
 
 async function generateInvoice({
@@ -317,9 +339,11 @@ async function generateInvoice({
   if (!logisticsOrderId) {
     return {
       success: false,
+
       url: "",
+
       error:
-        "Shiprocket order ID is required for invoice generation.",
+        "Shiprocket order ID missing for invoice generation.",
     };
   }
 
@@ -341,17 +365,20 @@ async function generateInvoice({
       success: true,
 
       url:
-        data?.invoice_url ||
-        data?.invoiceUrl ||
-        data?.url ||
-        "",
+        firstValue(
+          data?.invoice_url,
+          data?.invoiceUrl,
+          data?.url
+        ),
 
       raw: data,
     };
   } catch (error) {
     return {
       success: false,
+
       url: "",
+
       error:
         error?.message ||
         "Invoice generation failed.",
@@ -360,7 +387,7 @@ async function generateInvoice({
 }
 
 /* =========================================================
-   GENERATE COMBINED LABEL + INVOICE
+   SHIPROCKET COMBINED LABEL + INVOICE
 ========================================================= */
 
 async function generateCombinedDocument({
@@ -370,9 +397,11 @@ async function generateCombinedDocument({
   if (!shipmentId) {
     return {
       success: false,
+
       url: "",
+
       error:
-        "Shipment ID is required.",
+        "Shipment ID missing for combined document.",
     };
   }
 
@@ -392,14 +421,16 @@ async function generateCombinedDocument({
       success: true,
 
       url:
-        data?.file_url ||
-        data?.fileUrl ||
-        data?.url ||
-        "",
+        firstValue(
+          data?.file_url,
+          data?.fileUrl,
+          data?.url
+        ),
 
       errorCount:
-        Number(
-          data?.error_count || 0
+        toNumber(
+          data?.error_count,
+          0
         ),
 
       raw: data,
@@ -407,7 +438,9 @@ async function generateCombinedDocument({
   } catch (error) {
     return {
       success: false,
+
       url: "",
+
       error:
         error?.message ||
         "Combined label/invoice generation failed.",
@@ -416,7 +449,7 @@ async function generateCombinedDocument({
 }
 
 /* =========================================================
-   PICKUP REQUEST
+   SHIPROCKET PICKUP
 ========================================================= */
 
 async function requestPickup({
@@ -426,9 +459,14 @@ async function requestPickup({
   if (!shipmentId) {
     return {
       success: false,
-      status: "Pending",
+
+      status:
+        "Pending",
+
+      tokenNumber: "",
+
       error:
-        "Shipment ID is required.",
+        "Shipment ID missing for pickup request.",
     };
   }
 
@@ -448,15 +486,19 @@ async function requestPickup({
       success: true,
 
       status:
-        data?.pickup_status ||
-        data?.status ||
+        firstValue(
+          data?.pickup_status,
+          data?.status
+        ) ||
         "Requested",
 
       tokenNumber:
-        data?.response?.data
-          ?.pickup_token_number ||
-        data?.pickup_token_number ||
-        "",
+        firstValue(
+          data?.response?.data
+            ?.pickup_token_number,
+
+          data?.pickup_token_number
+        ),
 
       raw: data,
     };
@@ -464,7 +506,10 @@ async function requestPickup({
     return {
       success: false,
 
-      status: "Pending",
+      status:
+        "Pending",
+
+      tokenNumber: "",
 
       error:
         error?.message ||
@@ -474,7 +519,7 @@ async function requestPickup({
 }
 
 /* =========================================================
-   DOCUMENT GENERATION
+   SHIPROCKET DOCUMENTS
 ========================================================= */
 
 async function generateShiprocketDocuments({
@@ -486,12 +531,7 @@ async function generateShiprocketDocuments({
 
   let labelUrl = "";
   let invoiceUrl = "";
-  let combinedLabelInvoiceUrl =
-    "";
-
-  /* -------------------------------------------------------
-     SHIPPING LABEL
-  ------------------------------------------------------- */
+  let combinedLabelInvoiceUrl = "";
 
   const label =
     await generateShippingLabel({
@@ -500,16 +540,13 @@ async function generateShiprocketDocuments({
     });
 
   if (label.success) {
-    labelUrl = label.url || "";
+    labelUrl =
+      label.url || "";
   } else if (label.error) {
     errors.push(
       `Label: ${label.error}`
     );
   }
-
-  /* -------------------------------------------------------
-     INVOICE
-  ------------------------------------------------------- */
 
   const invoice =
     await generateInvoice({
@@ -526,10 +563,6 @@ async function generateShiprocketDocuments({
     );
   }
 
-  /* -------------------------------------------------------
-     COMBINED LABEL + INVOICE
-  ------------------------------------------------------- */
-
   const combined =
     await generateCombinedDocument({
       shipmentId,
@@ -541,9 +574,7 @@ async function generateShiprocketDocuments({
       combined.url || "";
 
     if (
-      Number(
-        combined.errorCount || 0
-      ) > 0
+      combined.errorCount > 0
     ) {
       errors.push(
         "Shiprocket reported an error while generating combined label/invoice."
@@ -568,6 +599,209 @@ async function generateShiprocketDocuments({
 }
 
 /* =========================================================
+   EXTRACT PROVIDER RESPONSE
+========================================================= */
+
+function extractProviderData(
+  data
+) {
+  const root =
+    data?.data ||
+    data?.response ||
+    data ||
+    {};
+
+  const shipment =
+    root?.shipment ||
+    {};
+
+  const shipments =
+    Array.isArray(
+      root?.shipments
+    )
+      ? root.shipments
+      : Array.isArray(
+          data?.shipments
+        )
+      ? data.shipments
+      : [];
+
+  const first =
+    shipments[0] ||
+    shipment ||
+    {};
+
+  return {
+    shipmentId:
+      firstValue(
+        data?.shipmentId,
+        data?.shipment_id,
+        root?.shipmentId,
+        root?.shipment_id,
+        first?.shipmentId,
+        first?.shipment_id
+      ),
+
+    logisticsOrderId:
+      firstValue(
+        data?.orderId,
+        data?.order_id,
+        data?.shiprocketOrderId,
+        data?.shiprocket_order_id,
+        root?.orderId,
+        root?.order_id,
+        first?.orderId,
+        first?.order_id
+      ),
+
+    awb:
+      firstValue(
+        data?.awb,
+        data?.awbCode,
+        data?.awb_code,
+        data?.waybill,
+        data?.airway_bill_no,
+
+        root?.awb,
+        root?.awbCode,
+        root?.awb_code,
+        root?.waybill,
+
+        first?.awb,
+        first?.awbCode,
+        first?.awb_code,
+        first?.waybill,
+        first?.airway_bill_no
+      ),
+
+    courier:
+      firstValue(
+        data?.courier,
+        data?.courier_name,
+        data?.logistic_name,
+
+        root?.courier,
+        root?.courier_name,
+        root?.logistic_name,
+
+        first?.courier,
+        first?.courier_name,
+        first?.logistics
+      ),
+
+    trackingUrl:
+      firstValue(
+        data?.trackingUrl,
+        data?.tracking_url,
+
+        root?.trackingUrl,
+        root?.tracking_url,
+
+        first?.trackingUrl,
+        first?.tracking_url
+      ),
+
+    labelUrl:
+      firstValue(
+        data?.labelUrl,
+        data?.label_url,
+
+        root?.labelUrl,
+        root?.label_url,
+
+        first?.labelUrl,
+        first?.label_url
+      ),
+
+    invoiceUrl:
+      firstValue(
+        data?.invoiceUrl,
+        data?.invoice_url,
+
+        root?.invoiceUrl,
+        root?.invoice_url,
+
+        first?.invoiceUrl,
+        first?.invoice_url
+      ),
+
+    status:
+      firstValue(
+        data?.status,
+        root?.status,
+        first?.status
+      ),
+
+    message:
+      firstValue(
+        data?.message,
+        root?.message,
+        first?.message
+      ),
+  };
+}
+
+/* =========================================================
+   FIND FIREBASE ORDER
+========================================================= */
+
+async function findOrder({
+  db,
+  suppliedOrderId,
+  razorpayOrderId,
+}) {
+  const ordersRef =
+    db.collection("orders");
+
+  if (suppliedOrderId) {
+    const ref =
+      ordersRef.doc(
+        cleanDocId(
+          suppliedOrderId
+        )
+      );
+
+    const snapshot =
+      await ref.get();
+
+    if (snapshot.exists) {
+      return {
+        ref,
+
+        data:
+          snapshot.data() || {},
+      };
+    }
+  }
+
+  if (razorpayOrderId) {
+    const query =
+      await ordersRef
+        .where(
+          "razorpayOrderId",
+          "==",
+          razorpayOrderId
+        )
+        .limit(1)
+        .get();
+
+    if (!query.empty) {
+      const doc =
+        query.docs[0];
+
+      return {
+        ref: doc.ref,
+
+        data:
+          doc.data() || {},
+      };
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
    MAIN HANDLER
 ========================================================= */
 
@@ -588,6 +822,7 @@ export default async function handler(
       405,
       {
         success: false,
+
         error:
           "Method not allowed.",
       }
@@ -598,18 +833,35 @@ export default async function handler(
     const body =
       req.body || {};
 
+    const suppliedOrder =
+      body?.order &&
+      typeof body.order ===
+        "object"
+        ? body.order
+        : body?.orderData &&
+          typeof body.orderData ===
+            "object"
+        ? body.orderData
+        : {};
+
     /* =====================================================
-       BASIC PAYMENT IDENTIFIERS
+       RAZORPAY IDs
     ===================================================== */
 
     const razorpayOrderId =
-      cleanString(
-        body.razorpay_order_id
+      firstValue(
+        body.razorpay_order_id,
+
+        suppliedOrder
+          .razorpayOrderId
       );
 
     const razorpayPaymentId =
-      cleanString(
-        body.razorpay_payment_id
+      firstValue(
+        body.razorpay_payment_id,
+
+        suppliedOrder
+          .razorpayPaymentId
       );
 
     if (
@@ -621,8 +873,9 @@ export default async function handler(
         400,
         {
           success: false,
+
           error:
-            "Verified Razorpay order and payment IDs are required.",
+            "Verified Razorpay order ID and payment ID are required.",
         }
       );
     }
@@ -635,99 +888,37 @@ export default async function handler(
       getFirebaseAdmin();
 
     const db =
-      getFirestore(adminApp);
-
-    const ordersRef =
-      db.collection("orders");
-
-    /* =====================================================
-       FIND ORDER
-    ===================================================== */
-
-    const suppliedOrder =
-      body?.order &&
-      typeof body.order ===
-        "object"
-        ? body.order
-        : {};
-
-    const suppliedOrderId =
-      cleanString(
-        suppliedOrder.id ||
-          suppliedOrder.websiteOrderId ||
-          suppliedOrder.orderId ||
-          body.orderId
+      getFirestore(
+        adminApp
       );
 
-    let orderSnapshot =
-      null;
+    const suppliedOrderId =
+      firstValue(
+        suppliedOrder.websiteOrderId,
 
-    /* -----------------------------------------------------
-       FIRST: DIRECT DOCUMENT ID
-    ----------------------------------------------------- */
+        suppliedOrder.orderId,
 
-    if (
-      suppliedOrderId
-    ) {
-      const ref =
-        ordersRef.doc(
-          cleanDocId(
-            suppliedOrderId
-          )
-        );
+        suppliedOrder.id,
 
-      const snapshot =
-        await ref.get();
+        body.orderId
+      );
 
-      if (snapshot.exists) {
-        orderSnapshot = {
-          ref,
-          data:
-            snapshot.data() || {},
-        };
-      }
-    }
+    const found =
+      await findOrder({
+        db,
 
-    /* -----------------------------------------------------
-       SECOND: RAZORPAY ORDER ID
-    ----------------------------------------------------- */
+        suppliedOrderId,
 
-    if (
-      !orderSnapshot
-    ) {
-      const query =
-        await ordersRef
-          .where(
-            "razorpayOrderId",
-            "==",
-            razorpayOrderId
-          )
-          .limit(1)
-          .get();
+        razorpayOrderId,
+      });
 
-      if (
-        !query.empty
-      ) {
-        const doc =
-          query.docs[0];
-
-        orderSnapshot = {
-          ref: doc.ref,
-
-          data:
-            doc.data() || {},
-        };
-      }
-    }
-
-    if (
-      !orderSnapshot
-    ) {
+    if (!found) {
       return sendJson(
         res,
         404,
         {
           success: false,
+
           error:
             "Verified payment order was not found in Firebase. Shipment creation stopped.",
         }
@@ -735,7 +926,7 @@ export default async function handler(
     }
 
     const order =
-      orderSnapshot.data || {};
+      found.data || {};
 
     /* =====================================================
        PAYMENT SECURITY
@@ -750,6 +941,7 @@ export default async function handler(
         403,
         {
           success: false,
+
           error:
             "Payment is not verified. Shipment creation is blocked.",
         }
@@ -757,9 +949,8 @@ export default async function handler(
     }
 
     if (
-      String(
-        order.paymentStatus ||
-          ""
+      clean(
+        order.paymentStatus
       ).toLowerCase() !==
       "paid"
     ) {
@@ -768,6 +959,7 @@ export default async function handler(
         403,
         {
           success: false,
+
           error:
             "Order payment status is not Paid. Shipment creation is blocked.",
         }
@@ -775,9 +967,8 @@ export default async function handler(
     }
 
     if (
-      String(
-        order.razorpayOrderId ||
-          ""
+      clean(
+        order.razorpayOrderId
       ) !==
       razorpayOrderId
     ) {
@@ -786,6 +977,7 @@ export default async function handler(
         403,
         {
           success: false,
+
           error:
             "Razorpay order ID does not match the verified Firebase order.",
         }
@@ -793,9 +985,8 @@ export default async function handler(
     }
 
     if (
-      String(
-        order.razorpayPaymentId ||
-          ""
+      clean(
+        order.razorpayPaymentId
       ) !==
       razorpayPaymentId
     ) {
@@ -804,6 +995,7 @@ export default async function handler(
         403,
         {
           success: false,
+
           error:
             "Razorpay payment ID does not match the verified Firebase order.",
         }
@@ -817,92 +1009,81 @@ export default async function handler(
     const provider =
       normalizeProvider(
         body.provider ||
+
           order.provider ||
+
           order.courierProvider ||
+
           process.env
             .DEFAULT_LOGISTICS_PROVIDER ||
+
           "shiprocket"
       );
 
     /* =====================================================
-       ALREADY CREATED SHIPMENT
+       DUPLICATE SHIPMENT PROTECTION
     ===================================================== */
 
-    const shipmentAlreadyCreated =
-      Boolean(
+    const existingShipmentId =
+      firstValue(
         order.shipmentId
-      ) &&
-      (
-        String(
-          order.shipmentStatus ||
-            ""
-        ).toLowerCase() ===
-          "created" ||
-        String(
-          order.shipmentStatus ||
-            ""
-        ).toLowerCase() ===
-          "shipped" ||
-        String(
-          order.shipmentStatus ||
-            ""
-        ).toLowerCase() ===
-          "awb assigned"
       );
 
     if (
-      shipmentAlreadyCreated
+      existingShipmentId
     ) {
-      /*
-        Shipment already exists.
-
-        We DO NOT create another shipment.
-
-        Instead, if Shiprocket documents are missing,
-        attempt to generate them again.
-      */
-
       let labelUrl =
-        order.labelUrl || "";
+        firstValue(
+          order.labelUrl
+        );
 
       let invoiceUrl =
-        order.invoiceUrl || "";
+        firstValue(
+          order.invoiceUrl
+        );
 
       let combinedLabelInvoiceUrl =
-        order.combinedLabelInvoiceUrl ||
-        "";
-
-      let documentError =
-        order.documentError || "";
+        firstValue(
+          order.combinedLabelInvoiceUrl
+        );
 
       let pickupStatus =
-        order.pickupStatus || "";
+        firstValue(
+          order.pickupStatus
+        ) ||
+        "Pending";
 
       let pickupToken =
-        order.pickupToken || "";
+        firstValue(
+          order.pickupToken
+        );
+
+      let documentError =
+        firstValue(
+          order.documentError
+        );
+
+      /* ---------------------------------------------------
+         SHIPROCKET BACKFILL
+      --------------------------------------------------- */
 
       if (
         provider ===
-          "shiprocket" &&
-        order.shipmentId
+          "shiprocket"
       ) {
         try {
           const token =
             await getShiprocketToken();
 
-          /* ------------------------------------------------
-             MISSING PICKUP
-          ------------------------------------------------ */
-
           if (
-            !pickupStatus ||
             pickupStatus ===
-              "Pending"
+              "Pending" ||
+            !pickupStatus
           ) {
             const pickup =
               await requestPickup({
                 shipmentId:
-                  order.shipmentId,
+                  existingShipmentId,
 
                 token,
               });
@@ -923,6 +1104,7 @@ export default async function handler(
               documentError =
                 [
                   documentError,
+
                   `Pickup: ${pickup.error}`,
                 ]
                   .filter(Boolean)
@@ -930,52 +1112,51 @@ export default async function handler(
             }
           }
 
-          /* ------------------------------------------------
-             MISSING DOCUMENTS
-          ------------------------------------------------ */
-
           if (
             !labelUrl ||
             !invoiceUrl ||
             !combinedLabelInvoiceUrl
           ) {
-            const documents =
+            const docs =
               await generateShiprocketDocuments(
                 {
                   shipmentId:
-                    order.shipmentId,
+                    existingShipmentId,
 
                   logisticsOrderId:
-                    order.logisticsOrderId ||
-                    order.shiprocketOrderId ||
-                    null,
+                    firstValue(
+                      order.logisticsOrderId,
+
+                      order.shiprocketOrderId
+                    ),
 
                   token,
                 }
               );
 
             labelUrl =
-              documents.labelUrl ||
+              docs.labelUrl ||
               labelUrl;
 
             invoiceUrl =
-              documents.invoiceUrl ||
+              docs.invoiceUrl ||
               invoiceUrl;
 
             combinedLabelInvoiceUrl =
-              documents.combinedLabelInvoiceUrl ||
+              docs.combinedLabelInvoiceUrl ||
               combinedLabelInvoiceUrl;
 
             documentError =
               [
                 documentError,
-                documents.documentError,
+
+                docs.documentError,
               ]
                 .filter(Boolean)
                 .join(" | ");
           }
 
-          await orderSnapshot.ref.set(
+          await found.ref.set(
             {
               labelUrl,
 
@@ -983,15 +1164,16 @@ export default async function handler(
 
               combinedLabelInvoiceUrl,
 
-              documentError,
-
               pickupStatus,
 
               pickupToken,
 
+              documentError,
+
               updatedAt:
                 new Date().toISOString(),
             },
+
             {
               merge: true,
             }
@@ -1000,13 +1182,18 @@ export default async function handler(
           documentError =
             [
               documentError,
+
               error?.message ||
-                "Unable to generate shipment documents.",
+                "Shipment document backfill failed.",
             ]
               .filter(Boolean)
               .join(" | ");
         }
       }
+
+      /* ---------------------------------------------------
+         ALREADY PROCESSED RESPONSE
+      --------------------------------------------------- */
 
       return sendJson(
         res,
@@ -1020,30 +1207,43 @@ export default async function handler(
           provider,
 
           orderId:
-            order.websiteOrderId ||
-            order.id ||
-            suppliedOrderId ||
-            razorpayOrderId,
+            firstValue(
+              order.websiteOrderId,
+
+              order.orderId,
+
+              order.id,
+
+              suppliedOrderId
+            ),
 
           shipmentId:
-            order.shipmentId ||
-            null,
+            existingShipmentId,
 
           logisticsOrderId:
-            order.logisticsOrderId ||
-            order.shiprocketOrderId ||
+            firstValue(
+              order.logisticsOrderId,
+
+              order.shiprocketOrderId
+            ) ||
             null,
 
           awb:
-            order.awb ||
+            firstValue(
+              order.awb
+            ) ||
             null,
 
           courier:
-            order.courier ||
+            firstValue(
+              order.courier
+            ) ||
             null,
 
           trackingUrl:
-            order.trackingUrl ||
+            firstValue(
+              order.trackingUrl
+            ) ||
             null,
 
           pickupStatus,
@@ -1066,35 +1266,50 @@ export default async function handler(
             documentError || "",
 
           message:
-            "Shipment already exists. Missing tracking documents were checked/backfilled.",
+            "Shipment already exists. Existing shipment was not duplicated.",
         }
       );
     }
 
     /* =====================================================
-       BUILD TRUSTED ORDER
+       TRUSTED ORDER
     ===================================================== */
 
     const trustedOrder = {
       ...order,
 
       id:
-        order.websiteOrderId ||
-        order.id ||
-        suppliedOrderId ||
-        razorpayOrderId,
+        firstValue(
+          order.websiteOrderId,
+
+          order.orderId,
+
+          order.id,
+
+          suppliedOrderId
+        ),
 
       orderId:
-        order.websiteOrderId ||
-        order.id ||
-        suppliedOrderId ||
-        razorpayOrderId,
+        firstValue(
+          order.websiteOrderId,
+
+          order.orderId,
+
+          order.id,
+
+          suppliedOrderId
+        ),
 
       websiteOrderId:
-        order.websiteOrderId ||
-        order.id ||
-        suppliedOrderId ||
-        "",
+        firstValue(
+          order.websiteOrderId,
+
+          order.orderId,
+
+          order.id,
+
+          suppliedOrderId
+        ),
 
       razorpayOrderId,
 
@@ -1116,21 +1331,25 @@ export default async function handler(
     };
 
     /* =====================================================
-       CREATE SHIPMENT
+       PROVIDER ENDPOINT
     ===================================================== */
 
     const baseUrl =
       getBaseUrl(req);
 
-    const providerEndpoint =
+    const endpoint =
       provider ===
       "ithink"
         ? "/api/ithink"
         : "/api/shiprocket";
 
+    /* =====================================================
+       CREATE PROVIDER SHIPMENT
+    ===================================================== */
+
     const providerResponse =
       await fetch(
-        `${baseUrl}${providerEndpoint}`,
+        `${baseUrl}${endpoint}`,
         {
           method: "POST",
 
@@ -1142,18 +1361,19 @@ export default async function handler(
               "application/json",
           },
 
-          body: JSON.stringify({
-            order:
-              trustedOrder,
+          body:
+            JSON.stringify({
+              order:
+                trustedOrder,
 
-            orderId:
-              trustedOrder.orderId,
+              orderId:
+                trustedOrder.orderId,
 
-            paymentId:
-              razorpayPaymentId,
+              paymentId:
+                razorpayPaymentId,
 
-            provider,
-          }),
+              provider,
+            }),
         }
       );
 
@@ -1168,11 +1388,14 @@ export default async function handler(
         false
     ) {
       const message =
-        providerData?.error ||
-        providerData?.message ||
+        firstValue(
+          providerData?.error,
+
+          providerData?.message
+        ) ||
         `${provider} shipment creation failed.`;
 
-      await orderSnapshot.ref.set(
+      await found.ref.set(
         {
           shipmentStatus:
             "Pending",
@@ -1186,6 +1409,7 @@ export default async function handler(
           updatedAt:
             new Date().toISOString(),
         },
+
         {
           merge: true,
         }
@@ -1196,13 +1420,14 @@ export default async function handler(
         providerResponse.status >=
           400
           ? providerResponse.status
-          : 500,
+          : 502,
         {
           success: false,
 
           provider,
 
-          error: message,
+          error:
+            message,
 
           details:
             providerData || null,
@@ -1211,65 +1436,99 @@ export default async function handler(
     }
 
     /* =====================================================
-       EXTRACT SHIPMENT DATA
+       EXTRACT SHIPMENT
     ===================================================== */
+
+    const extracted =
+      extractProviderData(
+        providerData
+      );
 
     const shipmentId =
-      providerData?.shipmentId ||
-      providerData?.shipment_id ||
-      providerData?.referenceNumber ||
-      providerData?.refnum ||
-      null;
+      firstValue(
+        extracted.shipmentId
+      );
 
     const logisticsOrderId =
-      providerData?.orderId ||
-      providerData?.order_id ||
-      providerData?.shiprocketOrderId ||
-      providerData?.shiprocket_order_id ||
-      null;
+      firstValue(
+        extracted.logisticsOrderId
+      );
 
     const awb =
-      providerData?.awb ||
-      providerData?.awbCode ||
-      providerData?.awb_code ||
-      providerData?.waybill ||
-      null;
+      firstValue(
+        extracted.awb
+      );
 
     const courier =
-      providerData?.courier ||
-      providerData?.courier_name ||
-      providerData?.logistic_name ||
-      null;
+      firstValue(
+        extracted.courier
+      );
 
     const trackingUrl =
-      providerData?.trackingUrl ||
-      providerData?.tracking_url ||
-      null;
-
-    if (!shipmentId) {
-      throw new Error(
-        `${provider} did not return a shipment ID.`
+      firstValue(
+        extracted.trackingUrl
       );
-    }
 
-    /* =====================================================
-       DOCUMENTS + PICKUP
-    ===================================================== */
+    let labelUrl =
+      firstValue(
+        extracted.labelUrl
+      );
 
-    let labelUrl = "";
-
-    let invoiceUrl = "";
+    let invoiceUrl =
+      firstValue(
+        extracted.invoiceUrl
+      );
 
     let combinedLabelInvoiceUrl =
       "";
 
-    let documentError = "";
+    let documentError =
+      "";
 
     let pickupStatus =
-      "";
+      "Pending";
 
     let pickupToken =
       "";
+
+    if (!shipmentId) {
+      await found.ref.set(
+        {
+          shipmentStatus:
+            "Pending",
+
+          shipmentError:
+            `${provider} did not return a shipment ID.`,
+
+          updatedAt:
+            new Date().toISOString(),
+        },
+
+        {
+          merge: true,
+        }
+      );
+
+      return sendJson(
+        res,
+        502,
+        {
+          success: false,
+
+          provider,
+
+          error:
+            `${provider} did not return a shipment ID.`,
+
+          details:
+            providerData,
+        }
+      );
+    }
+
+    /* =====================================================
+       SHIPROCKET DOCUMENTS + PICKUP
+    ===================================================== */
 
     if (
       provider ===
@@ -1278,10 +1537,6 @@ export default async function handler(
       try {
         const token =
           await getShiprocketToken();
-
-        /* ------------------------------------------------
-           PICKUP
-        ------------------------------------------------ */
 
         const pickup =
           await requestPickup({
@@ -1305,11 +1560,7 @@ export default async function handler(
             `Pickup: ${pickup.error}`;
         }
 
-        /* ------------------------------------------------
-           LABEL + INVOICE
-        ------------------------------------------------ */
-
-        const documents =
+        const docs =
           await generateShiprocketDocuments(
             {
               shipmentId,
@@ -1321,21 +1572,22 @@ export default async function handler(
           );
 
         labelUrl =
-          documents.labelUrl ||
-          "";
+          docs.labelUrl ||
+          labelUrl;
 
         invoiceUrl =
-          documents.invoiceUrl ||
-          "";
+          docs.invoiceUrl ||
+          invoiceUrl;
 
         combinedLabelInvoiceUrl =
-          documents.combinedLabelInvoiceUrl ||
+          docs.combinedLabelInvoiceUrl ||
           "";
 
         documentError =
           [
             documentError,
-            documents.documentError,
+
+            docs.documentError,
           ]
             .filter(Boolean)
             .join(" | ");
@@ -1343,6 +1595,7 @@ export default async function handler(
         documentError =
           [
             documentError,
+
             error?.message ||
               "Shiprocket document generation failed.",
           ]
@@ -1352,13 +1605,61 @@ export default async function handler(
     }
 
     /* =====================================================
-       FINAL FIRESTORE UPDATE
+       iTHINK DOCUMENT HANDLING
+    ===================================================== */
+
+    if (
+      provider ===
+      "ithink"
+    ) {
+      /*
+        iThink.js already extracts label_url and
+        invoice_url when iThink returns them.
+
+        We intentionally do NOT call a made-up
+        iThink document endpoint here.
+      */
+
+      if (
+        !labelUrl
+      ) {
+        documentError =
+          [
+            documentError,
+
+            "iThink did not return a shipping label URL.",
+          ]
+            .filter(Boolean)
+            .join(" | ");
+      }
+
+      if (
+        !invoiceUrl
+      ) {
+        documentError =
+          [
+            documentError,
+
+            "iThink did not return an invoice URL.",
+          ]
+            .filter(Boolean)
+            .join(" | ");
+      }
+    }
+
+    /* =====================================================
+       FINAL FIREBASE UPDATE
     ===================================================== */
 
     const now =
       new Date().toISOString();
 
-    await orderSnapshot.ref.set(
+    const finalStatus =
+      awb
+        ? "AWB Assigned"
+        : "Shipment Created";
+
+    await found.ref.set(
       {
         paymentStatus:
           "Paid",
@@ -1367,13 +1668,15 @@ export default async function handler(
           true,
 
         shipmentStatus:
-          "Created",
+          finalStatus,
 
         status:
-          "Shipment Created",
+          finalStatus,
 
         courierProvider:
           provider,
+
+        provider,
 
         courier:
           courier ||
@@ -1426,13 +1729,14 @@ export default async function handler(
         updatedAt:
           now,
       },
+
       {
         merge: true,
       }
     );
 
     /* =====================================================
-       SUCCESS RESPONSE
+       FINAL RESPONSE
     ===================================================== */
 
     return sendJson(
@@ -1491,8 +1795,14 @@ export default async function handler(
           documentError ||
           "",
 
+        paymentStatus:
+          "Paid",
+
+        shipmentStatus:
+          finalStatus,
+
         message:
-          providerData?.message ||
+          extracted.message ||
           `${provider} shipment created successfully.`,
       }
     );
@@ -1510,7 +1820,7 @@ export default async function handler(
 
         error:
           error?.message ||
-          "Internal server error.",
+          "Internal server error while creating shipment.",
       }
     );
   }
