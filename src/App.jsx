@@ -102,6 +102,80 @@ async function createAuthoritativeShipment(payload) {
   return data;
 }
 
+function luxmoInvoiceValue(value) {
+  return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function luxmoEscapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function luxmoBuildInvoiceHtml(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const address = order?.shippingAddress || order?.address || {};
+  const customer = order?.customer || {};
+  const subtotal = Number(order?.subtotal ?? order?.pricing?.subtotal ?? 0);
+  const discount = Number(order?.discount ?? order?.pricing?.discount ?? 0);
+  const shipping = Number(order?.shippingFee ?? order?.pricing?.shippingFee ?? 0);
+  const total = Number(order?.total ?? order?.pricing?.total ?? order?.amount ?? 0);
+  const rows = items.map((item, index) => {
+    const qty = Math.max(1, Number(item?.qty ?? item?.quantity ?? 1));
+    const lineTotal = Number(item?.price ?? item?.salePrice ?? item?.sellingPrice ?? 0) * qty;
+    const gstRate = Number(item?.gstRate ?? item?.taxRate ?? 18);
+    const taxable = gstRate > 0 ? lineTotal / (1 + gstRate / 100) : lineTotal;
+    const tax = lineTotal - taxable;
+    const hsn = item?.hsn || item?.hsnCode || "";
+    return `<tr><td>${index + 1}</td><td>${luxmoEscapeHtml(item?.title || item?.name || "Product")}<br><small>${luxmoEscapeHtml(item?.model || "")} ${luxmoEscapeHtml(item?.colour || item?.color || "")}</small></td><td>${luxmoEscapeHtml(hsn)}</td><td>${qty}</td><td>${gstRate}%</td><td>₹${luxmoInvoiceValue(taxable)}</td><td>₹${luxmoInvoiceValue(tax)}</td><td>₹${luxmoInvoiceValue(lineTotal)}</td></tr>`;
+  }).join("");
+  const state = String(address?.state || "").trim().toLowerCase();
+  const isIntraState = !state || state === "uttar pradesh" || state === "up";
+  const totalTax = Math.max(0, total - shipping - (subtotal - discount));
+  const cgst = isIntraState ? totalTax / 2 : 0;
+  const sgst = isIntraState ? totalTax / 2 : 0;
+  const igst = isIntraState ? 0 : totalTax;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</title><style>body{font-family:Arial,sans-serif;color:#111827;padding:28px;max-width:1000px;margin:auto}h1{margin:0;font-size:28px}h2{margin:0 0 8px}small{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px;vertical-align:top}th{background:#f1f5f9}.row{display:flex;justify-content:space-between;gap:24px;margin-top:18px}.box{border:1px solid #cbd5e1;border-radius:10px;padding:14px;flex:1}.totals{margin-left:auto;width:360px;margin-top:18px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{font-size:18px;font-weight:800;border-top:2px solid #0f172a;margin-top:6px;padding-top:10px}.print{margin:20px 0;padding:10px 16px;border:0;border-radius:8px;background:#0f172a;color:#fff;font-weight:700}@media print{.print{display:none}body{padding:0}}</style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><div class="row"><div><h1>LUXMO HUB</h1><div>GSTIN: ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.gstin)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.businessAddress)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportEmail)} · ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportPhone)}</div></div><div><h2>TAX INVOICE</h2><div><b>Invoice / Order ID:</b> ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</div><div><b>Date:</b> ${luxmoEscapeHtml(order?.createdAt || new Date().toISOString())}</div><div><b>Payment:</b> ${luxmoEscapeHtml(order?.paymentStatus || "Paid")}</div></div></div><div class="row"><div class="box"><b>Bill To / Ship To</b><br>${luxmoEscapeHtml(customer?.name || address?.name || "")}<br>${luxmoEscapeHtml(address?.line1 || address?.address || "")}${address?.line2 ? `<br>${luxmoEscapeHtml(address.line2)}` : ""}<br>${luxmoEscapeHtml(address?.city || "")}, ${luxmoEscapeHtml(address?.state || "")} - ${luxmoEscapeHtml(address?.pincode || "")}<br>Mobile: ${luxmoEscapeHtml(customer?.phone || customer?.mobile || address?.phone || "")}<br>Email: ${luxmoEscapeHtml(customer?.email || address?.email || "")}</div></div><table><thead><tr><th>#</th><th>Product</th><th>HSN</th><th>Qty</th><th>GST</th><th>Taxable</th><th>Tax</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="totals"><div><span>Subtotal</span><b>₹${luxmoInvoiceValue(subtotal)}</b></div><div><span>Discount</span><b>-₹${luxmoInvoiceValue(discount)}</b></div><div><span>Shipping</span><b>₹${luxmoInvoiceValue(shipping)}</b></div>${cgst ? `<div><span>CGST</span><b>₹${luxmoInvoiceValue(cgst)}</b></div><div><span>SGST</span><b>₹${luxmoInvoiceValue(sgst)}</b></div>` : `<div><span>IGST</span><b>₹${luxmoInvoiceValue(igst)}</b></div>`}<div class="grand"><span>Grand Total</span><b>₹${luxmoInvoiceValue(total)}</b></div></div><p style="margin-top:28px;font-size:12px;color:#475569">This invoice is generated for the Luxmo Hub order shown above. Please retain it for your records.</p></body></html>`;
+}
+
+function luxmoPrintInvoice(order) {
+  const w = window.open("", "_blank", "width=1000,height=900");
+  if (!w) { alert("Please allow pop-ups to download/print the invoice."); return; }
+  w.document.open();
+  w.document.write(luxmoBuildInvoiceHtml(order));
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 250);
+}
+
+async function luxmoCreateOrRefreshShipment(order) {
+  const provider = String(order?.courierProvider || order?.provider || localStorage.getItem("luxmo_selected_courier") || "ithink").trim().toLowerCase() === "shiprocket" ? "shiprocket" : "ithink";
+  const payload = {
+    razorpay_order_id: order?.razorpayOrderId || "",
+    razorpay_payment_id: order?.razorpayPaymentId || "",
+    provider,
+    order: { ...order, provider, courierProvider: provider },
+    orderData: { ...order, provider, courierProvider: provider }
+  };
+  if (!payload.razorpay_order_id || !payload.razorpay_payment_id) {
+    throw new Error("Verified Razorpay order/payment IDs are missing. This order cannot be shipped safely.");
+  }
+  return createAuthoritativeShipment(payload);
+}
+
+function luxmoRememberPaidOrder(order, response) {
+  try {
+    const orderId = order?.websiteOrderId || order?.orderId || order?.id || response?.razorpay_order_id || "";
+    const mobile = String(order?.customer?.phone || order?.customer?.mobile || order?.shippingAddress?.phone || order?.address?.phone || "").replace(/\D/g, "").slice(-10);
+    if (orderId && mobile) {
+      localStorage.setItem("luxmo_last_paid_order_lookup", JSON.stringify({ orderId, mobile, savedAt: Date.now() }));
+    }
+  } catch {}
+}
+
 /*
  * LUXMO HUB — VERIFIED PRODUCT VIDEO BUILD
  * Product-level YouTube + direct MP4 URL support is enabled for catalogue listings,
@@ -2916,10 +2990,97 @@ function LuxmoCheckout({
 function LuxmoOrderCenter({ orders, setOrders }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
+  const [busyId, setBusyId] = useState("");
+  const [message, setMessage] = useState("");
   const filtered = orders.filter(o => !query || `${o.id} ${o.status} ${o.awb || ""}`.toLowerCase().includes(query.toLowerCase()));
-  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
-  const printInvoice = order => { const w = window.open("", "_blank", "width=900,height=900"); if (!w) return; w.document.write(`<html><head><title>${order.id} Invoice</title><style>body{font-family:Arial;padding:40px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:10px;text-align:left}</style></head><body><h1>LUXMO HUB</h1><p>Order: ${order.id}<br/>Date: ${luxmoDate(order.createdAt)}</p><p>${order.address?.name || ""}<br/>${order.address?.line1 || ""}, ${order.address?.city || ""}, ${order.address?.state || ""} - ${order.address?.pincode || ""}</p><table><tr><th>Product</th><th>Qty</th><th>Price</th></tr>${order.items.map(i=>`<tr><td>${i.title} ${i.model||""} ${i.colour||""}</td><td>${i.qty}</td><td>${luxmoMoney(i.price*i.qty)}</td></tr>`).join("")}<tr><th colspan="2">Total</th><th>${luxmoMoney(order.total)}</th></tr></table><p>Payment: ${order.paymentMethod}</p></body></html>`); w.document.close(); w.focus(); w.print(); };
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="View order status, payment state, courier assignment and invoice print views."/><div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>{filtered.length===0?<div className="text-sm text-slate-500 py-8 text-center">No orders found.</div>:<div className="space-y-3">{filtered.map(o=><div key={o.id} className="border rounded-2xl p-4"><div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div></div><div className="flex items-center gap-2"><select value={o.status} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select><button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button><button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Invoice</button></div></div>{selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4"><div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty}<br/>{i.model} {i.colour}</div>)}</div><div><b>Delivery</b><div className="mt-1">{o.address?.name}<br/>{o.address?.line1}<br/>{o.address?.city}, {o.address?.state} - {o.address?.pincode}<br/>{o.address?.phone}</div></div><div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.status}</div></div></div>}</div>)}</div>}</div>;
+
+  const updateStatus = (id, status) => {
+    const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o);
+    setOrders(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
+  };
+
+  const mergeOrder = (id, shipmentData) => {
+    const next = orders.map(o => o.id === id ? {
+      ...o,
+      paymentStatus: shipmentData.paymentStatus || o.paymentStatus || "Paid",
+      shipmentStatus: shipmentData.shipmentStatus || o.shipmentStatus || "Pending",
+      status: shipmentData.shipmentStatus || o.status,
+      courierProvider: shipmentData.provider || o.courierProvider,
+      provider: shipmentData.provider || o.provider,
+      courier: shipmentData.courier || o.courier,
+      shipmentId: shipmentData.shipmentId || o.shipmentId,
+      logisticsOrderId: shipmentData.logisticsOrderId || o.logisticsOrderId,
+      awb: shipmentData.awb || o.awb,
+      trackingUrl: shipmentData.trackingUrl || o.trackingUrl,
+      pickupStatus: shipmentData.pickupStatus || o.pickupStatus || "Pending",
+      pickupToken: shipmentData.pickupToken || o.pickupToken || "",
+      labelUrl: shipmentData.labelUrl || o.labelUrl || "",
+      invoiceUrl: shipmentData.invoiceUrl || o.invoiceUrl || "",
+      combinedLabelInvoiceUrl: shipmentData.combinedLabelInvoiceUrl || o.combinedLabelInvoiceUrl || "",
+      documentError: shipmentData.documentError || o.documentError || "",
+      updatedAt: new Date().toISOString()
+    } : o);
+    setOrders(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
+    return next.find(o => o.id === id) || null;
+  };
+
+  const handleShipment = async (order) => {
+    setBusyId(order.id);
+    setMessage("");
+    try {
+      const data = await luxmoCreateOrRefreshShipment(order);
+      mergeOrder(order.id, data);
+      const docText = data.documentError ? `
+Document note: ${data.documentError}` : "";
+      alert(`Shipment processing successful.
+
+Courier: ${data.courier || data.provider || "Pending"}
+AWB: ${data.awb || "Not assigned yet"}
+Shipment: ${data.shipmentStatus || "Created"}${docText}`);
+    } catch (error) {
+      setMessage(`${order.id}: ${error?.message || "Shipment creation failed."}`);
+      alert(`Shipment could not be completed.
+
+${error?.message || "Please check courier settings."}`);
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const printInvoice = order => luxmoPrintInvoice(order);
+
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="Create shipment, save AWB/tracking, generate courier documents and print GST invoices."/>
+    <div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>
+    {message && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 p-3 text-xs font-semibold">{message}</div>}
+    {filtered.length===0 ? <div className="text-sm text-slate-500 py-8 text-center">No orders found.</div> : <div className="space-y-3">{filtered.map(o=>{
+      const hasShipment = Boolean(o.shipmentId || o.awb);
+      const hasLabel = Boolean(o.labelUrl);
+      const hasInvoice = Boolean(o.invoiceUrl);
+      return <div key={o.id} className="border rounded-2xl p-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div><div className="text-xs mt-1">Courier: <b>{o.courierProvider || o.provider || "Pending"}</b> · AWB: <b>{o.awb || "Not assigned"}</b></div></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={o.status || "Order Placed"} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select>
+            <button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button>
+            <button disabled={busyId===o.id} onClick={()=>handleShipment(o)} className="bg-blue-600 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 text-xs font-bold">{busyId===o.id ? "Processing..." : hasShipment ? "Refresh Shipment" : "Create Shipment"}</button>
+            <button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Generate Invoice</button>
+            {hasLabel && <a href={o.labelUrl} target="_blank" rel="noopener noreferrer" className="bg-amber-500 text-slate-950 rounded-lg px-3 py-1.5 text-xs font-bold">Shipping Label</a>}
+            {hasInvoice && <a href={o.invoiceUrl} target="_blank" rel="noopener noreferrer" className="bg-emerald-600 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Courier Invoice</a>}
+            {o.combinedLabelInvoiceUrl && <a href={o.combinedLabelInvoiceUrl} target="_blank" rel="noopener noreferrer" className="border border-slate-300 text-slate-900 rounded-lg px-3 py-1.5 text-xs font-bold">Label + Invoice</a>}
+          </div>
+        </div>
+        {selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty || i.quantity || 1}<br/>{i.model} {i.colour}</div>)}</div>
+          <div><b>Delivery</b><div className="mt-1">{o.address?.name || o.shippingAddress?.name}<br/>{o.address?.line1 || o.shippingAddress?.line1}<br/>{o.address?.city || o.shippingAddress?.city}, {o.address?.state || o.shippingAddress?.state} - {o.address?.pincode || o.shippingAddress?.pincode}<br/>{o.address?.phone || o.shippingAddress?.phone}</div></div>
+          <div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || o.provider || "Pending"}<br/>Shipment ID: {o.shipmentId || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.shipmentStatus || o.status || "Pending"}<br/>Tracking: {o.trackingUrl ? "Available" : "Pending"}</div></div>
+          {o.documentError && <div className="md:col-span-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 p-3"><b>Document/Courier note:</b> {o.documentError}</div>}
+        </div>}
+      </div>;
+    })}</div>}
+  </div>;
 }
 
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
@@ -3875,52 +4036,25 @@ function LuxmoCustomerMyOrders({ onBack }) {
   const [error, setError] = React.useState("");
   const [order, setOrder] = React.useState(null);
 
-  const loadOrder = React.useCallback(async (rawOrderId, rawMobile) => {
-    const cleanId = String(rawOrderId || "").trim();
-    const cleanMobile = String(rawMobile || "").replace(/\D/g, "").slice(-10);
-
-    if (!cleanId || !/^[6-9]\d{9}$/.test(cleanMobile)) {
-      return false;
-    }
-
-    setLoading(true);
-    setError("");
-    try {
-      const data = await fetchCustomerOrder(cleanId, cleanMobile);
-      if (!data?.order) throw new Error("Order details were not found.");
-      setOrderId(cleanId);
-      setMobile(cleanMobile);
-      setOrder(data.order);
-      return true;
-    } catch (err) {
-      setError(err?.message || "Unable to find your order.");
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // After a successful online payment, automatically open the same order
-  // in My Orders. The customer should not have to type the Order ID/mobile
-  // again on the same device. The backend still verifies both values.
   React.useEffect(() => {
     let cancelled = false;
-
     try {
-      const saved = JSON.parse(
-        localStorage.getItem("luxmo_last_paid_order_lookup") || "null"
-      );
-      if (saved?.orderId && saved?.mobile && !cancelled) {
-        loadOrder(saved.orderId, saved.mobile);
+      const saved = JSON.parse(localStorage.getItem("luxmo_last_paid_order_lookup") || "null");
+      if (saved?.orderId && saved?.mobile) {
+        setOrderId(String(saved.orderId));
+        setMobile(String(saved.mobile));
+        (async () => {
+          try {
+            const data = await fetchCustomerOrder(saved.orderId, saved.mobile);
+            if (!cancelled && data?.order) setOrder(data.order);
+          } catch (e) {
+            console.warn("Automatic My Orders load skipped:", e?.message || e);
+          }
+        })();
       }
-    } catch (e) {
-      console.warn("Could not restore last paid order:", e);
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loadOrder]);
+    } catch {}
+    return () => { cancelled = true; };
+  }, []);
 
   const searchOrder = async (event) => {
     event.preventDefault();
@@ -3935,7 +4069,16 @@ function LuxmoCustomerMyOrders({ onBack }) {
       return setError("Please enter a valid 10-digit mobile number.");
     }
 
-    await loadOrder(cleanId, cleanMobile);
+    setLoading(true);
+    try {
+      const data = await fetchCustomerOrder(cleanId, cleanMobile);
+      if (!data?.order) throw new Error("Order details were not found.");
+      setOrder(data.order);
+    } catch (err) {
+      setError(err?.message || "Unable to find your order.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const payment = order?.payment || {};
@@ -3952,7 +4095,7 @@ function LuxmoCustomerMyOrders({ onBack }) {
         </button>
         <div className="text-[10px] uppercase tracking-[0.2em] text-amber-300 font-black">LUXMO HUB</div>
         <h1 className="text-3xl md:text-4xl font-black mt-2">My Orders</h1>
-        <p className="text-sm text-slate-300 mt-2">Your latest paid order is shown automatically. You can also verify any order using Order ID + mobile number.</p>
+        <p className="text-sm text-slate-300 mt-2">Enter your Order ID and mobile number to securely view your order.</p>
       </div>
 
       <form onSubmit={searchOrder} className="bg-white border rounded-2xl p-5 shadow-sm">
@@ -4008,10 +4151,11 @@ function LuxmoCustomerMyOrders({ onBack }) {
               <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">AWB / Tracking Number</div><div className="font-black mt-1 break-all">{shipment.awb || order.awb || "Not assigned yet"}</div></div>
               <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Tracking</div><div className="font-black mt-1">{shipment.trackingUrl || order.trackingUrl ? "Available" : "Pending"}</div></div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
               {(shipment.trackingUrl || order.trackingUrl) && <a href={shipment.trackingUrl || order.trackingUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-blue-600 text-white text-center py-3 text-xs font-black">🚚 Track Shipment</a>}
               {(shipment.labelUrl || order.labelUrl) && <a href={shipment.labelUrl || order.labelUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-slate-950 text-white text-center py-3 text-xs font-black">🏷️ Shipping Label</a>}
-              {(shipment.invoiceUrl || order.invoiceUrl) && <a href={shipment.invoiceUrl || order.invoiceUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-emerald-600 text-white text-center py-3 text-xs font-black">🧾 Invoice</a>}
+              {(shipment.invoiceUrl || order.invoiceUrl) && <a href={shipment.invoiceUrl || order.invoiceUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-emerald-600 text-white text-center py-3 text-xs font-black">🧾 Download Invoice</a>}
+              <button type="button" onClick={() => luxmoPrintInvoice({ ...order, paymentStatus: payment.status, subtotal: pricing.subtotal, discount: pricing.discount, shippingFee: pricing.shippingFee, total: pricing.total })} className="rounded-xl border border-slate-300 text-slate-900 text-center py-3 text-xs font-black hover:bg-slate-50">🧾 Generate GST Invoice</button>
             </div>
             {(shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl) && <a href={shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl} target="_blank" rel="noopener noreferrer" className="block mt-3 rounded-xl border border-slate-300 text-slate-900 text-center py-3 text-xs font-black hover:bg-slate-50">📄 Download Label + Invoice</a>}
           </div>
@@ -4902,45 +5046,12 @@ export default function LuxmoHubApp() {
         }
       });
 
-      // Razorpay API returns the order inside `order` on the current backend.
-      // Normalize both the current nested response and older flat responses.
-      const razorpayOrder = orderData?.order || {};
-      const razorpayOrderId =
-        orderData?.orderId ||
-        orderData?.order_id ||
-        razorpayOrder?.id ||
-        razorpayOrder?.orderId ||
-        "";
-      const razorpayAmount = Number(
-        orderData?.amount ??
-        razorpayOrder?.amount ??
-        0
-      );
-      const razorpayCurrency =
-        orderData?.currency ||
-        razorpayOrder?.currency ||
-        "INR";
-      const razorpayKeyId =
-        orderData?.razorpayKeyId ||
-        import.meta.env.VITE_RAZORPAY_KEY_ID ||
-        "";
-
       if (
-        !razorpayOrderId ||
-        !Number.isFinite(razorpayAmount) ||
-        razorpayAmount <= 0 ||
-        !razorpayKeyId
+        !orderData?.orderId ||
+        !Number(orderData?.amount)
       ) {
-        console.error("Invalid Razorpay order response:", {
-          success: orderData?.success,
-          hasOrder: Boolean(orderData?.order),
-          orderId: razorpayOrderId,
-          amount: razorpayAmount,
-          currency: razorpayCurrency,
-          hasKey: Boolean(razorpayKeyId)
-        });
         throw new Error(
-          "Server returned an invalid Razorpay order. Please check Razorpay key/configuration."
+          "Server returned an invalid Razorpay order."
         );
       }
 
@@ -4949,7 +5060,7 @@ export default function LuxmoHubApp() {
           shipmentLockKey,
           JSON.stringify({
             status: "processing",
-            razorpayOrderId,
+            razorpayOrderId: orderData.orderId,
             websiteOrderId: pendingOrder.id,
             timestamp: Date.now()
           })
@@ -4959,12 +5070,12 @@ export default function LuxmoHubApp() {
       }
 
       const options = {
-        key: razorpayKeyId,
-        amount: razorpayAmount,
-        currency: razorpayCurrency,
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency,
         name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
-        order_id: razorpayOrderId,
+        order_id: orderData.orderId,
 
         handler: async function (response) {
           try {
@@ -5030,7 +5141,7 @@ export default function LuxmoHubApp() {
             }
 
             // STEP 3: Do not create the same shipment twice.
-            const shipmentKey = `luxmo_shipment_${razorpayOrderId}`;
+            const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
             let existingShipment = null;
             try {
               const savedShipment = localStorage.getItem(shipmentKey);
@@ -5042,18 +5153,7 @@ export default function LuxmoHubApp() {
                 `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nAWB: ${existingShipment.awb || "Already created"}`
               );
               localStorage.removeItem(shipmentLockKey);
-              try {
-                localStorage.setItem(
-                  "luxmo_last_paid_order_lookup",
-                  JSON.stringify({
-                    orderId: orderPayload.websiteOrderId || orderPayload.id || razorpayOrderId,
-                    mobile: String(orderPayload.customer?.phone || orderPayload.shippingAddress?.phone || "").replace(/\D/g, "").slice(-10),
-                    savedAt: Date.now()
-                  })
-                );
-              } catch (e) {
-                console.warn("Could not save last paid order lookup:", e);
-              }
+              luxmoRememberPaidOrder(orderPayload, response);
               setCart([]);
               setActiveTab("my-orders");
               return;
@@ -5145,18 +5245,7 @@ export default function LuxmoHubApp() {
               }
 
               localStorage.removeItem(shipmentLockKey);
-              try {
-                localStorage.setItem(
-                  "luxmo_last_paid_order_lookup",
-                  JSON.stringify({
-                    orderId: orderPayload.websiteOrderId || orderPayload.id || response.razorpay_order_id,
-                    mobile: String(orderPayload.customer?.phone || orderPayload.shippingAddress?.phone || "").replace(/\D/g, "").slice(-10),
-                    savedAt: Date.now()
-                  })
-                );
-              } catch (e) {
-                console.warn("Could not save pending paid order lookup:", e);
-              }
+              luxmoRememberPaidOrder(pendingShipmentOrder, response);
               setCart([]);
               setActiveTab("my-orders");
 
@@ -5274,19 +5363,7 @@ export default function LuxmoHubApp() {
               `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nCourier: ${courier}\nAWB: ${awb || "Will be assigned shortly"}\n\nYour order has been confirmed for shipment.`
             );
 
-            try {
-              localStorage.setItem(
-                "luxmo_last_paid_order_lookup",
-                JSON.stringify({
-                  orderId: orderPayload.websiteOrderId || orderPayload.id || response.razorpay_order_id,
-                  mobile: String(orderPayload.customer?.phone || orderPayload.shippingAddress?.phone || "").replace(/\D/g, "").slice(-10),
-                  savedAt: Date.now()
-                })
-              );
-            } catch (e) {
-              console.warn("Could not save last paid order lookup:", e);
-            }
-
+            luxmoRememberPaidOrder(completedOrder, response);
             setCart([]);
             setActiveTab("my-orders");
           } catch (error) {
