@@ -64,6 +64,24 @@ async function fetchAuthenticatedOrder(orderId, accessToken) {
   return data;
 }
 
+async function fetchCustomerOrder(orderId, mobile) {
+  const cleanOrderId = String(orderId || "").trim();
+  const cleanMobile = String(mobile || "").replace(/\D/g, "").slice(-10);
+  if (!cleanOrderId) throw new Error("Order ID is required.");
+  if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+    throw new Error("Enter a valid 10-digit mobile number.");
+  }
+  const response = await luxmoSecurityFetch("/api/orders", {
+    method: "POST",
+    body: JSON.stringify({ action: "customer", orderId: cleanOrderId, mobile: cleanMobile }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.success) {
+    throw new Error(data?.error || "Unable to retrieve your order.");
+  }
+  return data;
+}
+
 async function createAuthoritativeOrder(payload) {
   const response = await luxmoSecurityFetch("/api/create-order", {
     method: "POST",
@@ -2154,7 +2172,6 @@ function LuxmoCheckout({
       addresses[0] || {
         name: customer?.name || "",
         phone: customer?.phone || "",
-        email: customer?.email || "",
         line1: "",
         line2: "",
         city: "",
@@ -2350,20 +2367,15 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    const cleanEmail = String(draft.email || "")
-      .trim()
-      .toLowerCase();
-
     if (
       !draft.name.trim() ||
       !luxmoValidateIndianMobile(draft.phone) ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) ||
       !draft.line1.trim() ||
       !draft.city.trim() ||
       !luxmoValidatePincode(draft.pincode)
     ) {
       return alert(
-        "Please enter a valid name, mobile number, email address and delivery address."
+        "Please complete valid delivery details."
       );
     }
 
@@ -2424,18 +2436,7 @@ function LuxmoCheckout({
       shippingMode:
         effectiveShippingMode,
 
-      address: {
-        ...draft,
-        email: cleanEmail,
-      },
-
-      customer: {
-        name: String(draft.name || "").trim(),
-        phone: String(draft.phone || "").trim(),
-        email: cleanEmail,
-      },
-
-      email: cleanEmail,
+      address: draft,
 
       courierProvider:
         "Pending Assignment",
@@ -2531,7 +2532,6 @@ function LuxmoCheckout({
                 {[
                   ["name", "Full name"],
                   ["phone", "Mobile"],
-                  ["email", "Email Address"],
                   ["line1", "Address"],
                   ["line2", "Address line 2"],
                   ["city", "City"],
@@ -2881,52 +2881,8 @@ function LuxmoOrderCenter({ orders, setOrders }) {
 
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
   const [draft, setDraft] = useState({ productId: products[0]?.id || "", name: "", rating: 5, text: "" });
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async () => {
-    if (!draft.productId || !draft.name.trim() || !draft.text.trim()) {
-      return alert("Please select a product and complete your review.");
-    }
-    if (submitting) return;
-
-    setSubmitting(true);
-    try {
-      const response = await luxmoApi("/api/reviews", {
-        method: "POST",
-        body: JSON.stringify({
-          productId: draft.productId,
-          name: draft.name.trim(),
-          rating: Number(draft.rating || 5),
-          text: draft.text.trim()
-        })
-      });
-
-      const review =
-        response?.review ||
-        response?.data?.review ||
-        response?.data ||
-        {
-          ...draft,
-          id: `rev-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          status: "Pending"
-        };
-
-      setReviews(prev => [
-        review,
-        ...prev.filter(item => item?.id !== review?.id)
-      ]);
-      setDraft({ ...draft, name: "", text: "" });
-      alert("Review submitted for moderation.");
-    } catch (error) {
-      console.error("Review submission failed:", error);
-      alert(error?.message || "Unable to submit review. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} disabled={submitting} className="bg-blue-600 disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-bold">{submitting ? "Submitting…" : "Submit Review"}</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
+  const submit = () => { if (!draft.productId || !draft.name.trim() || !draft.text.trim()) return alert("Please select a product and complete your review."); const review = { ...draft, id: `rev-${Date.now()}`, createdAt: new Date().toISOString(), status: "Pending" }; const next=[review,...reviews]; setReviews(next); safeWriteJSON(LUXMO_PRO_STORAGE.reviews,next); setDraft({ ...draft, name:"", text:"" }); alert("Review submitted for moderation."); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Social proof" title="Ratings & Reviews" description="Customer reviews can be submitted and moderated before publication."/><div className="grid grid-cols-1 md:grid-cols-4 gap-3"><select value={draft.productId} onChange={e=>setDraft({...draft,productId:e.target.value})} className="border rounded-xl px-3 py-2.5 text-sm">{products.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Your name" className="border rounded-xl px-3 py-2.5 text-sm"/><select value={draft.rating} onChange={e=>setDraft({...draft,rating:Number(e.target.value)})} className="border rounded-xl px-3 py-2.5 text-sm">{[5,4,3,2,1].map(x=><option key={x} value={x}>{x} Star</option>)}</select><button onClick={submit} className="bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">Submit Review</button></div><textarea value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})} placeholder="Write your review" className="w-full border rounded-xl px-3 py-2.5 text-sm mt-3 min-h-28"/><div className="mt-5 space-y-2">{reviews.slice(0,10).map(r=><div key={r.id} className="border rounded-xl p-3 text-xs"><div className="flex justify-between"><b>{r.name}</b><span>{"★".repeat(Number(r.rating||5))}</span></div><div className="text-slate-600 mt-1">{r.text}</div><LuxmoProBadge tone={r.status === "Published" ? "green" : r.status === "Rejected" ? "red" : "amber"}>{r.status}</LuxmoProBadge></div>)}</div></div>;
 }
 
 function LuxmoStockAlerts({ products, alerts, setAlerts }) {
@@ -2987,8 +2943,8 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [wishlist,setWishlist]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.wishlist,[]));
   const [addresses,setAddresses]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.addresses,[]));
   const [customer,setCustomer]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.customer,{name:"",email:"",phone:""}));
-  const [orders,setOrders]=useState([]);
-  const [reviews,setReviews]=useState([]);
+  const [orders,setOrders]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.orders,[]));
+  const [reviews,setReviews]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.reviews,[]));
   const [recent,setRecent]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.recentlyViewed,[]));
   const [compare,setCompare]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.compare,[]));
   const [alerts,setAlerts]=useState(()=>safeReadJSON(LUXMO_PRO_STORAGE.stockAlerts,[]));
@@ -3049,76 +3005,13 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   }, []);
 
   useEffect(() => {
-    const localOrders = safeReadJSON(
-      LUXMO_PRO_STORAGE.orders,
-      []
-    );
-
-    if (Array.isArray(localOrders)) {
-      setOrders(localOrders);
-    }
-
     Promise.all([
-      luxmoApi("/api/orders").catch(() => ({ orders: [] })),
-      luxmoApi("/api/reviews").catch(() => ({ reviews: [] }))
-    ]).then(([o, r]) => {
-      if (Array.isArray(o.orders) && o.orders.length) {
-        setOrders(o.orders);
-        safeWriteJSON(
-          LUXMO_PRO_STORAGE.orders,
-          o.orders
-        );
-      }
-
-      if (Array.isArray(r.reviews) && r.reviews.length) {
-        setReviews(r.reviews);
-      }
+      luxmoApi("/api/orders").catch(()=>({orders:[]})),
+      luxmoApi("/api/reviews").catch(()=>({reviews:[]}))
+    ]).then(([o,r]) => {
+      if (Array.isArray(o.orders) && o.orders.length) setOrders(o.orders);
+      if (Array.isArray(r.reviews) && r.reviews.length) setReviews(r.reviews);
     });
-  }, []);
-
-  useEffect(() => {
-    const openOrdersAfterPayment = () => {
-      try {
-        if (
-          localStorage.getItem(
-            "luxmo_open_orders_after_payment"
-          ) === "1"
-        ) {
-          localStorage.removeItem(
-            "luxmo_open_orders_after_payment"
-          );
-          setTab("orders");
-
-          const latestOrders = safeReadJSON(
-            LUXMO_PRO_STORAGE.orders,
-            []
-          );
-
-          if (Array.isArray(latestOrders)) {
-            setOrders(latestOrders);
-          }
-        }
-      } catch (error) {
-        console.warn(
-          "Could not reload customer orders:",
-          error
-        );
-      }
-    };
-
-    openOrdersAfterPayment();
-
-    window.addEventListener(
-      "luxmo:orders-updated",
-      openOrdersAfterPayment
-    );
-
-    return () => {
-      window.removeEventListener(
-        "luxmo:orders-updated",
-        openOrdersAfterPayment
-      );
-    };
   }, []);
   const [checkout,setCheckout]=useState(Boolean(checkoutOnly));
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
@@ -3514,8 +3407,11 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
         createdAt: new Date().toISOString()
       };
 
-      // Warranty registration is stored by /api/warranty-registration.
-      // Do not duplicate customer warranty records in browser localStorage.
+      try {
+        const saved = JSON.parse(localStorage.getItem("luxmo_warranty_registrations") || "[]");
+        const list = Array.isArray(saved) ? saved : [];
+        localStorage.setItem("luxmo_warranty_registrations", JSON.stringify([registration, ...list].slice(0, 50)));
+      } catch {}
 
       setMessage({
         type: "success",
@@ -3929,6 +3825,131 @@ function LuxmoPublicBusinessLegalInfo() {
   );
 }
 
+function LuxmoCustomerMyOrders({ onBack }) {
+  const [orderId, setOrderId] = React.useState("");
+  const [mobile, setMobile] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [order, setOrder] = React.useState(null);
+
+  const searchOrder = async (event) => {
+    event.preventDefault();
+    setError("");
+    setOrder(null);
+
+    const cleanId = String(orderId || "").trim();
+    const cleanMobile = String(mobile || "").replace(/\D/g, "").slice(-10);
+
+    if (!cleanId) return setError("Please enter your Order ID.");
+    if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+      return setError("Please enter a valid 10-digit mobile number.");
+    }
+
+    setLoading(true);
+    try {
+      const data = await fetchCustomerOrder(cleanId, cleanMobile);
+      if (!data?.order) throw new Error("Order details were not found.");
+      setOrder(data.order);
+    } catch (err) {
+      setError(err?.message || "Unable to find your order.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const payment = order?.payment || {};
+  const pricing = order?.pricing || {};
+  const shipment = order?.shipment || {};
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const address = order?.shippingAddress || {};
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-5">
+      <div className="rounded-3xl bg-slate-950 text-white p-6 md:p-8">
+        <button type="button" onClick={onBack} className="text-xs font-bold text-slate-300 hover:text-white mb-4">
+          ← Back
+        </button>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-amber-300 font-black">LUXMO HUB</div>
+        <h1 className="text-3xl md:text-4xl font-black mt-2">My Orders</h1>
+        <p className="text-sm text-slate-300 mt-2">Enter your Order ID and mobile number to securely view your order.</p>
+      </div>
+
+      <form onSubmit={searchOrder} className="bg-white border rounded-2xl p-5 shadow-sm">
+        <h2 className="font-black text-lg">Find Your Order</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          <div>
+            <label className="block text-xs font-bold mb-1">Order ID</label>
+            <input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="e.g. LUX..." className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold mb-1">Mobile Number</label>
+            <input value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" maxLength={10} placeholder="10-digit mobile number" className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
+          </div>
+        </div>
+        {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 text-red-700 p-3 text-xs font-semibold">{error}</div>}
+        <button type="submit" disabled={loading} className="mt-4 w-full md:w-auto bg-slate-950 hover:bg-slate-800 disabled:opacity-60 text-white rounded-xl px-6 py-3 text-sm font-black">
+          {loading ? "Checking..." : "Verify & View Order"}
+        </button>
+      </form>
+
+      {order && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">Order ID</div><div className="font-black text-sm mt-1 break-all">{order.orderId || order.websiteOrderId}</div></div>
+            <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">Payment Status</div><div className="mt-1"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${String(payment.status).toLowerCase() === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{payment.status || "Pending"}</span></div></div>
+            <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">Amount</div><div className="font-black text-lg mt-1">₹{Number(payment.amount || pricing.total || 0).toLocaleString("en-IN")}</div></div>
+          </div>
+
+          <div className="bg-white border rounded-2xl p-5">
+            <h2 className="font-black text-lg">Order Details</h2>
+            <div className="mt-4 space-y-3">
+              {items.map((item, index) => (
+                <div key={item.id || item.sku || index} className="flex gap-3 border-b last:border-0 pb-3 last:pb-0">
+                  {item.image && <img src={item.image} alt="" className="w-16 h-16 rounded-xl object-cover border" />}
+                  <div className="flex-1"><div className="font-bold text-sm">{item.title}</div><div className="text-xs text-slate-500 mt-1">Qty: {item.quantity || item.qty || 1}</div>{item.model && <div className="text-xs text-slate-500">Model: {item.model}</div>}{item.colour && <div className="text-xs text-slate-500">Colour: {item.colour}</div>}</div>
+                  <div className="font-black text-sm">₹{Number(item.price || 0).toLocaleString("en-IN")}</div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t mt-4 pt-4 space-y-2 text-sm">
+              <div className="flex justify-between"><span>Subtotal</span><b>₹{Number(pricing.subtotal || 0).toLocaleString("en-IN")}</b></div>
+              <div className="flex justify-between"><span>Discount</span><b className="text-emerald-600">-₹{Number(pricing.discount || 0).toLocaleString("en-IN")}</b></div>
+              <div className="flex justify-between"><span>Shipping</span><b>₹{Number(pricing.shippingFee || 0).toLocaleString("en-IN")}</b></div>
+              <div className="flex justify-between text-lg font-black pt-2"><span>Total</span><span className="text-blue-600">₹{Number(pricing.total || payment.amount || 0).toLocaleString("en-IN")}</span></div>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-2xl p-5">
+            <h2 className="font-black text-lg">🚚 Shipment Details</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Shipment Status</div><div className="font-black mt-1">{shipment.status || order.status || "Pending"}</div></div>
+              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Courier</div><div className="font-black mt-1">{shipment.courier || shipment.provider || order.courier || order.courierProvider || "Pending"}</div></div>
+              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">AWB / Tracking Number</div><div className="font-black mt-1 break-all">{shipment.awb || order.awb || "Not assigned yet"}</div></div>
+              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Tracking</div><div className="font-black mt-1">{shipment.trackingUrl || order.trackingUrl ? "Available" : "Pending"}</div></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+              {(shipment.trackingUrl || order.trackingUrl) && <a href={shipment.trackingUrl || order.trackingUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-blue-600 text-white text-center py-3 text-xs font-black">🚚 Track Shipment</a>}
+              {(shipment.labelUrl || order.labelUrl) && <a href={shipment.labelUrl || order.labelUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-slate-950 text-white text-center py-3 text-xs font-black">🏷️ Shipping Label</a>}
+              {(shipment.invoiceUrl || order.invoiceUrl) && <a href={shipment.invoiceUrl || order.invoiceUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-emerald-600 text-white text-center py-3 text-xs font-black">🧾 Invoice</a>}
+            </div>
+            {(shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl) && <a href={shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl} target="_blank" rel="noopener noreferrer" className="block mt-3 rounded-xl border border-slate-300 text-slate-900 text-center py-3 text-xs font-black hover:bg-slate-50">📄 Download Label + Invoice</a>}
+          </div>
+
+          <div className="bg-white border rounded-2xl p-5">
+            <h2 className="font-black text-lg">📍 Delivery Address</h2>
+            <div className="mt-3 text-sm text-slate-600 leading-6">
+              <strong className="text-slate-900">{order.customer?.name}</strong><br />
+              {address.line1 || address.address || ""}{address.line2 ? `, ${address.line2}` : ""}<br />
+              {address.city || ""}{address.state ? `, ${address.state}` : ""}{address.pincode ? ` - ${address.pincode}` : ""}<br />
+              Mobile: {order.customer?.mobile || address.phone || ""}{order.customer?.email ? <><br />Email: {order.customer.email}</> : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
 
@@ -3989,14 +4010,11 @@ export default function LuxmoHubApp() {
   useEffect(() => {
     const modalOpen = showStoreTools || showCheckoutModal;
     if (modalOpen) {
-      document.body.classList.add("luxmo-checkout-open");
       document.body.style.overflow = "hidden";
     } else {
-      document.body.classList.remove("luxmo-checkout-open");
       document.body.style.overflow = "";
     }
     return () => {
-      document.body.classList.remove("luxmo-checkout-open");
       document.body.style.overflow = "";
     };
   }, [showStoreTools, showCheckoutModal]);
@@ -4185,14 +4203,8 @@ export default function LuxmoHubApp() {
   };
 
   useEffect(() => {
-    if (activeTab !== "admin") {
-      setAdminSessionChecking(false);
-      setIsAdminLoggedIn(false);
-      return;
-    }
-
     verifyAdminSession();
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     luxmoEnsureCustomerSession();
@@ -4200,7 +4212,7 @@ export default function LuxmoHubApp() {
     luxmoServerFirstProducts().then(remote => {
       if (!cancelled && remote) {
         setProducts(remote);
-        // API is authoritative; localStorage is only a convenience cache.
+        try { localStorage.setItem("luxmo_products", JSON.stringify(remote)); } catch {}
       }
     });
     return () => { cancelled = true; };
@@ -4718,6 +4730,13 @@ export default function LuxmoHubApp() {
         0
       );
 
+      const customerEmail = String(
+        pendingOrder.email ||
+        address.email ||
+        pendingOrder.customer?.email ||
+        ""
+      ).trim().toLowerCase();
+
       const orderPayload = {
         ...pendingOrder,
         id: pendingOrder.id,
@@ -4728,20 +4747,11 @@ export default function LuxmoHubApp() {
         shippingFee: Number(pendingOrder.shippingFee || 0),
         paymentMethod: "razorpay",
         customer: {
-          name: address.name,
-          phone: address.phone,
-          email:
-            pendingOrder.email ||
-            address.email ||
-            orderPayload?.email ||
-            ""
+          ...(pendingOrder.customer || {}),
+          name: String(address.name || "").trim(),
+          phone: String(address.phone || "").trim(),
+          email: customerEmail
         },
-
-        email:
-          pendingOrder.email ||
-          address.email ||
-          orderPayload?.email ||
-          "",
         shippingAddress: {
           name: address.name,
           phone: address.phone,
@@ -4771,24 +4781,19 @@ export default function LuxmoHubApp() {
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
+          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
           pendingOrder.shippingMode ||
+          effectiveShippingMode ||
           "standard",
         paymentMethod: "razorpay",
         customer: {
           name: address.name,
           phone: address.phone,
-          email:
-            pendingOrder.email ||
-            address.email ||
-            ""
+          email: pendingOrder.email || address.email || ""
         },
-        email:
-          pendingOrder.email ||
-          address.email ||
-          "",
         shippingAddress: {
           name: address.name,
           phone: address.phone,
@@ -4800,36 +4805,12 @@ export default function LuxmoHubApp() {
         }
       });
 
-      // Normalize the backend Razorpay response. The API returns the Razorpay
-      // order inside `order`, while older builds expected flat fields.
-      const razorpayOrder = orderData?.order || {};
-      const razorpayOrderId =
-        orderData?.orderId ||
-        orderData?.order_id ||
-        razorpayOrder?.id ||
-        razorpayOrder?.orderId ||
-        "";
-      const razorpayAmount = Number(
-        orderData?.amount ??
-        razorpayOrder?.amount ??
-        0
-      );
-      const razorpayCurrency =
-        orderData?.currency ||
-        razorpayOrder?.currency ||
-        "INR";
-      const razorpayKeyId =
-        orderData?.razorpayKeyId ||
-        import.meta.env.VITE_RAZORPAY_KEY_ID ||
-        "";
-
       if (
-        !razorpayOrderId ||
-        !Number(razorpayAmount) ||
-        !razorpayKeyId
+        !orderData?.orderId ||
+        !Number(orderData?.amount)
       ) {
         throw new Error(
-          "Server returned an invalid Razorpay order. Please check Razorpay key/configuration."
+          "Server returned an invalid Razorpay order."
         );
       }
 
@@ -4838,7 +4819,7 @@ export default function LuxmoHubApp() {
           shipmentLockKey,
           JSON.stringify({
             status: "processing",
-            razorpayOrderId,
+            razorpayOrderId: orderData.orderId,
             websiteOrderId: pendingOrder.id,
             timestamp: Date.now()
           })
@@ -4848,12 +4829,12 @@ export default function LuxmoHubApp() {
       }
 
       const options = {
-        key: razorpayKeyId,
-        amount: razorpayAmount,
-        currency: razorpayCurrency,
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency,
         name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
-        order_id: razorpayOrderId,
+        order_id: orderData.orderId,
 
         handler: async function (response) {
           try {
@@ -4919,7 +4900,7 @@ export default function LuxmoHubApp() {
             }
 
             // STEP 3: Do not create the same shipment twice.
-            const shipmentKey = `luxmo_shipment_${razorpayOrderId}`;
+            const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
             let existingShipment = null;
             try {
               const savedShipment = localStorage.getItem(shipmentKey);
@@ -4931,25 +4912,8 @@ export default function LuxmoHubApp() {
                 `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nAWB: ${existingShipment.awb || "Already created"}`
               );
               localStorage.removeItem(shipmentLockKey);
-
-              try {
-                window.dispatchEvent(
-                  new Event("luxmo:orders-updated")
-                );
-              } catch {}
-
-              try {
-                localStorage.setItem(
-                  "luxmo_open_orders_after_payment",
-                  "1"
-                );
-                window.dispatchEvent(
-                  new Event("luxmo:orders-updated")
-                );
-              } catch {}
-
               setCart([]);
-              setActiveTab("orders");
+              setActiveTab("my-orders");
               return;
             }
 
@@ -5020,19 +4984,8 @@ export default function LuxmoHubApp() {
               }
 
               localStorage.removeItem(shipmentLockKey);
-
-              try {
-                localStorage.setItem(
-                  "luxmo_open_orders_after_payment",
-                  "1"
-                );
-                window.dispatchEvent(
-                  new Event("luxmo:orders-updated")
-                );
-              } catch {}
-
               setCart([]);
-              setActiveTab("orders");
+              setActiveTab("my-orders");
 
               alert(
                 "Payment was successful and verified, but shipment creation is pending. Your payment is NOT failed. Please do NOT pay again."
@@ -5107,28 +5060,12 @@ export default function LuxmoHubApp() {
 
             localStorage.removeItem(shipmentLockKey);
 
-            try {
-              window.dispatchEvent(
-                new Event("luxmo:orders-updated")
-              );
-            } catch {}
-
             alert(
               `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nCourier: ${courier}\nAWB: ${awb || "Will be assigned shortly"}\n\nYour order has been confirmed for shipment.`
             );
 
-            try {
-              localStorage.setItem(
-                "luxmo_open_orders_after_payment",
-                "1"
-              );
-              window.dispatchEvent(
-                new Event("luxmo:orders-updated")
-              );
-            } catch {}
-
             setCart([]);
-            setActiveTab("orders");
+            setActiveTab("my-orders");
           } catch (error) {
             // Never report a post-payment processing error as "payment failed".
             console.error("Payment/shipment processing error:", error);
@@ -5226,6 +5163,7 @@ export default function LuxmoHubApp() {
           <div className="flex items-center justify-start sm:justify-end gap-1.5 sm:gap-3 text-sm font-medium min-w-0 ml-auto w-full sm:w-auto order-2 sm:order-none overflow-x-auto sm:overflow-visible scrollbar-hide pb-0.5 sm:pb-0">
             <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
+            <button onClick={() => setActiveTab("my-orders")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'my-orders' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>My Orders</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
             {isAdminLoggedIn && (
               <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
@@ -5535,6 +5473,10 @@ export default function LuxmoHubApp() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 min-w-0">
         {/* HOME VIEW */}
+        {activeTab === "my-orders" && (
+          <LuxmoCustomerMyOrders onBack={() => setActiveTab("home")} />
+        )}
+
         {activeTab === "home" && (
           <div className="space-y-10">
 
@@ -5945,16 +5887,7 @@ export default function LuxmoHubApp() {
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
                     onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
                     onAddToCart={addToCart}
-                    onBuyNow={(p) => {
-                      if (p.variants?.length) {
-                        const defaultVariant = p.variants[0];
-                        addToCart(p, defaultVariant);
-                      } else {
-                        addToCart(p);
-                      }
-                      setActiveTab("cart");
-                      setShowCheckoutModal(true);
-                    }}
+                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); setShowCheckoutModal(true); } }}
                   />)}
                 </div>
                 {!filteredProducts.length && <div className="bg-white border rounded-2xl p-10 text-center text-slate-500 font-bold">No products match the selected filters. <button type="button" onClick={clearAllFilters} className="text-blue-600">Clear filters</button></div>}
@@ -6451,27 +6384,12 @@ export default function LuxmoHubApp() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(displayedProduct.mobileSpecs).filter(([,v])=>String(v||"").trim()).map(([k,v])=><div key={k} className="rounded-xl bg-white border p-2"><span className="block text-[10px] uppercase text-slate-500">{k.replace(/([A-Z])/g," $1")}</span><strong>{v}</strong></div>)}</div>
               </div>}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => { addToCart(selectedProduct, activeVariant); }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
-                >
-                  Add to Cart
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                   
-                    addToCart(selectedProduct, activeVariant);
-                    setActiveTab("cart");
-                    setShowCheckoutModal(true);
-                  }}
-                  className="w-full bg-slate-950 hover:bg-slate-800 text-white font-bold py-3 rounded-lg text-sm"
-                >
-                  Buy Now
-                </button>
-              </div>
+              <button
+                onClick={() => addToCart(selectedProduct, activeVariant)}
+                className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm"
+              >
+                Add to Cart
+              </button>
             </div>
           </div>
           </>
@@ -6882,7 +6800,7 @@ export default function LuxmoHubApp() {
         )}
 
         {showCheckoutModal && (
-          <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto isolation-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
+          <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
             <div className="min-h-full w-full p-2 md:p-5">
               <div className="max-w-5xl mx-auto">
                 <div className="flex justify-end mb-2">
@@ -8316,13 +8234,9 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
   const handleBuyNow = (e) => {
     e.stopPropagation();
     setShowMenu(false);
-    if (onBuyNow) {
-      onBuyNow(product);
-    } else if (product.variants?.length) {
-      onAddToCart(product, product.variants[0]);
-    } else {
-      onAddToCart(product);
-    }
+    if (onBuyNow) onBuyNow(product);
+    else if (product.variants?.length) onSelect(product);
+    else onAddToCart(product);
   };
 
   return (
@@ -8413,5 +8327,16 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
       )}
     </>
   );
-}
+             {/* PUBLIC BUSINESS INFORMATION */}
+             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
+               <h2 className="text-2xl font-black text-slate-900">Business Information</h2>
+               <div className="mt-5 grid sm:grid-cols-2 gap-4 text-sm">
+                 <div><span className="font-bold">Trade Name / Brand:</span> {PUBLIC_BUSINESS_INFO.tradeName}</div>
+                 <div><span className="font-bold">Business Constitution:</span> Proprietorship</div>
+                 <div><span className="font-bold">GSTIN:</span> {PUBLIC_BUSINESS_INFO.gstin}</div>
+                 <div><span className="font-bold">Customer Support:</span> {PUBLIC_BUSINESS_INFO.supportEmail}</div>
+               </div>
+               <p className="mt-4 text-sm text-slate-600 leading-6">Personal legal identity, Udyam/MSME registration details, registered address and registered phone numbers are not embedded in this public client application. Legally required business details can be supplied by the server when generating invoices or other compliance documents.</p>
+             </section>
 
+}
