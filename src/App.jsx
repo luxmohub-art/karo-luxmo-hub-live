@@ -4949,7 +4949,26 @@ export default function LuxmoHubApp() {
             }
 
             // PAYMENT SUCCESS + SHIPMENT FAILURE = payment remains PAID.
-            if (!shipmentResponse.ok || !shipmentData.success) {
+            const rawShipment = shipmentData?.shipment || shipmentData || {};
+            const returnedShipmentId =
+              rawShipment?.shipmentId ||
+              rawShipment?.shipment_id ||
+              rawShipment?.id ||
+              "";
+            const returnedAwb =
+              rawShipment?.awb ||
+              rawShipment?.awb_code ||
+              rawShipment?.waybill ||
+              rawShipment?.tracking_number ||
+              "";
+
+            // Do not treat a courier response as a completed shipment unless
+            // it returned a real shipment identifier or AWB.
+            if (
+              !shipmentResponse.ok ||
+              !shipmentData.success ||
+              (!returnedShipmentId && !returnedAwb)
+            ) {
               console.error(
                 "Shipment failed after successful payment:",
                 shipmentData
@@ -5012,7 +5031,35 @@ export default function LuxmoHubApp() {
             const shipmentId =
               shipment?.shipmentId ||
               shipment?.shipment_id ||
+              shipment?.id ||
+              returnedShipmentId ||
               "";
+
+            const labelUrl =
+              shipment?.labelUrl ||
+              shipment?.label_url ||
+              "";
+
+            const invoiceUrl =
+              shipment?.invoiceUrl ||
+              shipment?.invoice_url ||
+              "";
+
+            const combinedLabelInvoiceUrl =
+              shipment?.combinedLabelInvoiceUrl ||
+              shipment?.combined_label_invoice_url ||
+              shipment?.label_invoice_url ||
+              "";
+
+            const pickupStatus =
+              shipment?.pickupStatus ||
+              shipment?.pickup_status ||
+              "";
+
+            const shipmentStatus =
+              shipment?.shipmentStatus ||
+              shipment?.status ||
+              "Created";
 
             const shipmentRecord = {
               success: true,
@@ -5023,6 +5070,11 @@ export default function LuxmoHubApp() {
               shipmentId,
               awb,
               trackingUrl,
+              labelUrl,
+              invoiceUrl,
+              combinedLabelInvoiceUrl,
+              pickupStatus,
+              shipmentStatus,
               createdAt: new Date().toISOString()
             };
 
@@ -5040,7 +5092,11 @@ export default function LuxmoHubApp() {
               shipmentId,
               awb,
               trackingUrl,
-              shipmentStatus: "Created",
+              labelUrl,
+              invoiceUrl,
+              combinedLabelInvoiceUrl,
+              pickupStatus,
+              shipmentStatus,
               updatedAt: new Date().toISOString()
             };
 
@@ -6981,7 +7037,7 @@ export default function LuxmoHubApp() {
   `}</style>
 
   {/* PROFESSIONAL FOOTER */}
-  {homepagePublished?.sectionEnabled?.footer !== false && activeTab !== "cart" && !showCheckoutModal && !showStoreTools && <footer className="bg-slate-950 text-slate-300 mt-10">
+  {homepagePublished?.sectionEnabled?.footer !== false && activeTab !== "cart" && activeTab !== "product" && activeTab !== "my-orders" && activeTab !== "checkout" && !showCheckoutModal && !showStoreTools && <footer className="bg-slate-950 text-slate-300 mt-10">
     <div className="max-w-7xl mx-auto px-4 py-10">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
