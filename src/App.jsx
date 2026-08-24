@@ -4864,12 +4864,45 @@ export default function LuxmoHubApp() {
         }
       });
 
+      // Razorpay API returns the order inside `order` on the current backend.
+      // Normalize both the current nested response and older flat responses.
+      const razorpayOrder = orderData?.order || {};
+      const razorpayOrderId =
+        orderData?.orderId ||
+        orderData?.order_id ||
+        razorpayOrder?.id ||
+        razorpayOrder?.orderId ||
+        "";
+      const razorpayAmount = Number(
+        orderData?.amount ??
+        razorpayOrder?.amount ??
+        0
+      );
+      const razorpayCurrency =
+        orderData?.currency ||
+        razorpayOrder?.currency ||
+        "INR";
+      const razorpayKeyId =
+        orderData?.razorpayKeyId ||
+        import.meta.env.VITE_RAZORPAY_KEY_ID ||
+        "";
+
       if (
-        !orderData?.orderId ||
-        !Number(orderData?.amount)
+        !razorpayOrderId ||
+        !Number.isFinite(razorpayAmount) ||
+        razorpayAmount <= 0 ||
+        !razorpayKeyId
       ) {
+        console.error("Invalid Razorpay order response:", {
+          success: orderData?.success,
+          hasOrder: Boolean(orderData?.order),
+          orderId: razorpayOrderId,
+          amount: razorpayAmount,
+          currency: razorpayCurrency,
+          hasKey: Boolean(razorpayKeyId)
+        });
         throw new Error(
-          "Server returned an invalid Razorpay order."
+          "Server returned an invalid Razorpay order. Please check Razorpay key/configuration."
         );
       }
 
@@ -4878,7 +4911,7 @@ export default function LuxmoHubApp() {
           shipmentLockKey,
           JSON.stringify({
             status: "processing",
-            razorpayOrderId: orderData.orderId,
+            razorpayOrderId,
             websiteOrderId: pendingOrder.id,
             timestamp: Date.now()
           })
@@ -4888,12 +4921,12 @@ export default function LuxmoHubApp() {
       }
 
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: orderData.amount,
-        currency: orderData.currency,
+        key: razorpayKeyId,
+        amount: razorpayAmount,
+        currency: razorpayCurrency,
         name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
-        order_id: orderData.orderId,
+        order_id: razorpayOrderId,
 
         handler: async function (response) {
           try {
@@ -4959,7 +4992,7 @@ export default function LuxmoHubApp() {
             }
 
             // STEP 3: Do not create the same shipment twice.
-            const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
+            const shipmentKey = `luxmo_shipment_${razorpayOrderId}`;
             let existingShipment = null;
             try {
               const savedShipment = localStorage.getItem(shipmentKey);
