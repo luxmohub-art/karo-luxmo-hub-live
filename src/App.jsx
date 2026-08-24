@@ -64,24 +64,6 @@ async function fetchAuthenticatedOrder(orderId, accessToken) {
   return data;
 }
 
-async function fetchCustomerOrder(orderId, mobile) {
-  const cleanOrderId = String(orderId || "").trim();
-  const cleanMobile = String(mobile || "").replace(/\D/g, "").slice(-10);
-  if (!cleanOrderId) throw new Error("Order ID is required.");
-  if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
-    throw new Error("Enter a valid 10-digit mobile number.");
-  }
-  const response = await luxmoSecurityFetch("/api/orders", {
-    method: "POST",
-    body: JSON.stringify({ action: "customer", orderId: cleanOrderId, mobile: cleanMobile }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) {
-    throw new Error(data?.error || "Unable to retrieve your order.");
-  }
-  return data;
-}
-
 async function createAuthoritativeOrder(payload) {
   const response = await luxmoSecurityFetch("/api/create-order", {
     method: "POST",
@@ -2172,7 +2154,6 @@ function LuxmoCheckout({
       addresses[0] || {
         name: customer?.name || "",
         phone: customer?.phone || "",
-        email: customer?.email || "",
         line1: "",
         line2: "",
         city: "",
@@ -2368,25 +2349,15 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    const customerEmail = String(
-      draft.email || ""
-    ).trim().toLowerCase();
-
-    const validEmail =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        customerEmail
-      );
-
     if (
       !draft.name.trim() ||
       !luxmoValidateIndianMobile(draft.phone) ||
-      !validEmail ||
       !draft.line1.trim() ||
       !draft.city.trim() ||
       !luxmoValidatePincode(draft.pincode)
     ) {
       return alert(
-        "Please enter a valid name, mobile number, email address, complete address and 6-digit pincode."
+        "Please complete valid delivery details."
       );
     }
 
@@ -2418,22 +2389,6 @@ function LuxmoCheckout({
           : "Confirmed",
 
       paymentMethod: payment,
-
-      email: String(
-        draft.email || ""
-      ).trim().toLowerCase(),
-
-      customer: {
-        name: String(
-          draft.name || ""
-        ).trim(),
-        phone: String(
-          draft.phone || ""
-        ).trim(),
-        email: String(
-          draft.email || ""
-        ).trim().toLowerCase(),
-      },
 
       paymentStatus:
         payment === "razorpay"
@@ -2529,11 +2484,6 @@ function LuxmoCheckout({
                     if (address) {
                       setDraft({
                         ...address,
-                        email:
-                          address.email ||
-                          draft.email ||
-                          customer?.email ||
-                          "",
                         pincode:
                           luxmoNormalizePincode(
                             address.pincode
@@ -2564,7 +2514,6 @@ function LuxmoCheckout({
                 {[
                   ["name", "Full name"],
                   ["phone", "Mobile"],
-                  ["email", "Email address"],
                   ["line1", "Address"],
                   ["line2", "Address line 2"],
                   ["city", "City"],
@@ -2572,16 +2521,6 @@ function LuxmoCheckout({
                 ].map(([key, label]) => (
                   <input
                     key={key}
-                    type={key === "email" ? "email" : "text"}
-                    autoComplete={
-                      key === "email"
-                        ? "email"
-                        : key === "name"
-                          ? "name"
-                          : key === "phone"
-                            ? "tel"
-                            : "off"
-                    }
                     value={draft[key] || ""}
                     onChange={e =>
                       setDraft({
@@ -3868,131 +3807,6 @@ function LuxmoPublicBusinessLegalInfo() {
   );
 }
 
-function LuxmoCustomerMyOrders({ onBack }) {
-  const [orderId, setOrderId] = React.useState("");
-  const [mobile, setMobile] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [order, setOrder] = React.useState(null);
-
-  const searchOrder = async (event) => {
-    event.preventDefault();
-    setError("");
-    setOrder(null);
-
-    const cleanId = String(orderId || "").trim();
-    const cleanMobile = String(mobile || "").replace(/\D/g, "").slice(-10);
-
-    if (!cleanId) return setError("Please enter your Order ID.");
-    if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
-      return setError("Please enter a valid 10-digit mobile number.");
-    }
-
-    setLoading(true);
-    try {
-      const data = await fetchCustomerOrder(cleanId, cleanMobile);
-      if (!data?.order) throw new Error("Order details were not found.");
-      setOrder(data.order);
-    } catch (err) {
-      setError(err?.message || "Unable to find your order.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const payment = order?.payment || {};
-  const pricing = order?.pricing || {};
-  const shipment = order?.shipment || {};
-  const items = Array.isArray(order?.items) ? order.items : [];
-  const address = order?.shippingAddress || {};
-
-  return (
-    <div className="max-w-5xl mx-auto space-y-5">
-      <div className="rounded-3xl bg-slate-950 text-white p-6 md:p-8">
-        <button type="button" onClick={onBack} className="text-xs font-bold text-slate-300 hover:text-white mb-4">
-          ← Back
-        </button>
-        <div className="text-[10px] uppercase tracking-[0.2em] text-amber-300 font-black">LUXMO HUB</div>
-        <h1 className="text-3xl md:text-4xl font-black mt-2">My Orders</h1>
-        <p className="text-sm text-slate-300 mt-2">Enter your Order ID and mobile number to securely view your order.</p>
-      </div>
-
-      <form onSubmit={searchOrder} className="bg-white border rounded-2xl p-5 shadow-sm">
-        <h2 className="font-black text-lg">Find Your Order</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-          <div>
-            <label className="block text-xs font-bold mb-1">Order ID</label>
-            <input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="e.g. LUX..." className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold mb-1">Mobile Number</label>
-            <input value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" maxLength={10} placeholder="10-digit mobile number" className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
-          </div>
-        </div>
-        {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 text-red-700 p-3 text-xs font-semibold">{error}</div>}
-        <button type="submit" disabled={loading} className="mt-4 w-full md:w-auto bg-slate-950 hover:bg-slate-800 disabled:opacity-60 text-white rounded-xl px-6 py-3 text-sm font-black">
-          {loading ? "Checking..." : "Verify & View Order"}
-        </button>
-      </form>
-
-      {order && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">Order ID</div><div className="font-black text-sm mt-1 break-all">{order.orderId || order.websiteOrderId}</div></div>
-            <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">Payment Status</div><div className="mt-1"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${String(payment.status).toLowerCase() === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{payment.status || "Pending"}</span></div></div>
-            <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">Amount</div><div className="font-black text-lg mt-1">₹{Number(payment.amount || pricing.total || 0).toLocaleString("en-IN")}</div></div>
-          </div>
-
-          <div className="bg-white border rounded-2xl p-5">
-            <h2 className="font-black text-lg">Order Details</h2>
-            <div className="mt-4 space-y-3">
-              {items.map((item, index) => (
-                <div key={item.id || item.sku || index} className="flex gap-3 border-b last:border-0 pb-3 last:pb-0">
-                  {item.image && <img src={item.image} alt="" className="w-16 h-16 rounded-xl object-cover border" />}
-                  <div className="flex-1"><div className="font-bold text-sm">{item.title}</div><div className="text-xs text-slate-500 mt-1">Qty: {item.quantity || item.qty || 1}</div>{item.model && <div className="text-xs text-slate-500">Model: {item.model}</div>}{item.colour && <div className="text-xs text-slate-500">Colour: {item.colour}</div>}</div>
-                  <div className="font-black text-sm">₹{Number(item.price || 0).toLocaleString("en-IN")}</div>
-                </div>
-              ))}
-            </div>
-            <div className="border-t mt-4 pt-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><b>₹{Number(pricing.subtotal || 0).toLocaleString("en-IN")}</b></div>
-              <div className="flex justify-between"><span>Discount</span><b className="text-emerald-600">-₹{Number(pricing.discount || 0).toLocaleString("en-IN")}</b></div>
-              <div className="flex justify-between"><span>Shipping</span><b>₹{Number(pricing.shippingFee || 0).toLocaleString("en-IN")}</b></div>
-              <div className="flex justify-between text-lg font-black pt-2"><span>Total</span><span className="text-blue-600">₹{Number(pricing.total || payment.amount || 0).toLocaleString("en-IN")}</span></div>
-            </div>
-          </div>
-
-          <div className="bg-white border rounded-2xl p-5">
-            <h2 className="font-black text-lg">🚚 Shipment Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Shipment Status</div><div className="font-black mt-1">{shipment.status || order.status || "Pending"}</div></div>
-              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Courier</div><div className="font-black mt-1">{shipment.courier || shipment.provider || order.courier || order.courierProvider || "Pending"}</div></div>
-              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">AWB / Tracking Number</div><div className="font-black mt-1 break-all">{shipment.awb || order.awb || "Not assigned yet"}</div></div>
-              <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Tracking</div><div className="font-black mt-1">{shipment.trackingUrl || order.trackingUrl ? "Available" : "Pending"}</div></div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-              {(shipment.trackingUrl || order.trackingUrl) && <a href={shipment.trackingUrl || order.trackingUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-blue-600 text-white text-center py-3 text-xs font-black">🚚 Track Shipment</a>}
-              {(shipment.labelUrl || order.labelUrl) && <a href={shipment.labelUrl || order.labelUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-slate-950 text-white text-center py-3 text-xs font-black">🏷️ Shipping Label</a>}
-              {(shipment.invoiceUrl || order.invoiceUrl) && <a href={shipment.invoiceUrl || order.invoiceUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-emerald-600 text-white text-center py-3 text-xs font-black">🧾 Invoice</a>}
-            </div>
-            {(shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl) && <a href={shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl} target="_blank" rel="noopener noreferrer" className="block mt-3 rounded-xl border border-slate-300 text-slate-900 text-center py-3 text-xs font-black hover:bg-slate-50">📄 Download Label + Invoice</a>}
-          </div>
-
-          <div className="bg-white border rounded-2xl p-5">
-            <h2 className="font-black text-lg">📍 Delivery Address</h2>
-            <div className="mt-3 text-sm text-slate-600 leading-6">
-              <strong className="text-slate-900">{order.customer?.name}</strong><br />
-              {address.line1 || address.address || ""}{address.line2 ? `, ${address.line2}` : ""}<br />
-              {address.city || ""}{address.state ? `, ${address.state}` : ""}{address.pincode ? ` - ${address.pincode}` : ""}<br />
-              Mobile: {order.customer?.mobile || address.phone || ""}{order.customer?.email ? <><br />Email: {order.customer.email}</> : null}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function LuxmoHubApp() {
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
 
@@ -4202,6 +4016,17 @@ export default function LuxmoHubApp() {
   // The browser sends only the current 6-digit code to the server API.
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminSessionChecking, setAdminSessionChecking] = useState(true);
+
+  // PUBLIC STOREFRONT: admin controls are visible only on the dedicated
+  // /admin route (or ?admin=1) AND after the secure admin session is valid.
+  const adminRouteActive = (() => {
+    if (typeof window === "undefined") return false;
+    const pathname = window.location.pathname.replace(/\\/+$/, "") || "/";
+    const params = new URLSearchParams(window.location.search);
+    return pathname === "/admin" || params.get("admin") === "1";
+  })();
+  const adminUiVisible = adminRouteActive && isAdminLoggedIn;
+  // Normal public homepage never renders Admin UI even if an admin session cookie exists.
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminOtp, setAdminOtp] = useState("");
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
@@ -4773,13 +4598,6 @@ export default function LuxmoHubApp() {
         0
       );
 
-      const customerEmail = String(
-        pendingOrder.email ||
-        address.email ||
-        pendingOrder.customer?.email ||
-        ""
-      ).trim().toLowerCase();
-
       const orderPayload = {
         ...pendingOrder,
         id: pendingOrder.id,
@@ -4790,10 +4608,9 @@ export default function LuxmoHubApp() {
         shippingFee: Number(pendingOrder.shippingFee || 0),
         paymentMethod: "razorpay",
         customer: {
-          ...(pendingOrder.customer || {}),
-          name: String(address.name || "").trim(),
-          phone: String(address.phone || "").trim(),
-          email: customerEmail
+          name: address.name,
+          phone: address.phone,
+          email: pendingOrder.email || address.email || ""
         },
         shippingAddress: {
           name: address.name,
@@ -4824,6 +4641,7 @@ export default function LuxmoHubApp() {
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
+          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
@@ -4834,12 +4652,7 @@ export default function LuxmoHubApp() {
         customer: {
           name: address.name,
           phone: address.phone,
-          email: String(
-            pendingOrder.email ||
-            address.email ||
-            pendingOrder.customer?.email ||
-            ""
-          ).trim().toLowerCase()
+          email: pendingOrder.email || address.email || ""
         },
         shippingAddress: {
           name: address.name,
@@ -4960,7 +4773,7 @@ export default function LuxmoHubApp() {
               );
               localStorage.removeItem(shipmentLockKey);
               setCart([]);
-              setActiveTab("my-orders");
+              setActiveTab("home");
               return;
             }
 
@@ -4996,26 +4809,7 @@ export default function LuxmoHubApp() {
             }
 
             // PAYMENT SUCCESS + SHIPMENT FAILURE = payment remains PAID.
-            const rawShipment = shipmentData?.shipment || shipmentData || {};
-            const returnedShipmentId =
-              rawShipment?.shipmentId ||
-              rawShipment?.shipment_id ||
-              rawShipment?.id ||
-              "";
-            const returnedAwb =
-              rawShipment?.awb ||
-              rawShipment?.awb_code ||
-              rawShipment?.waybill ||
-              rawShipment?.tracking_number ||
-              "";
-
-            // Do not treat a courier response as a completed shipment unless
-            // it returned a real shipment identifier or AWB.
-            if (
-              !shipmentResponse.ok ||
-              !shipmentData.success ||
-              (!returnedShipmentId && !returnedAwb)
-            ) {
+            if (!shipmentResponse.ok || !shipmentData.success) {
               console.error(
                 "Shipment failed after successful payment:",
                 shipmentData
@@ -5051,7 +4845,7 @@ export default function LuxmoHubApp() {
 
               localStorage.removeItem(shipmentLockKey);
               setCart([]);
-              setActiveTab("my-orders");
+              setActiveTab("home");
 
               alert(
                 "Payment was successful and verified, but shipment creation is pending. Your payment is NOT failed. Please do NOT pay again."
@@ -5078,35 +4872,7 @@ export default function LuxmoHubApp() {
             const shipmentId =
               shipment?.shipmentId ||
               shipment?.shipment_id ||
-              shipment?.id ||
-              returnedShipmentId ||
               "";
-
-            const labelUrl =
-              shipment?.labelUrl ||
-              shipment?.label_url ||
-              "";
-
-            const invoiceUrl =
-              shipment?.invoiceUrl ||
-              shipment?.invoice_url ||
-              "";
-
-            const combinedLabelInvoiceUrl =
-              shipment?.combinedLabelInvoiceUrl ||
-              shipment?.combined_label_invoice_url ||
-              shipment?.label_invoice_url ||
-              "";
-
-            const pickupStatus =
-              shipment?.pickupStatus ||
-              shipment?.pickup_status ||
-              "";
-
-            const shipmentStatus =
-              shipment?.shipmentStatus ||
-              shipment?.status ||
-              "Created";
 
             const shipmentRecord = {
               success: true,
@@ -5117,11 +4883,6 @@ export default function LuxmoHubApp() {
               shipmentId,
               awb,
               trackingUrl,
-              labelUrl,
-              invoiceUrl,
-              combinedLabelInvoiceUrl,
-              pickupStatus,
-              shipmentStatus,
               createdAt: new Date().toISOString()
             };
 
@@ -5139,11 +4900,7 @@ export default function LuxmoHubApp() {
               shipmentId,
               awb,
               trackingUrl,
-              labelUrl,
-              invoiceUrl,
-              combinedLabelInvoiceUrl,
-              pickupStatus,
-              shipmentStatus,
+              shipmentStatus: "Created",
               updatedAt: new Date().toISOString()
             };
 
@@ -5168,7 +4925,7 @@ export default function LuxmoHubApp() {
             );
 
             setCart([]);
-            setActiveTab("my-orders");
+            setActiveTab("home");
           } catch (error) {
             // Never report a post-payment processing error as "payment failed".
             console.error("Payment/shipment processing error:", error);
@@ -5266,9 +5023,8 @@ export default function LuxmoHubApp() {
           <div className="flex items-center justify-start sm:justify-end gap-1.5 sm:gap-3 text-sm font-medium min-w-0 ml-auto w-full sm:w-auto order-2 sm:order-none overflow-x-auto sm:overflow-visible scrollbar-hide pb-0.5 sm:pb-0">
             <button onClick={() => setActiveTab("home")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Home</button>
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
-            <button onClick={() => setActiveTab("my-orders")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'my-orders' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>My Orders</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
-            {isAdminLoggedIn && (
+            {adminUiVisible && (
               <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
             )}
 
@@ -5292,11 +5048,11 @@ export default function LuxmoHubApp() {
               <Menu className="w-6 h-6" />
             </button>
 
-            {isAdminLoggedIn && (
+            {adminUiVisible && (
               <>
                 <LuxmoLowStockBadge
                   products={products}
-                  isAdmin={isAdminLoggedIn}
+                  isAdmin={adminUiVisible}
                   onClick={() => setActiveTab("admin")}
                 />
                 <button onClick={() => setActiveTab("admin")} className="bg-slate-800 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1">
@@ -5315,7 +5071,6 @@ export default function LuxmoHubApp() {
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-4">
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide py-2">
-            <button type="button" onClick={() => setActiveTab("home")} className="nav-row-link">Home</button>
             <button type="button" onClick={() => { setSelectedMainCategory("Mobile"); setSelectedSubCategory("All"); setSelectedCategory("Mobile Back Case"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Mobile Phone Cases</button>
             <button type="button" onClick={() => { setSelectedCategory("All"); setSearchQuery("mobile phone accessories"); setActiveTab("catalog"); }} className="nav-row-link">Mobile Phone Accessories</button>
             <button type="button" onClick={() => { setSelectedCategory("Hybrid Solar Inverter"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Hybrid Solar Inverter</button>
@@ -5560,7 +5315,7 @@ export default function LuxmoHubApp() {
                 <span>Blog</span><ChevronRight className="w-4 h-4" />
               </button>
 
-              {isAdminLoggedIn && (
+              {adminUiVisible && (
                 <div className="pt-3 mt-2 border-t border-slate-200">
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
                   <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
@@ -5576,10 +5331,6 @@ export default function LuxmoHubApp() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 min-w-0">
         {/* HOME VIEW */}
-        {activeTab === "my-orders" && (
-          <LuxmoCustomerMyOrders onBack={() => setActiveTab("home")} />
-        )}
-
         {activeTab === "home" && (
           <div className="space-y-10">
 
@@ -6532,7 +6283,7 @@ export default function LuxmoHubApp() {
         )}
 
         {/* ADMIN DASHBOARD VIEW */}
-        {activeTab === "admin" && isAdminLoggedIn && (
+        {activeTab === "admin" && adminUiVisible && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b pb-4">
               <div>
@@ -6875,7 +6626,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-        {showStoreTools && isAdminLoggedIn && (
+        {showStoreTools && adminUiVisible && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm p-2 md:p-5 overflow-auto" role="dialog" aria-modal="true" aria-label="LUXMO HUB Store Tools">
             <div className="max-w-7xl mx-auto my-2 md:my-5">
               <div className="flex justify-end mb-2">
@@ -7084,7 +6835,7 @@ export default function LuxmoHubApp() {
   `}</style>
 
   {/* PROFESSIONAL FOOTER */}
-  {homepagePublished?.sectionEnabled?.footer !== false && activeTab !== "cart" && activeTab !== "product" && activeTab !== "my-orders" && activeTab !== "checkout" && !showCheckoutModal && !showStoreTools && <footer className="bg-slate-950 text-slate-300 mt-10">
+  {homepagePublished?.sectionEnabled?.footer !== false && activeTab !== "cart" && !showCheckoutModal && !showStoreTools && <footer className="bg-slate-950 text-slate-300 mt-10">
     <div className="max-w-7xl mx-auto px-4 py-10">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
