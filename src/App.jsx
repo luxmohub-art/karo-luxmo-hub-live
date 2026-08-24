@@ -3875,6 +3875,53 @@ function LuxmoCustomerMyOrders({ onBack }) {
   const [error, setError] = React.useState("");
   const [order, setOrder] = React.useState(null);
 
+  const loadOrder = React.useCallback(async (rawOrderId, rawMobile) => {
+    const cleanId = String(rawOrderId || "").trim();
+    const cleanMobile = String(rawMobile || "").replace(/\D/g, "").slice(-10);
+
+    if (!cleanId || !/^[6-9]\d{9}$/.test(cleanMobile)) {
+      return false;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchCustomerOrder(cleanId, cleanMobile);
+      if (!data?.order) throw new Error("Order details were not found.");
+      setOrderId(cleanId);
+      setMobile(cleanMobile);
+      setOrder(data.order);
+      return true;
+    } catch (err) {
+      setError(err?.message || "Unable to find your order.");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // After a successful online payment, automatically open the same order
+  // in My Orders. The customer should not have to type the Order ID/mobile
+  // again on the same device. The backend still verifies both values.
+  React.useEffect(() => {
+    let cancelled = false;
+
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("luxmo_last_paid_order_lookup") || "null"
+      );
+      if (saved?.orderId && saved?.mobile && !cancelled) {
+        loadOrder(saved.orderId, saved.mobile);
+      }
+    } catch (e) {
+      console.warn("Could not restore last paid order:", e);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadOrder]);
+
   const searchOrder = async (event) => {
     event.preventDefault();
     setError("");
@@ -3888,16 +3935,7 @@ function LuxmoCustomerMyOrders({ onBack }) {
       return setError("Please enter a valid 10-digit mobile number.");
     }
 
-    setLoading(true);
-    try {
-      const data = await fetchCustomerOrder(cleanId, cleanMobile);
-      if (!data?.order) throw new Error("Order details were not found.");
-      setOrder(data.order);
-    } catch (err) {
-      setError(err?.message || "Unable to find your order.");
-    } finally {
-      setLoading(false);
-    }
+    await loadOrder(cleanId, cleanMobile);
   };
 
   const payment = order?.payment || {};
@@ -3914,7 +3952,7 @@ function LuxmoCustomerMyOrders({ onBack }) {
         </button>
         <div className="text-[10px] uppercase tracking-[0.2em] text-amber-300 font-black">LUXMO HUB</div>
         <h1 className="text-3xl md:text-4xl font-black mt-2">My Orders</h1>
-        <p className="text-sm text-slate-300 mt-2">Enter your Order ID and mobile number to securely view your order.</p>
+        <p className="text-sm text-slate-300 mt-2">Your latest paid order is shown automatically. You can also verify any order using Order ID + mobile number.</p>
       </div>
 
       <form onSubmit={searchOrder} className="bg-white border rounded-2xl p-5 shadow-sm">
@@ -5004,6 +5042,18 @@ export default function LuxmoHubApp() {
                 `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nAWB: ${existingShipment.awb || "Already created"}`
               );
               localStorage.removeItem(shipmentLockKey);
+              try {
+                localStorage.setItem(
+                  "luxmo_last_paid_order_lookup",
+                  JSON.stringify({
+                    orderId: orderPayload.websiteOrderId || orderPayload.id || razorpayOrderId,
+                    mobile: String(orderPayload.customer?.phone || orderPayload.shippingAddress?.phone || "").replace(/\D/g, "").slice(-10),
+                    savedAt: Date.now()
+                  })
+                );
+              } catch (e) {
+                console.warn("Could not save last paid order lookup:", e);
+              }
               setCart([]);
               setActiveTab("my-orders");
               return;
@@ -5095,6 +5145,18 @@ export default function LuxmoHubApp() {
               }
 
               localStorage.removeItem(shipmentLockKey);
+              try {
+                localStorage.setItem(
+                  "luxmo_last_paid_order_lookup",
+                  JSON.stringify({
+                    orderId: orderPayload.websiteOrderId || orderPayload.id || response.razorpay_order_id,
+                    mobile: String(orderPayload.customer?.phone || orderPayload.shippingAddress?.phone || "").replace(/\D/g, "").slice(-10),
+                    savedAt: Date.now()
+                  })
+                );
+              } catch (e) {
+                console.warn("Could not save pending paid order lookup:", e);
+              }
               setCart([]);
               setActiveTab("my-orders");
 
@@ -5211,6 +5273,19 @@ export default function LuxmoHubApp() {
             alert(
               `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nCourier: ${courier}\nAWB: ${awb || "Will be assigned shortly"}\n\nYour order has been confirmed for shipment.`
             );
+
+            try {
+              localStorage.setItem(
+                "luxmo_last_paid_order_lookup",
+                JSON.stringify({
+                  orderId: orderPayload.websiteOrderId || orderPayload.id || response.razorpay_order_id,
+                  mobile: String(orderPayload.customer?.phone || orderPayload.shippingAddress?.phone || "").replace(/\D/g, "").slice(-10),
+                  savedAt: Date.now()
+                })
+              );
+            } catch (e) {
+              console.warn("Could not save last paid order lookup:", e);
+            }
 
             setCart([]);
             setActiveTab("my-orders");
