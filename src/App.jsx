@@ -2154,6 +2154,7 @@ function LuxmoCheckout({
       addresses[0] || {
         name: customer?.name || "",
         phone: customer?.phone || "",
+        email: customer?.email || "",
         line1: "",
         line2: "",
         city: "",
@@ -2349,15 +2350,20 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
+    const cleanEmail = String(draft.email || "")
+      .trim()
+      .toLowerCase();
+
     if (
       !draft.name.trim() ||
       !luxmoValidateIndianMobile(draft.phone) ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) ||
       !draft.line1.trim() ||
       !draft.city.trim() ||
       !luxmoValidatePincode(draft.pincode)
     ) {
       return alert(
-        "Please complete valid delivery details."
+        "Please enter a valid name, mobile number, email address and delivery address."
       );
     }
 
@@ -2418,7 +2424,18 @@ function LuxmoCheckout({
       shippingMode:
         effectiveShippingMode,
 
-      address: draft,
+      address: {
+        ...draft,
+        email: cleanEmail,
+      },
+
+      customer: {
+        name: String(draft.name || "").trim(),
+        phone: String(draft.phone || "").trim(),
+        email: cleanEmail,
+      },
+
+      email: cleanEmail,
 
       courierProvider:
         "Pending Assignment",
@@ -2514,6 +2531,7 @@ function LuxmoCheckout({
                 {[
                   ["name", "Full name"],
                   ["phone", "Mobile"],
+                  ["email", "Email Address"],
                   ["line1", "Address"],
                   ["line2", "Address line 2"],
                   ["city", "City"],
@@ -3031,13 +3049,76 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   }, []);
 
   useEffect(() => {
+    const localOrders = safeReadJSON(
+      LUXMO_PRO_STORAGE.orders,
+      []
+    );
+
+    if (Array.isArray(localOrders)) {
+      setOrders(localOrders);
+    }
+
     Promise.all([
-      luxmoApi("/api/orders").catch(()=>({orders:[]})),
-      luxmoApi("/api/reviews").catch(()=>({reviews:[]}))
-    ]).then(([o,r]) => {
-      if (Array.isArray(o.orders) && o.orders.length) setOrders(o.orders);
-      if (Array.isArray(r.reviews) && r.reviews.length) setReviews(r.reviews);
+      luxmoApi("/api/orders").catch(() => ({ orders: [] })),
+      luxmoApi("/api/reviews").catch(() => ({ reviews: [] }))
+    ]).then(([o, r]) => {
+      if (Array.isArray(o.orders) && o.orders.length) {
+        setOrders(o.orders);
+        safeWriteJSON(
+          LUXMO_PRO_STORAGE.orders,
+          o.orders
+        );
+      }
+
+      if (Array.isArray(r.reviews) && r.reviews.length) {
+        setReviews(r.reviews);
+      }
     });
+  }, []);
+
+  useEffect(() => {
+    const openOrdersAfterPayment = () => {
+      try {
+        if (
+          localStorage.getItem(
+            "luxmo_open_orders_after_payment"
+          ) === "1"
+        ) {
+          localStorage.removeItem(
+            "luxmo_open_orders_after_payment"
+          );
+          setTab("orders");
+
+          const latestOrders = safeReadJSON(
+            LUXMO_PRO_STORAGE.orders,
+            []
+          );
+
+          if (Array.isArray(latestOrders)) {
+            setOrders(latestOrders);
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "Could not reload customer orders:",
+          error
+        );
+      }
+    };
+
+    openOrdersAfterPayment();
+
+    window.addEventListener(
+      "luxmo:orders-updated",
+      openOrdersAfterPayment
+    );
+
+    return () => {
+      window.removeEventListener(
+        "luxmo:orders-updated",
+        openOrdersAfterPayment
+      );
+    };
   }, []);
   const [checkout,setCheckout]=useState(Boolean(checkoutOnly));
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
@@ -4649,8 +4730,18 @@ export default function LuxmoHubApp() {
         customer: {
           name: address.name,
           phone: address.phone,
-          email: pendingOrder.email || address.email || ""
+          email:
+            pendingOrder.email ||
+            address.email ||
+            orderPayload?.email ||
+            ""
         },
+
+        email:
+          pendingOrder.email ||
+          address.email ||
+          orderPayload?.email ||
+          "",
         shippingAddress: {
           name: address.name,
           phone: address.phone,
@@ -4689,8 +4780,15 @@ export default function LuxmoHubApp() {
         customer: {
           name: address.name,
           phone: address.phone,
-          email: pendingOrder.email || address.email || ""
+          email:
+            pendingOrder.email ||
+            address.email ||
+            ""
         },
+        email:
+          pendingOrder.email ||
+          address.email ||
+          "",
         shippingAddress: {
           name: address.name,
           phone: address.phone,
@@ -4833,8 +4931,25 @@ export default function LuxmoHubApp() {
                 `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nAWB: ${existingShipment.awb || "Already created"}`
               );
               localStorage.removeItem(shipmentLockKey);
+
+              try {
+                window.dispatchEvent(
+                  new Event("luxmo:orders-updated")
+                );
+              } catch {}
+
+              try {
+                localStorage.setItem(
+                  "luxmo_open_orders_after_payment",
+                  "1"
+                );
+                window.dispatchEvent(
+                  new Event("luxmo:orders-updated")
+                );
+              } catch {}
+
               setCart([]);
-              setActiveTab("home");
+              setActiveTab("orders");
               return;
             }
 
@@ -4905,8 +5020,19 @@ export default function LuxmoHubApp() {
               }
 
               localStorage.removeItem(shipmentLockKey);
+
+              try {
+                localStorage.setItem(
+                  "luxmo_open_orders_after_payment",
+                  "1"
+                );
+                window.dispatchEvent(
+                  new Event("luxmo:orders-updated")
+                );
+              } catch {}
+
               setCart([]);
-              setActiveTab("home");
+              setActiveTab("orders");
 
               alert(
                 "Payment was successful and verified, but shipment creation is pending. Your payment is NOT failed. Please do NOT pay again."
@@ -4981,12 +5107,28 @@ export default function LuxmoHubApp() {
 
             localStorage.removeItem(shipmentLockKey);
 
+            try {
+              window.dispatchEvent(
+                new Event("luxmo:orders-updated")
+              );
+            } catch {}
+
             alert(
               `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nCourier: ${courier}\nAWB: ${awb || "Will be assigned shortly"}\n\nYour order has been confirmed for shipment.`
             );
 
+            try {
+              localStorage.setItem(
+                "luxmo_open_orders_after_payment",
+                "1"
+              );
+              window.dispatchEvent(
+                new Event("luxmo:orders-updated")
+              );
+            } catch {}
+
             setCart([]);
-            setActiveTab("home");
+            setActiveTab("orders");
           } catch (error) {
             // Never report a post-payment processing error as "payment failed".
             console.error("Payment/shipment processing error:", error);
