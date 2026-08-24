@@ -5046,21 +5046,91 @@ export default function LuxmoHubApp() {
         }
       });
 
+      const razorpayOrder = orderData?.order || {};
+
+      const razorpayOrderId = String(
+        razorpayOrder?.id || ""
+      ).trim();
+
+      const razorpayAmount = Number(
+        razorpayOrder?.amount || 0
+      );
+
+      const razorpayCurrency = String(
+        razorpayOrder?.currency || "INR"
+      ).trim();
+
+      const serverTotal = Number(
+        orderData?.pricing?.total || 0
+      );
+
       if (
-        !orderData?.orderId ||
-        !Number(orderData?.amount)
+        !razorpayOrderId ||
+        !Number.isInteger(razorpayAmount) ||
+        razorpayAmount < 100 ||
+        !Number.isFinite(serverTotal) ||
+        serverTotal <= 0
       ) {
+        console.error(
+          "Invalid Razorpay order response:",
+          orderData
+        );
+
         throw new Error(
           "Server returned an invalid Razorpay order."
         );
       }
+
+      const expectedAmountPaise = Math.round(
+        serverTotal * 100
+      );
+
+      if (
+        razorpayAmount !== expectedAmountPaise
+      ) {
+        console.error(
+          "Razorpay amount mismatch:",
+          {
+            websiteTotal: serverTotal,
+            expectedAmountPaise,
+            razorpayAmount
+          }
+        );
+
+        throw new Error(
+          `Payment amount mismatch. Website total ₹${serverTotal.toFixed(
+            2
+          )} but Razorpay order amount is ₹${(
+            razorpayAmount / 100
+          ).toFixed(2)}.`
+        );
+      }
+
+      // Keep the order payload synchronized with the
+      // server-authoritative pricing returned by create-order.
+      orderPayload.total = serverTotal;
+      orderPayload.subtotal = Number(
+        orderData?.pricing?.subtotal ??
+        orderPayload.subtotal ??
+        0
+      );
+      orderPayload.discount = Number(
+        orderData?.pricing?.discount ??
+        orderPayload.discount ??
+        0
+      );
+      orderPayload.shippingFee = Number(
+        orderData?.pricing?.shippingFee ??
+        orderPayload.shippingFee ??
+        0
+      );
 
       try {
         localStorage.setItem(
           shipmentLockKey,
           JSON.stringify({
             status: "processing",
-            razorpayOrderId: orderData.orderId,
+            razorpayOrderId: razorpayOrderId,
             websiteOrderId: pendingOrder.id,
             timestamp: Date.now()
           })
@@ -5071,11 +5141,11 @@ export default function LuxmoHubApp() {
 
       const options = {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: orderData.amount,
-        currency: orderData.currency,
+        amount: razorpayAmount,
+        currency: razorpayCurrency,
         name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
-        order_id: orderData.orderId,
+        order_id: razorpayOrderId,
 
         handler: async function (response) {
           try {
