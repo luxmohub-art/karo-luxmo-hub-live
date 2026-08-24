@@ -32,7 +32,7 @@ async function fetchAuthoritativeProducts(params = {}) {
   const response = await luxmoSecurityFetch(`/api/products${query.toString() ? `?${query}` : ""}`);
   if (!response.ok) throw new Error("Unable to fetch authoritative product data.");
   const data = await response.json();
-  if (!data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Product data request failed."));
+  if (!data?.success) throw new Error(data?.error || "Product data request failed.");
   return Array.isArray(data.products) ? data.products : [];
 }
 
@@ -40,7 +40,7 @@ async function fetchPublicStoreConfig() {
   const response = await luxmoSecurityFetch("/api/config");
   if (!response.ok) throw new Error("Unable to fetch store configuration.");
   const data = await response.json();
-  if (!data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Store configuration request failed."));
+  if (!data?.success) throw new Error(data?.error || "Store configuration request failed.");
   return data;
 }
 
@@ -50,7 +50,7 @@ async function requestOrderAccess(orderId, phone) {
     body: JSON.stringify({ action: "request-access", orderId, phone }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to verify order access."));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to verify order access.");
   return data;
 }
 
@@ -60,7 +60,7 @@ async function fetchAuthenticatedOrder(orderId, accessToken) {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to retrieve order."));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to retrieve order.");
   return data;
 }
 
@@ -70,7 +70,7 @@ async function createAuthoritativeOrder(payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to create order."));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to create order.");
   return data;
 }
 
@@ -80,7 +80,7 @@ async function createAuthoritativeShipment(payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.success) throw new Error(luxmoApiErrorMessage(data?.error, "Unable to create shipment."));
+  if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to create shipment.");
   return data;
 }
 
@@ -1617,7 +1617,7 @@ const luxmoApi = async (url, options = {}) => {
     ...options
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(luxmoApiErrorMessage(data.error || data.message, `API ${response.status}`));
+  if (!response.ok) throw new Error(data.error || data.message || `API ${response.status}`);
   return data;
 };
 const luxmoEnsureCustomerSession = () =>
@@ -1730,6 +1730,19 @@ const luxmoCodEligibility = (items, subtotal, pincode, storeSettings = LUXMO_DEF
     return { allowed: false, reason: "High-value inverter orders require prepaid or partial COD." };
   }
   return { allowed: true, reason: "COD may be available subject to courier serviceability." };
+};
+
+const luxmoApplyCoupon = (couponCode, subtotal, items) => {
+  const code = String(couponCode || "").trim().toUpperCase();
+  if (!code) return { valid: false, discount: 0, message: "Enter a coupon code." };
+  const managedCoupons = safeReadJSON("luxmo_master_admin_settings_v2", { coupons: LUXMO_COUPONS })?.coupons || LUXMO_COUPONS;
+  const coupon = managedCoupons.find(c => c.code === code && c.enabled !== false);
+  if (!coupon) return { valid: false, discount: 0, message: "Invalid coupon code." };
+  if (subtotal < coupon.min) return { valid: false, discount: 0, message: `Minimum order value is ${luxmoMoney(coupon.min)}.` };
+  if (coupon.category && !items.some(item => item.category === coupon.category)) return { valid: false, discount: 0, message: "This coupon is not applicable to the selected products." };
+  const raw = coupon.type === "percent" ? subtotal * coupon.value / 100 : coupon.value;
+  const discount = Math.min(raw, coupon.maxDiscount || raw, subtotal);
+  return { valid: true, discount, coupon, message: `${coupon.label} applied.` };
 };
 
 const LUXMO_FAQ = [
@@ -1959,6 +1972,17 @@ function LuxmoRecentlyViewed({ products, ids, onSelect, onClear }) {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="History" title="Recently Viewed" action={items.length ? <button onClick={onClear} className="text-xs font-bold text-red-600">Clear</button> : null} />{items.length === 0 ? <p className="text-sm text-slate-500">Products you view will appear here.</p> : <div className="flex gap-3 overflow-x-auto pb-2">{items.map(p => <button key={p.id} onClick={() => onSelect(p)} className="w-44 shrink-0 border rounded-xl overflow-hidden text-left"><img src={p.images?.[0] || p.image} alt={p.title} className="w-full h-32 object-cover"/><div className="p-2"><div className="text-xs font-bold line-clamp-2">{p.title}</div><div className="text-xs font-black mt-1">{luxmoMoney(luxmoProductPrice(p))}</div></div></button>)}</div>}</div>;
 }
 
+function LuxmoCouponBox({ subtotal, items, onDiscountChange }) {
+  const [code, setCode] = useState("");
+  const [message, setMessage] = useState("");
+  const apply = () => {
+    const result = luxmoApplyCoupon(code, subtotal, items);
+    setMessage(result.message);
+    onDiscountChange(result.valid ? result.discount : 0, result.valid ? result.coupon.code : "");
+  };
+  return <div className="border rounded-xl p-4 bg-slate-50"><div className="text-sm font-black">Have a coupon?</div><div className="flex gap-2 mt-2"><input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Coupon code" className="flex-1 border rounded-lg px-3 py-2 text-sm bg-white"/><button onClick={apply} className="bg-slate-900 text-white rounded-lg px-4 text-xs font-bold">Apply</button></div>{message && <div className="text-xs mt-2 text-slate-600">{message}</div>}<div className="flex flex-wrap gap-2 mt-3">{LUXMO_COUPONS.map(c => <button key={c.code} onClick={() => setCode(c.code)} className="text-[10px] border rounded-full px-2 py-1 bg-white">{c.code}</button>)}</div></div>;
+}
+
 function LuxmoPincodeChecker({ cartItems }) {
   const [pincode, setPincode] = useState("");
   const [result, setResult] = useState(null);
@@ -1994,12 +2018,7 @@ function LuxmoPincodeChecker({ cartItems }) {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data.success !== true) {
-        throw new Error(
-          luxmoApiErrorMessage(
-            data.error,
-            data.message || "Unable to check delivery availability right now."
-          )
-        );
+        throw new Error(data.error || data.message || "Unable to check delivery availability right now.");
       }
 
       if (!data.serviceable) {
@@ -2017,13 +2036,7 @@ function LuxmoPincodeChecker({ cartItems }) {
       }
     } catch (error) {
       console.error("Pincode serviceability check failed:", error);
-      setResult({
-        ok: false,
-        message: luxmoApiErrorMessage(
-          error,
-          "Unable to check delivery availability right now. Please try again."
-        ),
-      });
+      setResult({ ok: false, message: error?.message || "Unable to check delivery availability right now. Please try again." });
     } finally {
       setChecking(false);
     }
@@ -2284,10 +2297,9 @@ function LuxmoCheckout({
         setDiscount(0);
 
         setCouponError(
-          luxmoApiErrorMessage(
-            data?.error || data?.message,
+          data?.error ||
+            data?.message ||
             "Invalid or inactive coupon code."
-          )
         );
 
         return;
@@ -2337,45 +2349,17 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    // Validate checkout data before creating any order.
-    // Address line 2 is optional; all other delivery fields are required.
-    const name = String(draft?.name || "").trim();
-    const phone = String(draft?.phone || "").replace(/\D/g, "");
-    const line1 = String(draft?.line1 || "").trim();
-    const city = String(draft?.city || "").trim();
-    const state = String(draft?.state || "").trim();
-    const pincode = luxmoNormalizePincode(draft?.pincode || "");
-
-    if (!name) {
-      return alert("Please enter your full name.");
+    if (
+      !draft.name.trim() ||
+      !luxmoValidateIndianMobile(draft.phone) ||
+      !draft.line1.trim() ||
+      !draft.city.trim() ||
+      !luxmoValidatePincode(draft.pincode)
+    ) {
+      return alert(
+        "Please complete valid delivery details."
+      );
     }
-    if (!luxmoValidateIndianMobile(phone)) {
-      return alert("Please enter a valid 10-digit Indian mobile number.");
-    }
-    if (!line1) {
-      return alert("Please enter your complete delivery address.");
-    }
-    if (!city) {
-      return alert("Please enter your city.");
-    }
-    if (!state) {
-      return alert("Please enter your state.");
-    }
-    if (!luxmoValidatePincode(pincode)) {
-      return alert("Please enter a valid 6-digit delivery pincode.");
-    }
-
-    // Keep the normalized values in the order payload.
-    const validatedAddress = {
-      ...draft,
-      name,
-      phone,
-      line1,
-      city,
-      state,
-      pincode,
-    };
-    setDraft(validatedAddress);
 
     if (
       payment === "cod" &&
@@ -2434,7 +2418,7 @@ function LuxmoCheckout({
       shippingMode:
         effectiveShippingMode,
 
-      address: validatedAddress,
+      address: draft,
 
       courierProvider:
         "Pending Assignment",
@@ -3243,7 +3227,7 @@ function LuxmoOrderTrackingModal({ onClose }) {
       }
 
       if (!response.ok || data.success === false) {
-        throw new Error(luxmoApiErrorMessage(data.error || data.message, "Order tracking failed."));
+        throw new Error(data.error || data.message || "Order tracking failed.");
       }
 
       setResult(normalizeTracking(data));
@@ -3439,7 +3423,7 @@ function LuxmoWarrantyRegistrationModal({ products = [], onClose }) {
       }
 
       if (!response.ok || data.success === false) {
-        throw new Error(luxmoApiErrorMessage(data.error || data.message, "Warranty registration failed."));
+        throw new Error(data.error || data.message || "Warranty registration failed.");
       }
 
       const registration = {
@@ -3924,11 +3908,14 @@ export default function LuxmoHubApp() {
   useEffect(() => {
     const modalOpen = showStoreTools || showCheckoutModal;
     if (modalOpen) {
+      document.body.classList.add("luxmo-checkout-open");
       document.body.style.overflow = "hidden";
     } else {
+      document.body.classList.remove("luxmo-checkout-open");
       document.body.style.overflow = "";
     }
     return () => {
+      document.body.classList.remove("luxmo-checkout-open");
       document.body.style.overflow = "";
     };
   }, [showStoreTools, showCheckoutModal]);
@@ -4170,7 +4157,7 @@ export default function LuxmoHubApp() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data.success !== true) {
-        throw new Error(luxmoApiErrorMessage(data.error || data.message, "Invalid or expired Google Authenticator code."));
+        throw new Error(data.error || data.message || "Invalid or expired Google Authenticator code.");
       }
 
       const authenticated = await verifyAdminSession();
@@ -4690,12 +4677,10 @@ export default function LuxmoHubApp() {
           sku: item.sku || "",
           qty: Number(item.qty || 1)
         })),
-        // IMPORTANT: this handler is outside CheckoutModal, so the
-        // CheckoutModal `coupon` state is not in scope here.
-        // Use only the coupon stored on the pending order.
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
+          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
@@ -4719,12 +4704,36 @@ export default function LuxmoHubApp() {
         }
       });
 
+      // Normalize the backend Razorpay response. The API returns the Razorpay
+      // order inside `order`, while older builds expected flat fields.
+      const razorpayOrder = orderData?.order || {};
+      const razorpayOrderId =
+        orderData?.orderId ||
+        orderData?.order_id ||
+        razorpayOrder?.id ||
+        razorpayOrder?.orderId ||
+        "";
+      const razorpayAmount = Number(
+        orderData?.amount ??
+        razorpayOrder?.amount ??
+        0
+      );
+      const razorpayCurrency =
+        orderData?.currency ||
+        razorpayOrder?.currency ||
+        "INR";
+      const razorpayKeyId =
+        orderData?.razorpayKeyId ||
+        import.meta.env.VITE_RAZORPAY_KEY_ID ||
+        "";
+
       if (
-        !orderData?.orderId ||
-        !Number(orderData?.amount)
+        !razorpayOrderId ||
+        !Number(razorpayAmount) ||
+        !razorpayKeyId
       ) {
         throw new Error(
-          "Server returned an invalid Razorpay order."
+          "Server returned an invalid Razorpay order. Please check Razorpay key/configuration."
         );
       }
 
@@ -4733,7 +4742,7 @@ export default function LuxmoHubApp() {
           shipmentLockKey,
           JSON.stringify({
             status: "processing",
-            razorpayOrderId: orderData.orderId,
+            razorpayOrderId,
             websiteOrderId: pendingOrder.id,
             timestamp: Date.now()
           })
@@ -4743,12 +4752,12 @@ export default function LuxmoHubApp() {
       }
 
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: orderData.amount,
-        currency: orderData.currency,
+        key: razorpayKeyId,
+        amount: razorpayAmount,
+        currency: razorpayCurrency,
         name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
-        order_id: orderData.orderId,
+        order_id: razorpayOrderId,
 
         handler: async function (response) {
           try {
@@ -4775,7 +4784,7 @@ export default function LuxmoHubApp() {
             if (!verifyResponse.ok || !verifyData.success) {
               console.error("Razorpay verification failed:", verifyData);
               localStorage.removeItem(shipmentLockKey);
-              alert(luxmoApiErrorMessage(verifyData.error, "Payment verification failed."));
+              alert(verifyData.error || "Payment verification failed.");
               return;
             }
 
@@ -4814,7 +4823,7 @@ export default function LuxmoHubApp() {
             }
 
             // STEP 3: Do not create the same shipment twice.
-            const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
+            const shipmentKey = `luxmo_shipment_${razorpayOrderId}`;
             let existingShipment = null;
             try {
               const savedShipment = localStorage.getItem(shipmentKey);
@@ -4879,7 +4888,7 @@ export default function LuxmoHubApp() {
                 courierProvider: provider,
                 shipmentStatus: "Pending",
                 shipmentError:
-                  luxmoApiErrorMessage(shipmentData.error, "Shipment creation failed"),
+                  shipmentData.error || "Shipment creation failed",
                 updatedAt: new Date().toISOString()
               };
 
@@ -5796,7 +5805,16 @@ export default function LuxmoHubApp() {
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
                     onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
                     onAddToCart={addToCart}
-                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); setShowCheckoutModal(true); } }}
+                    onBuyNow={(p) => {
+                      if (p.variants?.length) {
+                        const defaultVariant = p.variants[0];
+                        addToCart(p, defaultVariant);
+                      } else {
+                        addToCart(p);
+                      }
+                      setActiveTab("cart");
+                      setShowCheckoutModal(true);
+                    }}
                   />)}
                 </div>
                 {!filteredProducts.length && <div className="bg-white border rounded-2xl p-10 text-center text-slate-500 font-bold">No products match the selected filters. <button type="button" onClick={clearAllFilters} className="text-blue-600">Clear filters</button></div>}
@@ -6293,12 +6311,27 @@ export default function LuxmoHubApp() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(displayedProduct.mobileSpecs).filter(([,v])=>String(v||"").trim()).map(([k,v])=><div key={k} className="rounded-xl bg-white border p-2"><span className="block text-[10px] uppercase text-slate-500">{k.replace(/([A-Z])/g," $1")}</span><strong>{v}</strong></div>)}</div>
               </div>}
 
-              <button
-                onClick={() => addToCart(selectedProduct, activeVariant)}
-                className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm"
-              >
-                Add to Cart
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => { addToCart(selectedProduct, activeVariant); }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
+                >
+                  Add to Cart
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                   
+                    addToCart(selectedProduct, activeVariant);
+                    setActiveTab("cart");
+                    setShowCheckoutModal(true);
+                  }}
+                  className="w-full bg-slate-950 hover:bg-slate-800 text-white font-bold py-3 rounded-lg text-sm"
+                >
+                  Buy Now
+                </button>
+              </div>
             </div>
           </div>
           </>
@@ -6709,7 +6742,7 @@ export default function LuxmoHubApp() {
         )}
 
         {showCheckoutModal && (
-          <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
+          <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto isolation-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
             <div className="min-h-full w-full p-2 md:p-5">
               <div className="max-w-5xl mx-auto">
                 <div className="flex justify-end mb-2">
@@ -7490,7 +7523,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
 
       if (!response.ok || !data.success) {
         throw new Error(
-          luxmoApiErrorMessage(data.error, "Unable to load orders")
+          data.error || "Unable to load orders"
         );
       }
 
@@ -7522,7 +7555,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
         headers: { Accept: "application/json" }
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, "Unable to load Master Admin settings."));
+      if (!r.ok || !data.success) throw new Error(data.error || "Unable to load Master Admin settings.");
       const db = data.settings || {};
       setSettings(prev => ({ ...prev, ...db }));
       if (db.policies) setPolicies(db.policies);
@@ -7548,7 +7581,7 @@ function LuxmoMasterAdminControl({ products = [], setProducts }) {
         body: JSON.stringify(payload)
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, "Master settings save failed."));
+      if (!r.ok || !data.success) throw new Error(data.error || "Master settings save failed.");
       setSettings(data.settings || payload);
       setSaved("Saved to database");
       window.dispatchEvent(new Event("luxmo-master-settings-updated"));
@@ -8143,9 +8176,13 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
   const handleBuyNow = (e) => {
     e.stopPropagation();
     setShowMenu(false);
-    if (onBuyNow) onBuyNow(product);
-    else if (product.variants?.length) onSelect(product);
-    else onAddToCart(product);
+    if (onBuyNow) {
+      onBuyNow(product);
+    } else if (product.variants?.length) {
+      onAddToCart(product, product.variants[0]);
+    } else {
+      onAddToCart(product);
+    }
   };
 
   return (
@@ -8248,4 +8285,12 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
                <p className="mt-4 text-sm text-slate-600 leading-6">Personal legal identity, Udyam/MSME registration details, registered address and registered phone numbers are not embedded in this public client application. Legally required business details can be supplied by the server when generating invoices or other compliance documents.</p>
              </section>
 
+}
+
+/* LUXMO CHECKOUT: keep normal homepage/footer content behind the checkout */
+body.luxmo-checkout-open > *:not(#root) {
+  visibility: hidden;
+}
+body.luxmo-checkout-open #root {
+  overflow: hidden;
 }
