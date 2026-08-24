@@ -1,112 +1,81 @@
 // api/orders.js
-// LUXMO HUB - Secure Admin Orders API
+// LUXMO HUB — Customer My Orders + Admin Orders
 
 import crypto from "crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "../lib/firebase-admin.js";
 
 const COOKIE_NAME = "luxmo_admin_session";
+const ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000;
 
-/* =========================================================
+/* =========================
    COOKIE
-========================================================= */
+========================= */
 
 function getCookie(req, name) {
-  const header = String(
-    req.headers?.cookie || ""
-  );
+  const header = String(req.headers?.cookie || "");
 
-  if (!header) {
-    return null;
-  }
+  if (!header) return null;
 
-  const cookies = header.split(";");
-
-  for (const cookie of cookies) {
+  for (const cookie of header.split(";")) {
     const parts = cookie.trim().split("=");
-
     const key = parts.shift();
 
     if (key === name) {
-      return decodeURIComponent(
-        parts.join("=")
-      );
+      return decodeURIComponent(parts.join("="));
     }
   }
 
   return null;
 }
 
-/* =========================================================
-   BASE64 URL DECODE
-========================================================= */
-
-function base64UrlDecode(value) {
-  try {
-    if (!value) {
-      return null;
-    }
-
-    return Buffer.from(
-      value,
-      "base64url"
-    ).toString("utf8");
-  } catch {
-    return null;
-  }
-}
-
-/* =========================================================
-   SAFE STRING COMPARISON
-========================================================= */
+/* =========================
+   SAFE COMPARE
+========================= */
 
 function safeEqual(a, b) {
   try {
-    const left = Buffer.from(
-      String(a || "")
-    );
+    const left = Buffer.from(String(a || ""));
+    const right = Buffer.from(String(b || ""));
 
-    const right = Buffer.from(
-      String(b || "")
-    );
-
-    if (
-      left.length === 0 ||
-      right.length === 0
-    ) {
+    if (!left.length || left.length !== right.length) {
       return false;
     }
 
-    if (
-      left.length !==
-      right.length
-    ) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(
-      left,
-      right
-    );
+    return crypto.timingSafeEqual(left, right);
   } catch {
     return false;
   }
 }
 
-/* =========================================================
-   ADMIN SESSION VERIFICATION
-========================================================= */
+/* =========================
+   PHONE NORMALIZATION
+========================= */
 
-function verifyAdminSession(
-  token,
-  secret
-) {
+function normalizePhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return digits;
+  }
+
+  return "";
+}
+
+/* =========================
+   ADMIN SESSION
+========================= */
+
+function verifyAdminSession(token, secret) {
   if (!token || !secret) {
     return false;
   }
 
-  const parts =
-    String(token).split(".");
+  const parts = String(token).split(".");
 
   if (parts.length !== 3) {
     return false;
@@ -115,118 +84,156 @@ function verifyAdminSession(
   const [
     encodedPayload,
     expiresAt,
-    signature,
+    signature
   ] = parts;
 
-  if (
-    !encodedPayload ||
-    !expiresAt ||
-    !signature
-  ) {
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(`${encodedPayload}.${expiresAt}`)
+    .digest("base64url");
+
+  if (!safeEqual(signature, expectedSignature)) {
     return false;
   }
 
-  const expectedSignature =
-    crypto
-      .createHmac(
-        "sha256",
-        secret
-      )
-      .update(
-        `${encodedPayload}.${expiresAt}`
-      )
-      .digest("base64url");
+  const expiry = Number(expiresAt);
 
-  if (
-    !safeEqual(
-      signature,
-      expectedSignature
-    )
-  ) {
+  if (!Number.isFinite(expiry)) {
     return false;
   }
 
-  const expiry =
-    Number(expiresAt);
-
-  if (
-    !Number.isFinite(expiry)
-  ) {
-    return false;
-  }
-
-  if (
-    Date.now() >= expiry
-  ) {
+  if (Date.now() >= expiry) {
     return false;
   }
 
   try {
-    const payloadText =
-      base64UrlDecode(
-        encodedPayload
-      );
+    const payload = JSON.parse(
+      Buffer.from(
+        encodedPayload,
+        "base64url"
+      ).toString("utf8")
+    );
 
-    if (!payloadText) {
-      return false;
-    }
-
-    const payload =
-      JSON.parse(
-        payloadText
-      );
-
-    if (
-      !payload ||
-      payload.role !== "admin"
-    ) {
-      return false;
-    }
-
-    return true;
+    return payload?.role === "admin";
   } catch {
     return false;
   }
 }
 
-/* =========================================================
-   CREATED AT SORT HELPER
-========================================================= */
+/* =========================
+   CUSTOMER ACCESS TOKEN
+========================= */
+
+function createCustomerAccessToken(
+  orderId,
+  phone,
+  secret
+) {
+  const expiresAt =
+    Date.now() + ACCESS_TOKEN_TTL_MS;
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      role: "customer",
+      orderId: String(orderId),
+      phone: normalizePhone(phone)
+    })
+  ).toString("base64url");
+
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(`${payload}.${expiresAt}`)
+    .digest("base64url");
+
+  return `${payload}.${expiresAt}.${signature}`;
+}
+
+/* =========================
+   VERIFY CUSTOMER TOKEN
+========================= */
+
+function verifyCustomerAccessToken(
+  token,
+  orderId,
+  phone,
+  secret
+) {
+  if (!token || !secret) {
+    return false;
+  }
+
+  const parts = String(token).split(".");
+
+  if (parts.length !== 3) {
+    return false;
+  }
+
+  const [
+    payloadEncoded,
+    expiresAt,
+    signature
+  ] = parts;
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(`${payloadEncoded}.${expiresAt}`)
+    .digest("base64url");
+
+  if (!safeEqual(signature, expectedSignature)) {
+    return false;
+  }
+
+  if (Date.now() >= Number(expiresAt)) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(
+        payloadEncoded,
+        "base64url"
+      ).toString("utf8")
+    );
+
+    return (
+      payload?.role === "customer" &&
+      String(payload.orderId) === String(orderId) &&
+      normalizePhone(payload.phone) ===
+        normalizePhone(phone)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/* =========================
+   CREATED AT
+========================= */
 
 function getCreatedAtValue(order) {
-  const value =
-    order?.createdAt;
+  const value = order?.createdAt;
 
   if (!value) {
     return 0;
   }
 
-  // Firestore Timestamp
-  if (
-    typeof value?.toMillis ===
-    "function"
-  ) {
+  if (typeof value?.toMillis === "function") {
     return value.toMillis();
   }
 
-  // Firestore Timestamp object
   if (
     typeof value === "object" &&
-    typeof value.seconds ===
-      "number"
+    typeof value.seconds === "number"
   ) {
     return (
       value.seconds * 1000 +
       Math.floor(
-        (value.nanoseconds || 0) /
-          1000000
+        (value.nanoseconds || 0) / 1000000
       )
     );
   }
 
-  // Date/string/number
-  const numeric =
-    Number(value);
+  const numeric = Number(value);
 
   if (
     Number.isFinite(numeric) &&
@@ -235,73 +242,311 @@ function getCreatedAtValue(order) {
     return numeric;
   }
 
-  const parsed =
-    Date.parse(
-      String(value)
-    );
+  const parsed = Date.parse(String(value));
 
-  if (
-    Number.isFinite(parsed)
-  ) {
-    return parsed;
-  }
-
-  return 0;
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
 }
 
-/* =========================================================
+/* =========================
+   CUSTOMER DATA SANITIZER
+========================= */
+
+function sanitizeCustomerOrder(order) {
+  const copy = {
+    ...order
+  };
+
+  delete copy.internalNotes;
+  delete copy.adminNotes;
+  delete copy.shiprocketCredentials;
+  delete copy.paymentVerificationSecret;
+
+  return copy;
+}
+
+/* =========================
    MAIN HANDLER
-========================================================= */
+========================= */
 
 export default async function handler(
   req,
   res
 ) {
-  /* =======================================================
-     METHOD
-  ======================================================= */
+  const accessSecret = String(
+    process.env.ORDER_ACCESS_SECRET ||
+      process.env.ADMIN_SESSION_SECRET ||
+      ""
+  ).trim();
 
-  if (req.method !== "GET") {
-    res.setHeader(
-      "Allow",
-      "GET"
-    );
-
-    return res.status(405).json({
+  if (!accessSecret) {
+    return res.status(500).json({
       success: false,
       error:
-        "Method not allowed.",
+        "Order access configuration missing."
     });
   }
 
-  /* =======================================================
-     ADMIN SECRET
-  ======================================================= */
+  let db;
 
-  const sessionSecret =
-    String(
-      process.env
-        .ADMIN_SESSION_SECRET ||
-        ""
-    ).trim();
-
-  if (!sessionSecret) {
+  try {
+    db = getFirestore(
+      getFirebaseAdmin()
+    );
+  } catch (error) {
     console.error(
-      "ADMIN_SESSION_SECRET is not configured."
+      "Firebase initialization error:",
+      error
     );
 
     return res.status(500).json({
       success: false,
       error:
-        "Admin session configuration missing.",
+        "Firebase Admin initialization failed."
     });
   }
 
-  /* =======================================================
-     SESSION COOKIE
-  ======================================================= */
+  /* =====================================================
+     CUSTOMER — REQUEST ORDER ACCESS
+     
+     POST /api/orders
+     
+     body:
+     {
+       action: "request-access",
+       orderId: "...",
+       phone: "..."
+     }
+  ===================================================== */
 
-  const token =
+  if (req.method === "POST") {
+    const body = req.body || {};
+
+    if (body.action !== "request-access") {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Unsupported order action."
+      });
+    }
+
+    const orderId = String(
+      body.orderId || ""
+    ).trim();
+
+    const phone = normalizePhone(
+      body.phone
+    );
+
+    if (!orderId || !phone) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Order ID and valid mobile number are required."
+      });
+    }
+
+    try {
+      const orderRef =
+        db.collection("orders").doc(orderId);
+
+      const snapshot =
+        await orderRef.get();
+
+      if (!snapshot.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Order not found."
+        });
+      }
+
+      const order = snapshot.data() || {};
+
+      const storedPhone =
+        normalizePhone(
+          order?.customer?.phone ||
+            order?.shippingAddress?.phone ||
+            order?.address?.phone ||
+            order?.phone
+        );
+
+      if (
+        !storedPhone ||
+        !safeEqual(
+          storedPhone,
+          phone
+        )
+      ) {
+        return res.status(401).json({
+          success: false,
+          error:
+            "Order ID and mobile number do not match."
+        });
+      }
+
+      const accessToken =
+        createCustomerAccessToken(
+          orderId,
+          phone,
+          accessSecret
+        );
+
+      return res.status(200).json({
+        success: true,
+        accessToken,
+        expiresIn:
+          ACCESS_TOKEN_TTL_MS,
+        order:
+          sanitizeCustomerOrder({
+            id: snapshot.id,
+            ...order
+          })
+      });
+    } catch (error) {
+      console.error(
+        "Customer order access error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          "Unable to verify order access."
+      });
+    }
+  }
+
+  /* =====================================================
+     ONLY GET AFTER THIS
+  ===================================================== */
+
+  if (req.method !== "GET") {
+    res.setHeader(
+      "Allow",
+      "GET, POST"
+    );
+
+    return res.status(405).json({
+      success: false,
+      error: "Method not allowed."
+    });
+  }
+
+  const requestedOrderId =
+    String(
+      req.query?.orderId || ""
+    ).trim();
+
+  const authorization =
+    String(
+      req.headers?.authorization || ""
+    );
+
+  const bearer =
+    authorization.startsWith("Bearer ")
+      ? authorization.slice(7).trim()
+      : "";
+
+  /* =====================================================
+     CUSTOMER — FETCH SINGLE ORDER
+     
+     GET /api/orders?orderId=XXXX
+     
+     Authorization:
+     Bearer CUSTOMER_ACCESS_TOKEN
+  ===================================================== */
+
+  if (
+    requestedOrderId &&
+    bearer
+  ) {
+    try {
+      const orderRef =
+        db
+          .collection("orders")
+          .doc(requestedOrderId);
+
+      const snapshot =
+        await orderRef.get();
+
+      if (!snapshot.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Order not found."
+        });
+      }
+
+      const order = {
+        id: snapshot.id,
+        ...snapshot.data()
+      };
+
+      const phone =
+        order?.customer?.phone ||
+          order?.shippingAddress?.phone ||
+          order?.address?.phone ||
+          order?.phone ||
+          "";
+
+      const valid =
+        verifyCustomerAccessToken(
+          bearer,
+          requestedOrderId,
+          phone,
+          accessSecret
+        );
+
+      if (!valid) {
+        return res.status(401).json({
+          success: false,
+          authenticated: false,
+          error:
+            "Order access token is invalid or expired."
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        authenticated: true,
+        order:
+          sanitizeCustomerOrder(order)
+      });
+    } catch (error) {
+      console.error(
+        "Customer order fetch error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          "Unable to retrieve order."
+      });
+    }
+  }
+
+  /* =====================================================
+     ADMIN — EXISTING ORDER CENTER
+  ===================================================== */
+
+  const adminSecret =
+    String(
+      process.env.ADMIN_SESSION_SECRET ||
+        ""
+    ).trim();
+
+  if (!adminSecret) {
+    return res.status(500).json({
+      success: false,
+      error:
+        "Admin session configuration missing."
+    });
+  }
+
+  const adminToken =
     getCookie(
       req,
       COOKIE_NAME
@@ -309,67 +554,32 @@ export default async function handler(
 
   if (
     !verifyAdminSession(
-      token,
-      sessionSecret
+      adminToken,
+      adminSecret
     )
   ) {
     return res.status(401).json({
       success: false,
       authenticated: false,
       error:
-        "Admin authentication required.",
+        "Admin authentication required."
     });
   }
 
-  /* =======================================================
-     FIREBASE
-  ======================================================= */
-
   try {
-    const firebaseAdmin =
-      getFirebaseAdmin();
-
-    if (!firebaseAdmin) {
-      throw new Error(
-        "Firebase Admin initialization failed."
-      );
-    }
-
-    const db =
-      getFirestore(
-        firebaseAdmin
-      );
-
-    /* =====================================================
-       LOAD ORDERS
-       
-       IMPORTANT:
-       Do NOT use Firestore orderBy(createdAt) here.
-       Some old orders may not contain createdAt and
-       Firestore may also require an index.
-    ===================================================== */
-
     const snapshot =
       await db
         .collection("orders")
         .limit(200)
         .get();
 
-    /* =====================================================
-       CONVERT FIRESTORE DOCUMENTS
-    ===================================================== */
-
     const orders =
       snapshot.docs.map(
         (doc) => ({
           id: doc.id,
-          ...doc.data(),
+          ...doc.data()
         })
       );
-
-    /* =====================================================
-       SORT NEWEST FIRST
-    ===================================================== */
 
     orders.sort(
       (a, b) =>
@@ -377,15 +587,11 @@ export default async function handler(
         getCreatedAtValue(a)
     );
 
-    /* =====================================================
-       RETURN
-    ===================================================== */
-
     return res.status(200).json({
       success: true,
       authenticated: true,
       count: orders.length,
-      orders,
+      orders
     });
   } catch (error) {
     console.error(
@@ -398,7 +604,7 @@ export default async function handler(
       authenticated: true,
       error:
         error?.message ||
-        "Unable to load orders.",
+        "Unable to load orders."
     });
   }
 }
