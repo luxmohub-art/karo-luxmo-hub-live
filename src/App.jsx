@@ -4680,12 +4680,10 @@ export default function LuxmoHubApp() {
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
-          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
           pendingOrder.shippingMode ||
-          effectiveShippingMode ||
           "standard",
         paymentMethod: "razorpay",
         customer: {
