@@ -8273,24 +8273,5 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
       )}
     </>
   );
-             {/* PUBLIC BUSINESS INFORMATION */}
-             <section className="bg-white border rounded-2xl p-6 md:p-8 shadow-sm">
-               <h2 className="text-2xl font-black text-slate-900">Business Information</h2>
-               <div className="mt-5 grid sm:grid-cols-2 gap-4 text-sm">
-                 <div><span className="font-bold">Trade Name / Brand:</span> {PUBLIC_BUSINESS_INFO.tradeName}</div>
-                 <div><span className="font-bold">Business Constitution:</span> Proprietorship</div>
-                 <div><span className="font-bold">GSTIN:</span> {PUBLIC_BUSINESS_INFO.gstin}</div>
-                 <div><span className="font-bold">Customer Support:</span> {PUBLIC_BUSINESS_INFO.supportEmail}</div>
-               </div>
-               <p className="mt-4 text-sm text-slate-600 leading-6">Personal legal identity, Udyam/MSME registration details, registered address and registered phone numbers are not embedded in this public client application. Legally required business details can be supplied by the server when generating invoices or other compliance documents.</p>
-             </section>
-
 }
 
-/* LUXMO CHECKOUT: keep normal homepage/footer content behind the checkout */
-body.luxmo-checkout-open > *:not(#root) {
-  visibility: hidden;
-}
-body.luxmo-checkout-open #root {
-  overflow: hidden;
-}
