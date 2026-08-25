@@ -6,59 +6,64 @@
 // CUSTOMER:
 // POST /api/orders
 // {
-//   "action": "customer",
-//   "orderId": "LMH....",
-//   "mobile": "98XXXXXXXX"
+//   action: "customer",
+//   orderId: "LMH....",
+//   mobile: "98XXXXXXXX"
 // }
+//
+// GET compatibility:
+// /api/orders?action=customer&orderId=LMH...&mobile=98XXXXXXXX
+//
+// CUSTOMER SESSION COMPATIBILITY:
+// /api/orders?action=customer-session
 //
 // ADMIN:
 // GET /api/orders
-// Authorization: Bearer ADMIN_SESSION_TOKEN
+// Cookie: luxmo_admin_session=...
 //
 // POST /api/orders
 // {
-//   "action": "admin"
+//   action: "admin"
 // }
 //
-// CUSTOMER SECURITY:
-// - Order ID required
-// - Mobile number required
-// - Mobile must match the order
-//
-// CUSTOMER CAN SEE:
-// - Order ID
-// - Order status
-// - Payment status
-// - Payment amount
-// - Payment method
-// - Products
-// - Shipping
-// - Customer details
-// - Shipping address
-// - Courier
-// - Shipment status
-// - AWB
-// - Tracking URL
-// - Shipping label
-// - Invoice
-// - Combined label + invoice
-// - Warranty
-//
+// IMPORTANT:
+// - No new API function
+// - Customer-session uses this same function
+// - COD orders are supported
+// - Razorpay orders are supported
+// - Existing Firestore orders collection is used
 // ============================================================
 
+import crypto from "crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "../lib/firebase-admin.js";
 
+const ADMIN_COOKIE_NAME = "luxmo_admin_session";
+
 /* ============================================================
-   RESPONSE HELPER
+   FIREBASE
+============================================================ */
+
+function getDb() {
+  const app = getFirebaseAdmin();
+  return getFirestore(app);
+}
+
+/* ============================================================
+   RESPONSE
 ============================================================ */
 
 function sendJson(res, status, data) {
+  res.setHeader(
+    "Content-Type",
+    "application/json; charset=utf-8"
+  );
+
   return res.status(status).json(data);
 }
 
 /* ============================================================
-   STRING HELPERS
+   HELPERS
 ============================================================ */
 
 function clean(value) {
@@ -72,11 +77,9 @@ function normalizeMobile(value) {
     return "";
   }
 
-  if (digits.length > 10) {
-    return digits.slice(-10);
-  }
-
-  return digits;
+  return digits.length > 10
+    ? digits.slice(-10)
+    : digits;
 }
 
 function normalizeOrderId(value) {
@@ -91,7 +94,6 @@ function normalizeEmail(value) {
 
 function safeNumber(value) {
   const n = Number(value);
-
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -110,6 +112,51 @@ function pickFirst(...values) {
 }
 
 /* ============================================================
+   SERIALIZE FIRESTORE VALUES
+============================================================ */
+
+function serializeValue(value) {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (
+    typeof value === "object" &&
+    typeof value.toDate === "function"
+  ) {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+      return String(value);
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(serializeValue);
+  }
+
+  if (typeof value === "object") {
+    const output = {};
+
+    for (const [key, item] of Object.entries(value)) {
+      output[key] = serializeValue(item);
+    }
+
+    return output;
+  }
+
+  return value;
+}
+
+/* ============================================================
    MOBILE MATCH
 ============================================================ */
 
@@ -117,8 +164,8 @@ function mobileMatches(order, suppliedMobile) {
   const expected = normalizeMobile(
     pickFirst(
       order?.customer?.phone,
-      order?.customerPhone,
       order?.customer?.mobile,
+      order?.customerPhone,
       order?.phone,
       order?.mobile,
       order?.shippingAddress?.phone,
@@ -152,12 +199,8 @@ async function findOrder(db, orderId) {
 
   const ordersRef = db.collection("orders");
 
-  /* ----------------------------------------------------------
-     1. DIRECT FIRESTORE DOCUMENT ID
-  ---------------------------------------------------------- */
-
+  // 1. Firestore document ID
   const directRef = ordersRef.doc(normalized);
-
   const directSnapshot = await directRef.get();
 
   if (directSnapshot.exists) {
@@ -167,10 +210,7 @@ async function findOrder(db, orderId) {
     };
   }
 
-  /* ----------------------------------------------------------
-     2. websiteOrderId
-  ---------------------------------------------------------- */
-
+  // 2. websiteOrderId
   const websiteQuery = await ordersRef
     .where("websiteOrderId", "==", normalized)
     .limit(1)
@@ -185,10 +225,7 @@ async function findOrder(db, orderId) {
     };
   }
 
-  /* ----------------------------------------------------------
-     3. orderId
-  ---------------------------------------------------------- */
-
+  // 3. orderId
   const orderQuery = await ordersRef
     .where("orderId", "==", normalized)
     .limit(1)
@@ -203,10 +240,7 @@ async function findOrder(db, orderId) {
     };
   }
 
-  /* ----------------------------------------------------------
-     4. id
-  ---------------------------------------------------------- */
-
+  // 4. id
   const idQuery = await ordersRef
     .where("id", "==", normalized)
     .limit(1)
@@ -221,10 +255,7 @@ async function findOrder(db, orderId) {
     };
   }
 
-  /* ----------------------------------------------------------
-     5. externalOrderId
-  ---------------------------------------------------------- */
-
+  // 5. externalOrderId
   const externalQuery = await ordersRef
     .where("externalOrderId", "==", normalized)
     .limit(1)
@@ -240,6 +271,220 @@ async function findOrder(db, orderId) {
   }
 
   return null;
+}
+
+/* ============================================================
+   ORDER ITEMS
+============================================================ */
+
+function buildItems(order) {
+  const rawItems =
+    Array.isArray(order?.items)
+      ? order.items
+      : Array.isArray(order?.orderItems)
+      ? order.orderItems
+      : Array.isArray(order?.products)
+      ? order.products
+      : [];
+
+  return rawItems.map((item) => {
+    const quantity = Math.max(
+      1,
+      Math.floor(
+        safeNumber(
+          item?.qty ??
+          item?.quantity ??
+          item?.count ??
+          1
+        )
+      )
+    );
+
+    const price = safeNumber(
+      item?.price ??
+      item?.salePrice ??
+      item?.sellingPrice ??
+      item?.unitPrice ??
+      item?.amount ??
+      0
+    );
+
+    return {
+      id:
+        item?.id ||
+        item?.productId ||
+        item?.product_id ||
+        "",
+
+      productId:
+        item?.productId ||
+        item?.product_id ||
+        item?.id ||
+        "",
+
+      sku:
+        item?.sku ||
+        item?.SKU ||
+        "",
+
+      title:
+        item?.title ||
+        item?.name ||
+        item?.productName ||
+        item?.product_name ||
+        "",
+
+      name:
+        item?.name ||
+        item?.title ||
+        item?.productName ||
+        "",
+
+      image:
+        item?.image ||
+        item?.imageUrl ||
+        item?.image_url ||
+        item?.thumbnail ||
+        "",
+
+      quantity,
+      qty: quantity,
+
+      price,
+
+      salePrice: safeNumber(
+        item?.salePrice ??
+        item?.sellingPrice ??
+        item?.price ??
+        0
+      ),
+
+      colour:
+        item?.colour ||
+        item?.color ||
+        item?.colourName ||
+        "",
+
+      color:
+        item?.color ||
+        item?.colour ||
+        item?.colourName ||
+        "",
+
+      model:
+        item?.model ||
+        item?.modelName ||
+        "",
+
+      variant:
+        item?.variant ||
+        item?.variantName ||
+        "",
+
+      size:
+        item?.size ||
+        "",
+
+      category:
+        item?.category ||
+        "",
+
+      hsn:
+        item?.hsn ||
+        item?.HSN ||
+        "",
+
+      gst: safeNumber(
+        item?.gst ??
+        item?.gstAmount ??
+        0
+      ),
+    };
+  });
+}
+
+/* ============================================================
+   PAYMENT
+============================================================ */
+
+function getPaymentMethod(order) {
+  const explicit = clean(
+    order?.paymentMethod ||
+    order?.payment_method ||
+    order?.method ||
+    order?.paymentType
+  );
+
+  if (explicit) {
+    if (explicit.toLowerCase() === "cod") {
+      return "COD";
+    }
+
+    return explicit;
+  }
+
+  if (
+    order?.isCOD === true ||
+    order?.cod === true
+  ) {
+    return "COD";
+  }
+
+  return "Razorpay";
+}
+
+function getPaymentStatus(order) {
+  const explicit = clean(
+    order?.paymentStatus ||
+    order?.payment_status ||
+    order?.paymentState
+  );
+
+  if (explicit) {
+    return explicit;
+  }
+
+  if (order?.paymentVerified === true) {
+    return "Paid";
+  }
+
+  if (getPaymentMethod(order) === "COD") {
+    return "Pending";
+  }
+
+  return "Pending";
+}
+
+/* ============================================================
+   SHIPMENT
+============================================================ */
+
+function getShipmentStatus(order) {
+  const explicit = clean(
+    order?.shipmentStatus ||
+    order?.shipment_status ||
+    order?.deliveryStatus ||
+    order?.delivery_status
+  );
+
+  if (explicit) {
+    return explicit;
+  }
+
+  if (order?.delivered === true) {
+    return "Delivered";
+  }
+
+  if (
+    order?.shipmentId ||
+    order?.shipment_id ||
+    order?.awb ||
+    order?.awbNumber
+  ) {
+    return "Created";
+  }
+
+  return "Pending";
 }
 
 /* ============================================================
@@ -268,983 +513,916 @@ function buildCustomerOrder(order, firestoreId = "") {
       ? order.billingAddress
       : {};
 
-  /* ----------------------------------------------------------
-     ITEMS
-  ---------------------------------------------------------- */
-
-  const rawItems =
-    Array.isArray(order?.items)
-      ? order.items
-      : Array.isArray(order?.orderItems)
-      ? order.orderItems
-      : Array.isArray(order?.products)
-      ? order.products
-      : [];
-
-  const items = rawItems.map((item) => ({
-    id:
-      item?.id ||
-      item?.productId ||
-      item?.product_id ||
-      "",
-
-    productId:
-      item?.productId ||
-      item?.product_id ||
-      item?.id ||
-      "",
-
-    sku:
-      item?.sku ||
-      item?.SKU ||
-      "",
-
-    title:
-      item?.title ||
-      item?.name ||
-      item?.productName ||
-      item?.product_name ||
-      "",
-
-    name:
-      item?.name ||
-      item?.title ||
-      item?.productName ||
-      "",
-
-    image:
-      item?.image ||
-      item?.imageUrl ||
-      item?.image_url ||
-      item?.thumbnail ||
-      "",
-
-    quantity: Math.max(
-      1,
-      Math.floor(
-        safeNumber(
-          item?.qty ??
-            item?.quantity ??
-            item?.count ??
-            1
-        )
-      )
-    ),
-
-    qty: Math.max(
-      1,
-      Math.floor(
-        safeNumber(
-          item?.qty ??
-            item?.quantity ??
-            item?.count ??
-            1
-        )
-      )
-    ),
-
-    price: safeNumber(
-      item?.price ??
-        item?.salePrice ??
-        item?.sellingPrice ??
-        item?.unitPrice ??
-        item?.amount ??
-        0
-    ),
-
-    salePrice: safeNumber(
-      item?.salePrice ??
-        item?.sellingPrice ??
-        item?.price ??
-        0
-    ),
-
-    colour:
-      item?.colour ||
-      item?.color ||
-      item?.colourName ||
-      "",
-
-    color:
-      item?.color ||
-      item?.colour ||
-      item?.colourName ||
-      "",
-
-    model:
-      item?.model ||
-      item?.modelName ||
-      "",
-
-    variant:
-      item?.variant ||
-      item?.variantName ||
-      "",
-
-    size:
-      item?.size ||
-      "",
-
-    category:
-      item?.category ||
-      "",
-
-    hsn:
-      item?.hsn ||
-      item?.HSN ||
-      "",
-
-    gst:
-      safeNumber(
-        item?.gst ??
-          item?.gstAmount ??
-          0
-      ),
-  }));
-
-  /* ----------------------------------------------------------
-     ORDER ID
-  ---------------------------------------------------------- */
-
   const orderId = pickFirst(
-    order.websiteOrderId,
-    order.orderId,
-    order.externalOrderId,
-    order.id,
+    order?.websiteOrderId,
+    order?.orderId,
+    order?.externalOrderId,
+    order?.id,
     firestoreId
   );
 
-  /* ----------------------------------------------------------
-     PAYMENT
-  ---------------------------------------------------------- */
-
-  let paymentStatus = pickFirst(
-    order.paymentStatus,
-    order.payment_status,
-    order.paymentState
-  );
-
-  if (!paymentStatus) {
-    if (order.paymentVerified === true) {
-      paymentStatus = "Paid";
-    } else if (
-      String(order.paymentMethod || "").toLowerCase() ===
-      "cod"
-    ) {
-      paymentStatus = "Pending";
-    } else {
-      paymentStatus = "Pending";
-    }
-  }
-
-  const paymentMethod =
-    order.paymentMethod ||
-    order.payment_method ||
-    order.method ||
-    (
-      order.isCOD === true ||
-      order.cod === true ||
-      String(order.paymentType || "").toLowerCase() === "cod"
-        ? "COD"
-        : "Razorpay"
-    );
-
-  /* ----------------------------------------------------------
-     SHIPMENT
-  ---------------------------------------------------------- */
-
-  let shipmentStatus = pickFirst(
-    order.shipmentStatus,
-    order.shipment_status,
-    order.deliveryStatus,
-    order.delivery_status
-  );
-
-  if (!shipmentStatus) {
-    if (order.delivered === true) {
-      shipmentStatus = "Delivered";
-    } else if (order.shipmentId) {
-      shipmentStatus = "Created";
-    } else {
-      shipmentStatus = "Pending";
-    }
-  }
-
-  /* ----------------------------------------------------------
-     CUSTOMER
-  ---------------------------------------------------------- */
+  const paymentMethod = getPaymentMethod(order);
+  const paymentStatus = getPaymentStatus(order);
+  const shipmentStatus = getShipmentStatus(order);
 
   const customerMobile = normalizeMobile(
     pickFirst(
-      customer.phone,
-      customer.mobile,
-      order.customerPhone,
-      order.phone,
-      order.mobile,
-      shippingAddress.phone,
-      shippingAddress.mobile
+      customer?.phone,
+      customer?.mobile,
+      order?.customerPhone,
+      order?.phone,
+      order?.mobile,
+      shippingAddress?.phone,
+      shippingAddress?.mobile
     )
   );
 
   const customerEmail = normalizeEmail(
     pickFirst(
-      customer.email,
-      order.customerEmail,
-      order.email,
-      shippingAddress.email
+      customer?.email,
+      order?.customerEmail,
+      order?.email,
+      shippingAddress?.email
     )
   );
 
-  /* ----------------------------------------------------------
-     RETURN CUSTOMER OBJECT
-  ---------------------------------------------------------- */
+  const subtotal = safeNumber(
+    order?.subtotal ??
+    order?.subTotal ??
+    0
+  );
 
-  return {
-    /* ========================================================
-       BASIC ORDER
-    ======================================================== */
+  const discount = safeNumber(
+    order?.discount ??
+    order?.totalDiscount ??
+    order?.total_discount ??
+    0
+  );
 
-    id: firestoreId || order.id || null,
+  const shippingFee = safeNumber(
+    order?.shippingFee ??
+    order?.shippingCharges ??
+    order?.shippingCharge ??
+    order?.shippingCost ??
+    order?.shipping ??
+    0
+  );
+
+  const total = safeNumber(
+    order?.total ??
+    order?.grandTotal ??
+    order?.totalAmount ??
+    order?.amount ??
+    0
+  );
+
+  const paidAmount = safeNumber(
+    order?.paidAmount ??
+    (
+      paymentStatus === "Paid"
+        ? total
+        : 0
+    )
+  );
+
+  const result = {
+    // ---------------------------------------------------------
+    // BASIC
+    // ---------------------------------------------------------
+
+    id:
+      firestoreId ||
+      order?.id ||
+      null,
 
     orderId,
 
     websiteOrderId:
-      order.websiteOrderId ||
+      order?.websiteOrderId ||
       orderId,
 
     externalOrderId:
-      order.externalOrderId ||
+      order?.externalOrderId ||
       null,
 
     status:
-      order.status ||
-      order.orderStatus ||
+      order?.status ||
+      order?.orderStatus ||
       "Order Placed",
 
     orderStatus:
-      order.orderStatus ||
-      order.status ||
+      order?.orderStatus ||
+      order?.status ||
       "Order Placed",
 
     createdAt:
-      order.createdAt ||
-      order.created_at ||
+      order?.createdAt ||
+      order?.created_at ||
       null,
 
     updatedAt:
-      order.updatedAt ||
-      order.updated_at ||
+      order?.updatedAt ||
+      order?.updated_at ||
       null,
 
     paidAt:
-      order.paidAt ||
-      order.paymentDate ||
-      order.payment_date ||
+      order?.paidAt ||
+      order?.paymentDate ||
+      order?.payment_date ||
       null,
 
-    /* ========================================================
-       PAYMENT
-    ======================================================== */
+    // ---------------------------------------------------------
+    // PAYMENT
+    // ---------------------------------------------------------
 
     payment: {
       status: paymentStatus,
 
       verified:
-        order.paymentVerified === true,
+        order?.paymentVerified === true,
 
       method: paymentMethod,
 
-      amount: safeNumber(
-        order.paidAmount ??
-          order.amount ??
-          order.totalAmount ??
-          order.total ??
-          order.grandTotal ??
-          0
-      ),
+      amount:
+        paidAmount,
+
+      totalAmount:
+        total,
 
       currency:
-        order.currency ||
+        order?.currency ||
         "INR",
 
       razorpayOrderId:
-        order.razorpayOrderId ||
-        order.razorpay_order_id ||
+        order?.razorpayOrderId ||
+        order?.razorpay_order_id ||
         null,
 
       razorpayPaymentId:
-        order.razorpayPaymentId ||
-        order.razorpay_payment_id ||
+        order?.razorpayPaymentId ||
+        order?.razorpay_payment_id ||
         null,
     },
-
-    /* ========================================================
-       PAYMENT COMPATIBILITY FIELDS
-    ======================================================== */
 
     paymentStatus,
 
     paymentMethod,
 
     paymentVerified:
-      order.paymentVerified === true,
+      order?.paymentVerified === true,
 
-    /* ========================================================
-       PRICING
-    ======================================================== */
+    // ---------------------------------------------------------
+    // PRICING
+    // ---------------------------------------------------------
 
     pricing: {
-      subtotal: safeNumber(
-        order.subtotal ??
-          order.subTotal ??
-          0
-      ),
-
-      discount: safeNumber(
-        order.discount ??
-          order.totalDiscount ??
-          order.total_discount ??
-          0
-      ),
-
-      shippingFee: safeNumber(
-        order.shippingFee ??
-          order.shippingCharges ??
-          order.shippingCharge ??
-          order.shippingCost ??
-          order.shipping ??
-          0
-      ),
-
-      total: safeNumber(
-        order.total ??
-          order.grandTotal ??
-          order.totalAmount ??
-          order.amount ??
-          0
-      ),
+      subtotal,
+      discount,
+      shippingFee,
+      total,
 
       couponCode:
-        order.couponCode ||
-        order.coupon ||
+        order?.couponCode ||
+        order?.coupon ||
         null,
     },
 
-    /* ========================================================
-       TOP LEVEL PRICE COMPATIBILITY
-    ======================================================== */
+    subtotal,
+    discount,
+    shippingFee,
+    total,
 
-    subtotal: safeNumber(
-      order.subtotal ??
-        order.subTotal ??
-        0
-    ),
+    grandTotal: total,
+    totalAmount: total,
 
-    discount: safeNumber(
-      order.discount ??
-        order.totalDiscount ??
-        0
-    ),
-
-    shippingFee: safeNumber(
-      order.shippingFee ??
-        order.shippingCharges ??
-        order.shippingCharge ??
-        order.shippingCost ??
-        order.shipping ??
-        0
-    ),
-
-    total: safeNumber(
-      order.total ??
-        order.grandTotal ??
-        order.totalAmount ??
-        order.amount ??
-        0
-    ),
-
-    /* ========================================================
-       CUSTOMER
-    ======================================================== */
+    // ---------------------------------------------------------
+    // CUSTOMER
+    // ---------------------------------------------------------
 
     customer: {
       name: pickFirst(
-        customer.name,
-        customer.fullName,
-        order.customerName,
-        order.name,
-        order.fullName,
-        shippingAddress.name
+        customer?.name,
+        customer?.fullName,
+        order?.customerName,
+        order?.name,
+        order?.fullName,
+        shippingAddress?.name
       ),
 
       mobile: customerMobile,
-
       phone: customerMobile,
-
       email: customerEmail,
     },
 
-    /* ========================================================
-       SHIPPING ADDRESS
-    ======================================================== */
+    // ---------------------------------------------------------
+    // SHIPPING ADDRESS
+    // ---------------------------------------------------------
 
     shippingAddress: {
       name:
-        shippingAddress.name ||
-        shippingAddress.fullName ||
+        shippingAddress?.name ||
+        shippingAddress?.fullName ||
         "",
 
       address: pickFirst(
-        shippingAddress.line1,
-        shippingAddress.address1,
-        shippingAddress.address,
-        shippingAddress.street
+        shippingAddress?.line1,
+        shippingAddress?.address1,
+        shippingAddress?.address,
+        shippingAddress?.street
       ),
 
       address1: pickFirst(
-        shippingAddress.line1,
-        shippingAddress.address1,
-        shippingAddress.address
+        shippingAddress?.line1,
+        shippingAddress?.address1,
+        shippingAddress?.address
       ),
 
       address2: pickFirst(
-        shippingAddress.line2,
-        shippingAddress.address2
+        shippingAddress?.line2,
+        shippingAddress?.address2
       ),
 
       city:
-        shippingAddress.city ||
-        shippingAddress.cityName ||
+        shippingAddress?.city ||
+        shippingAddress?.cityName ||
         "",
 
       state:
-        shippingAddress.state ||
-        shippingAddress.stateName ||
+        shippingAddress?.state ||
+        shippingAddress?.stateName ||
         "",
 
       pincode:
-        shippingAddress.pincode ||
-        shippingAddress.postalCode ||
-        shippingAddress.zip ||
-        shippingAddress.zipCode ||
+        shippingAddress?.pincode ||
+        shippingAddress?.postalCode ||
+        shippingAddress?.zip ||
+        shippingAddress?.zipCode ||
         "",
 
       country:
-        shippingAddress.country ||
+        shippingAddress?.country ||
         "India",
 
       phone:
-        shippingAddress.phone ||
-        shippingAddress.mobile ||
+        shippingAddress?.phone ||
+        shippingAddress?.mobile ||
         customerMobile,
 
       email:
-        shippingAddress.email ||
+        shippingAddress?.email ||
         customerEmail,
     },
 
-    /* ========================================================
-       BILLING ADDRESS
-    ======================================================== */
+    billingAddress,
 
-    billingAddress: {
-      name:
-        billingAddress.name ||
-        billingAddress.fullName ||
-        "",
+    // ---------------------------------------------------------
+    // ITEMS
+    // ---------------------------------------------------------
 
-      address: pickFirst(
-        billingAddress.line1,
-        billingAddress.address1,
-        billingAddress.address
-      ),
+    items: buildItems(order),
 
-      address2: pickFirst(
-        billingAddress.line2,
-        billingAddress.address2
-      ),
+    orderItems: buildItems(order),
 
-      city:
-        billingAddress.city ||
-        "",
+    products: buildItems(order),
 
-      state:
-        billingAddress.state ||
-        billingAddress.stateName ||
-        "",
-
-      pincode:
-        billingAddress.pincode ||
-        billingAddress.postalCode ||
-        billingAddress.zip ||
-        "",
-
-      country:
-        billingAddress.country ||
-        "India",
-
-      phone:
-        billingAddress.phone ||
-        billingAddress.mobile ||
-        customerMobile,
-
-      email:
-        billingAddress.email ||
-        customerEmail,
-    },
-
-    /* ========================================================
-       PRODUCTS
-    ======================================================== */
-
-    items,
-
-    products: items,
-
-    orderItems: items,
-
-    /* ========================================================
-       SHIPMENT
-    ======================================================== */
+    // ---------------------------------------------------------
+    // SHIPMENT
+    // ---------------------------------------------------------
 
     shipment: {
       status: shipmentStatus,
 
-      provider:
-        order.courierProvider ||
-        order.logisticsProvider ||
-        order.provider ||
-        (
-          order.shiprocketOrderId ||
-          order.shipmentId
-            ? "Shiprocket"
-            : "iThink Logistics"
-        ),
-
-      courier:
-        order.courier ||
-        order.courierName ||
-        order.courierProvider ||
-        null,
-
       shipmentId:
-        order.shipmentId ||
-        order.shipment_id ||
-        null,
-
-      logisticsOrderId:
-        order.logisticsOrderId ||
-        order.shiprocketOrderId ||
-        order.ithinkOrderId ||
+        order?.shipmentId ||
+        order?.shipment_id ||
         null,
 
       awb:
-        order.awb ||
-        order.awbCode ||
-        order.waybill ||
-        order.trackingNumber ||
+        order?.awb ||
+        order?.awbNumber ||
+        order?.trackingNumber ||
+        null,
+
+      courier:
+        order?.courier ||
+        order?.courierName ||
+        order?.shippingProvider ||
         null,
 
       trackingUrl:
-        order.trackingUrl ||
-        order.tracking_url ||
-        order.trackingLink ||
-        null,
-
-      pickupStatus:
-        order.pickupStatus ||
-        "Pending",
-
-      pickupToken:
-        order.pickupToken ||
+        order?.trackingUrl ||
+        order?.trackingURL ||
+        order?.tracking_url ||
         null,
 
       labelUrl:
-        order.labelUrl ||
-        order.label_url ||
-        order.shippingLabelUrl ||
+        order?.labelUrl ||
+        order?.shippingLabelUrl ||
+        order?.shipping_label_url ||
         null,
 
       invoiceUrl:
-        order.invoiceUrl ||
-        order.invoice_url ||
+        order?.invoiceUrl ||
+        order?.invoiceURL ||
+        order?.invoice_url ||
         null,
 
       combinedLabelInvoiceUrl:
-        order.combinedLabelInvoiceUrl ||
-        order.combined_label_invoice_url ||
+        order?.combinedLabelInvoiceUrl ||
+        order?.combinedLabelUrl ||
+        order?.labelInvoiceUrl ||
         null,
-
-      documentError:
-        order.documentError ||
-        "",
     },
 
-    /* ========================================================
-       SHIPMENT COMPATIBILITY FIELDS
-    ======================================================== */
-
-    courier:
-      order.courier ||
-      order.courierName ||
-      order.courierProvider ||
-      null,
-
-    courierProvider:
-      order.courierProvider ||
-      order.provider ||
-      null,
-
-    shipmentId:
-      order.shipmentId ||
-      null,
+    shipmentStatus,
 
     awb:
-      order.awb ||
-      order.awbCode ||
-      order.waybill ||
+      order?.awb ||
+      order?.awbNumber ||
+      order?.trackingNumber ||
+      null,
+
+    courier:
+      order?.courier ||
+      order?.courierName ||
+      order?.shippingProvider ||
       null,
 
     trackingUrl:
-      order.trackingUrl ||
-      order.tracking_url ||
+      order?.trackingUrl ||
+      order?.trackingURL ||
+      order?.tracking_url ||
       null,
 
-    labelUrl:
-      order.labelUrl ||
-      order.label_url ||
+    shippingLabel:
+      order?.shippingLabel ||
+      order?.shippingLabelUrl ||
+      order?.labelUrl ||
       null,
 
-    invoiceUrl:
-      order.invoiceUrl ||
-      order.invoice_url ||
+    invoice:
+      order?.invoice ||
+      order?.invoiceUrl ||
       null,
 
-    combinedLabelInvoiceUrl:
-      order.combinedLabelInvoiceUrl ||
-      order.combined_label_invoice_url ||
+    combinedLabelInvoice:
+      order?.combinedLabelInvoice ||
+      order?.combinedLabelInvoiceUrl ||
+      order?.combinedLabelUrl ||
       null,
 
-    /* ========================================================
-       WARRANTY
-    ======================================================== */
+    // ---------------------------------------------------------
+    // WARRANTY
+    // ---------------------------------------------------------
 
     warranty: {
-      status:
-        order.warrantyStatus ||
-        null,
+      registered:
+        order?.warranty?.registered === true ||
+        order?.warrantyRegistered === true,
 
       registrationId:
-        order.warrantyRegistrationId ||
+        order?.warranty?.registrationId ||
+        order?.warrantyRegistrationId ||
+        null,
+
+      status:
+        order?.warranty?.status ||
         null,
     },
+
+    warrantyRegistration:
+      order?.warrantyRegistration ||
+      null,
   };
+
+  // Keep additional safe order information that frontend may
+  // already expect, without exposing admin credentials/secrets.
+
+  if (order?.notes) {
+    result.notes = order.notes;
+  }
+
+  if (order?.couponCode) {
+    result.couponCode = order.couponCode;
+  }
+
+  return serializeValue(result);
+}
+
+/* ============================================================
+   ADMIN COOKIE
+============================================================ */
+
+function getCookie(req, name) {
+  const cookieHeader =
+    req.headers?.cookie || "";
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies =
+    cookieHeader.split(";");
+
+  for (const cookie of cookies) {
+    const index =
+      cookie.indexOf("=");
+
+    if (index === -1) {
+      continue;
+    }
+
+    const key =
+      cookie
+        .slice(0, index)
+        .trim();
+
+    const value =
+      cookie
+        .slice(index + 1)
+        .trim();
+
+    if (key === name) {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+/* ============================================================
+   SAFE EQUAL
+============================================================ */
+
+function safeEqual(a, b) {
+  if (
+    typeof a !== "string" ||
+    typeof b !== "string"
+  ) {
+    return false;
+  }
+
+  const left =
+    Buffer.from(a, "utf8");
+
+  const right =
+    Buffer.from(b, "utf8");
+
+  if (
+    left.length !== right.length
+  ) {
+    return false;
+  }
+
+  try {
+    return crypto.timingSafeEqual(
+      left,
+      right
+    );
+  } catch {
+    return false;
+  }
+}
+
+/* ============================================================
+   VERIFY ADMIN SESSION
+   Same format used by api/admin-session.js
+============================================================ */
+
+function verifyAdminSession(req) {
+  const secret =
+    String(
+      process.env.ADMIN_SESSION_SECRET || ""
+    ).trim();
+
+  if (!secret) {
+    return {
+      valid: false,
+      reason: "missing_secret",
+    };
+  }
+
+  const token =
+    getCookie(
+      req,
+      ADMIN_COOKIE_NAME
+    );
+
+  if (!token) {
+    return {
+      valid: false,
+      reason: "missing_cookie",
+    };
+  }
+
+  const parts =
+    String(token).split(".");
+
+  if (parts.length !== 3) {
+    return {
+      valid: false,
+      reason: "invalid_token",
+    };
+  }
+
+  const [
+    encodedPayload,
+    expiresAtText,
+    signature,
+  ] = parts;
+
+  if (
+    !encodedPayload ||
+    !expiresAtText ||
+    !signature
+  ) {
+    return {
+      valid: false,
+      reason: "invalid_token",
+    };
+  }
+
+  const expectedSignature =
+    crypto
+      .createHmac(
+        "sha256",
+        secret
+      )
+      .update(
+        `${encodedPayload}.${expiresAtText}`
+      )
+      .digest("base64url");
+
+  if (
+    !safeEqual(
+      signature,
+      expectedSignature
+    )
+  ) {
+    return {
+      valid: false,
+      reason: "invalid_signature",
+    };
+  }
+
+  const expiresAt =
+    Number(expiresAtText);
+
+  if (
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= 0 ||
+    Date.now() >= expiresAt
+  ) {
+    return {
+      valid: false,
+      reason: "expired",
+    };
+  }
+
+  let payload;
+
+  try {
+    const payloadText =
+      Buffer.from(
+        encodedPayload,
+        "base64url"
+      ).toString("utf8");
+
+    payload =
+      JSON.parse(payloadText);
+  } catch {
+    return {
+      valid: false,
+      reason: "invalid_payload",
+    };
+  }
+
+  if (
+    !payload ||
+    payload.role !== "admin"
+  ) {
+    return {
+      valid: false,
+      reason: "not_admin",
+    };
+  }
+
+  return {
+    valid: true,
+    payload,
+    expiresAt,
+  };
+}
+
+/* ============================================================
+   ADMIN ORDER LIST
+============================================================ */
+
+async function getAdminOrders(db) {
+  const snapshot =
+    await db
+      .collection("orders")
+      .orderBy(
+        "createdAt",
+        "desc"
+      )
+      .limit(500)
+      .get();
+
+  const orders =
+    snapshot.docs.map((doc) => {
+      const raw =
+        doc.data() || {};
+
+      return serializeValue({
+        id: doc.id,
+
+        ...raw,
+
+        websiteOrderId:
+          raw.websiteOrderId ||
+          raw.orderId ||
+          raw.externalOrderId ||
+          doc.id,
+
+        paymentMethod:
+          getPaymentMethod(raw),
+
+        paymentStatus:
+          getPaymentStatus(raw),
+
+        shipmentStatus:
+          getShipmentStatus(raw),
+      });
+    });
+
+  return orders;
+}
+
+/* ============================================================
+   CUSTOMER SESSION COMPATIBILITY
+   ------------------------------------------------------------
+   IMPORTANT:
+   This does NOT create another Vercel function.
+   It is handled by api/orders.js after a Vercel rewrite.
+============================================================ */
+
+function handleCustomerSession(req, res) {
+  if (
+    req.method !== "GET" &&
+    req.method !== "POST"
+  ) {
+    res.setHeader(
+      "Allow",
+      "GET, POST"
+    );
+
+    return sendJson(
+      res,
+      405,
+      {
+        success: false,
+        authenticated: false,
+        error: "Method not allowed.",
+      }
+    );
+  }
+
+  return sendJson(
+    res,
+    200,
+    {
+      success: true,
+      authenticated: false,
+      customer: null,
+      message:
+        "Customer session is available through the orders API.",
+    }
+  );
 }
 
 /* ============================================================
    CUSTOMER ORDER
 ============================================================ */
 
-async function getCustomerOrder(req, res, db) {
-  const body = req.body || {};
+async function handleCustomerOrder(
+  req,
+  res,
+  db
+) {
+  const body =
+    req.body &&
+    typeof req.body === "object"
+      ? req.body
+      : {};
 
-  const orderId = clean(
-    body.orderId ||
+  const query =
+    req.query &&
+    typeof req.query === "object"
+      ? req.query
+      : {};
+
+  const orderId =
+    clean(
+      body.orderId ||
       body.websiteOrderId ||
-      body.externalOrderId ||
-      body.id
-  );
-
-  const mobile = normalizeMobile(
-    body.mobile ||
-      body.phone ||
-      body.customerMobile
-  );
-
-  if (!orderId) {
-    return sendJson(res, 400, {
-      success: false,
-      error: "Order ID is required.",
-      message: "Order ID is required.",
-    });
-  }
-
-  if (!mobile || mobile.length !== 10) {
-    return sendJson(res, 400, {
-      success: false,
-      error: "Enter a valid 10-digit mobile number.",
-      message: "Enter a valid 10-digit mobile number.",
-    });
-  }
-
-  /* ----------------------------------------------------------
-     FIND ORDER
-  ---------------------------------------------------------- */
-
-  const found = await findOrder(
-    db,
-    orderId
-  );
-
-  if (!found) {
-    return sendJson(res, 404, {
-      success: false,
-      error: "Order ID or mobile number is incorrect.",
-      message: "Order not found.",
-    });
-  }
-
-  /* ----------------------------------------------------------
-     MOBILE VERIFICATION
-  ---------------------------------------------------------- */
-
-  if (!mobileMatches(found.data, mobile)) {
-    return sendJson(res, 401, {
-      success: false,
-      error: "Order ID or mobile number is incorrect.",
-      message: "Mobile number does not match this order.",
-    });
-  }
-
-  /* ----------------------------------------------------------
-     BUILD SAFE CUSTOMER ORDER
-  ---------------------------------------------------------- */
-
-  const customerOrder = buildCustomerOrder(
-    found.data,
-    found.ref.id
-  );
-
-  return sendJson(res, 200, {
-    success: true,
-    verified: true,
-
-    order: customerOrder,
-
-    /* Compatibility */
-    data: customerOrder,
-  });
-}
-
-/* ============================================================
-   ADMIN AUTHENTICATION
-============================================================ */
-
-async function getAdminOrders(req, res, db) {
-  /*
-    Admin session can be supplied as:
-
-    Authorization: Bearer TOKEN
-
-    OR
-
-    x-admin-session: TOKEN
-  */
-
-  const authorization = clean(
-    req.headers?.authorization
-  );
-
-  const headerToken = clean(
-    req.headers?.["x-admin-session"]
-  );
-
-  let token = "";
-
-  if (authorization) {
-    token = authorization
-      .replace(/^Bearer\s+/i, "")
-      .trim();
-  }
-
-  if (!token) {
-    token = headerToken;
-  }
-
-  if (!token) {
-    return sendJson(res, 401, {
-      success: false,
-      error: "Admin authentication required.",
-    });
-  }
-
-  /* ----------------------------------------------------------
-     VALIDATE ADMIN SESSION
-  ---------------------------------------------------------- */
-
-  const sessionRef = db
-    .collection("adminSessions")
-    .doc(token);
-
-  const sessionSnapshot =
-    await sessionRef.get();
-
-  if (!sessionSnapshot.exists) {
-    return sendJson(res, 401, {
-      success: false,
-      error: "Invalid or expired admin session.",
-    });
-  }
-
-  const session =
-    sessionSnapshot.data() || {};
-
-  const expiresAt =
-    session.expiresAt
-      ? new Date(
-          session.expiresAt
-        ).getTime()
-      : 0;
-
-  if (
-    expiresAt &&
-    Date.now() > expiresAt
-  ) {
-    await sessionRef.delete();
-
-    return sendJson(res, 401, {
-      success: false,
-      error: "Admin session expired.",
-    });
-  }
-
-  /* ----------------------------------------------------------
-     LIMIT
-  ---------------------------------------------------------- */
-
-  const limitRaw = Number(
-    req.query?.limit ||
-      req.body?.limit ||
-      50
-  );
-
-  const limit =
-    Number.isFinite(limitRaw)
-      ? Math.min(
-          100,
-          Math.max(
-            1,
-            Math.floor(limitRaw)
-          )
-        )
-      : 50;
-
-  /* ----------------------------------------------------------
-     GET ORDERS
-  ---------------------------------------------------------- */
-
-  let snapshot;
-
-  try {
-    snapshot = await db
-      .collection("orders")
-      .orderBy("createdAt", "desc")
-      .limit(limit)
-      .get();
-  } catch (error) {
-    /*
-      Fallback if some old documents do not have
-      createdAt / Firestore index issue.
-    */
-
-    console.error(
-      "Admin orderBy failed:",
-      error
+      query.orderId ||
+      query.websiteOrderId ||
+      ""
     );
 
-    snapshot = await db
-      .collection("orders")
-      .limit(limit)
-      .get();
+  const mobile =
+    normalizeMobile(
+      body.mobile ||
+      body.phone ||
+      query.mobile ||
+      query.phone ||
+      ""
+    );
+
+  if (!orderId) {
+    return sendJson(
+      res,
+      400,
+      {
+        success: false,
+        error:
+          "Order ID is required.",
+      }
+    );
   }
 
-  const orders = snapshot.docs.map(
-    (doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })
-  );
+  if (!mobile) {
+    return sendJson(
+      res,
+      400,
+      {
+        success: false,
+        error:
+          "Mobile number is required.",
+      }
+    );
+  }
 
-  return sendJson(res, 200, {
-    success: true,
-    orders,
-    count: orders.length,
-  });
+  if (
+    mobile.length !== 10
+  ) {
+    return sendJson(
+      res,
+      400,
+      {
+        success: false,
+        error:
+          "Enter a valid 10-digit mobile number.",
+      }
+    );
+  }
+
+  const found =
+    await findOrder(
+      db,
+      orderId
+    );
+
+  if (!found) {
+    return sendJson(
+      res,
+      404,
+      {
+        success: false,
+        error:
+          "Order not found.",
+      }
+    );
+  }
+
+  const order =
+    found.data || {};
+
+  if (
+    !mobileMatches(
+      order,
+      mobile
+    )
+  ) {
+    return sendJson(
+      res,
+      403,
+      {
+        success: false,
+        error:
+          "Order ID and mobile number do not match.",
+      }
+    );
+  }
+
+  const customerOrder =
+    buildCustomerOrder(
+      order,
+      found.ref.id
+    );
+
+  return sendJson(
+    res,
+    200,
+    {
+      success: true,
+      order: customerOrder,
+      data: customerOrder,
+    }
+  );
 }
 
 /* ============================================================
    MAIN HANDLER
 ============================================================ */
 
-export default async function handler(req, res) {
+export default async function handler(
+  req,
+  res
+) {
   try {
-    res.setHeader(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate"
-    );
+    const method =
+      String(
+        req.method || ""
+      ).toUpperCase();
 
-    /* --------------------------------------------------------
-       FIREBASE
-    -------------------------------------------------------- */
+    const body =
+      req.body &&
+      typeof req.body === "object"
+        ? req.body
+        : {};
 
-    const adminApp =
-      getFirebaseAdmin();
+    const query =
+      req.query &&
+      typeof req.query === "object"
+        ? req.query
+        : {};
+
+    const action =
+      clean(
+        body.action ||
+        query.action ||
+        ""
+      ).toLowerCase();
+
+    /* ========================================================
+       CUSTOMER SESSION COMPATIBILITY
+       /api/orders?action=customer-session
+    ======================================================== */
+
+    if (
+      action ===
+        "customer-session" ||
+      action === "session"
+    ) {
+      return handleCustomerSession(
+        req,
+        res
+      );
+    }
+
+    /* ========================================================
+       DATABASE
+    ======================================================== */
 
     const db =
-      getFirestore(adminApp);
+      getDb();
 
     /* ========================================================
-       GET
-       ADMIN ORDERS
-    ======================================================== */
-
-    if (req.method === "GET") {
-      return await getAdminOrders(
-        req,
-        res,
-        db
-      );
-    }
-
-    /* ========================================================
-       ONLY POST AFTER THIS
-    ======================================================== */
-
-    if (req.method !== "POST") {
-      res.setHeader(
-        "Allow",
-        "GET, POST"
-      );
-
-      return sendJson(res, 405, {
-        success: false,
-        error: "Method not allowed.",
-      });
-    }
-
-    /* --------------------------------------------------------
-       REQUEST BODY
-    -------------------------------------------------------- */
-
-    const body = req.body || {};
-
-    const action = clean(
-      body.action ||
-        body.type ||
-        "customer"
-    ).toLowerCase();
-
-    /* ========================================================
-       CUSTOMER MY ORDERS
+       CUSTOMER
     ======================================================== */
 
     if (
       action === "customer" ||
       action === "my-orders" ||
-      action === "myorders" ||
-      action === "lookup"
+      action === "myorder"
     ) {
-      return await getCustomerOrder(
+      if (
+        method !== "POST" &&
+        method !== "GET"
+      ) {
+        res.setHeader(
+          "Allow",
+          "GET, POST"
+        );
+
+        return sendJson(
+          res,
+          405,
+          {
+            success: false,
+            error:
+              "Method not allowed.",
+          }
+        );
+      }
+
+      return handleCustomerOrder(
         req,
         res,
         db
@@ -1256,35 +1434,159 @@ export default async function handler(req, res) {
     ======================================================== */
 
     if (
-      action === "admin" ||
-      action === "list"
+      action === "admin"
     ) {
-      return await getAdminOrders(
-        req,
+      if (
+        method !== "POST" &&
+        method !== "GET"
+      ) {
+        res.setHeader(
+          "Allow",
+          "GET, POST"
+        );
+
+        return sendJson(
+          res,
+          405,
+          {
+            success: false,
+            error:
+              "Method not allowed.",
+          }
+        );
+      }
+
+      const session =
+        verifyAdminSession(req);
+
+      if (!session.valid) {
+        return sendJson(
+          res,
+          401,
+          {
+            success: false,
+            authenticated: false,
+            error:
+              "Unauthorized.",
+          }
+        );
+      }
+
+      const orders =
+        await getAdminOrders(
+          db
+        );
+
+      return sendJson(
         res,
-        db
+        200,
+        {
+          success: true,
+          authenticated: true,
+          orders,
+          data: orders,
+          count: orders.length,
+        }
       );
     }
 
     /* ========================================================
-       INVALID ACTION
+       ADMIN GET
+       GET /api/orders
     ======================================================== */
 
-    return sendJson(res, 400, {
-      success: false,
-      error: "Invalid orders action.",
-    });
+    if (
+      method === "GET"
+    ) {
+      const session =
+        verifyAdminSession(req);
+
+      if (!session.valid) {
+        return sendJson(
+          res,
+          401,
+          {
+            success: false,
+            authenticated: false,
+            error:
+              "Unauthorized.",
+          }
+        );
+      }
+
+      const orders =
+        await getAdminOrders(
+          db
+        );
+
+      return sendJson(
+        res,
+        200,
+        {
+          success: true,
+          authenticated: true,
+          orders,
+          data: orders,
+          count: orders.length,
+        }
+      );
+    }
+
+    /* ========================================================
+       POST WITHOUT ACTION
+    ======================================================== */
+
+    if (
+      method === "POST"
+    ) {
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
+          error:
+            "Invalid action.",
+          supportedActions: [
+            "customer",
+            "admin",
+            "customer-session",
+          ],
+        }
+      );
+    }
+
+    /* ========================================================
+       METHOD NOT ALLOWED
+    ======================================================== */
+
+    res.setHeader(
+      "Allow",
+      "GET, POST"
+    );
+
+    return sendJson(
+      res,
+      405,
+      {
+        success: false,
+        error:
+          "Method not allowed.",
+      }
+    );
   } catch (error) {
     console.error(
-      "LUXMO HUB orders API error:",
+      "orders.js error:",
       error
     );
 
-    return sendJson(res, 500, {
-      success: false,
-      error:
-        error?.message ||
-        "Internal server error.",
-    });
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
+        error:
+          "Internal server error.",
+      }
+    );
   }
 }
