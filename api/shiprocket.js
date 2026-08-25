@@ -1,17 +1,8 @@
 // api/shiprocket.js
 // LUXMO HUB — SHIPROCKET ORDER + SHIPMENT CREATION
-//
-// Responsibilities:
-// 1. Shiprocket authentication
-// 2. Create Shiprocket order
-// 3. Create shipment
-// 4. Select/assign courier
-// 5. Assign AWB
-// 6. Return order/shipment/AWB/courier/tracking data
-//
-// IMPORTANT:
-// Label + Invoice generation is handled by create-shipment.js
-// after this file successfully returns shipment information.
+
+const SHIPROCKET_BASE =
+  "https://apiv2.shiprocket.in/v1/external";
 
 function sendJson(res, status, data) {
   return res.status(status).json(data);
@@ -23,39 +14,29 @@ function clean(value) {
 
 function number(value, fallback = 0) {
   const n = Number(value);
-
-  return Number.isFinite(n)
-    ? n
-    : fallback;
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function positiveNumber(value, fallback = 1) {
   const n = Number(value);
-
-  return Number.isFinite(n) && n > 0
-    ? n
-    : fallback;
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function normalizePhone(value) {
-  const digits = clean(value)
-    .replace(/\D/g, "");
-
-  if (digits.length > 10) {
-    return digits.slice(-10);
-  }
-
-  return digits;
+  const digits = clean(value).replace(/\D/g, "");
+  return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
 function normalizePincode(value) {
-  return clean(value)
-    .replace(/\D/g, "")
-    .slice(0, 6);
+  return clean(value).replace(/\D/g, "").slice(0, 6);
 }
 
 function normalizeEmail(value) {
   return clean(value).toLowerCase();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /* =========================================================
@@ -78,16 +59,13 @@ async function getShiprocketToken() {
   }
 
   const response = await fetch(
-    "https://apiv2.shiprocket.in/v1/external/auth/login",
+    `${SHIPROCKET_BASE}/auth/login`,
     {
       method: "POST",
 
       headers: {
-        "Content-Type":
-          "application/json",
-
-        Accept:
-          "application/json",
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
 
       body: JSON.stringify({
@@ -101,10 +79,7 @@ async function getShiprocketToken() {
     .json()
     .catch(() => ({}));
 
-  if (
-    !response.ok ||
-    !data?.token
-  ) {
+  if (!response.ok || !data?.token) {
     throw new Error(
       data?.message ||
         data?.error ||
@@ -116,7 +91,7 @@ async function getShiprocketToken() {
 }
 
 /* =========================================================
-   SHIPROCKET API REQUEST
+   SHIPROCKET REQUEST
 ========================================================= */
 
 async function shiprocketRequest(
@@ -130,50 +105,64 @@ async function shiprocketRequest(
   const body =
     options.body ?? null;
 
-  const response =
-    await fetch(
-      `https://apiv2.shiprocket.in/v1/external${endpoint}`,
-      {
-        method,
+  const response = await fetch(
+    `${SHIPROCKET_BASE}${endpoint}`,
+    {
+      method,
 
-        headers: {
-          Accept:
-            "application/json",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
 
-          "Content-Type":
-            "application/json",
+      ...(body !== null
+        ? {
+            body: JSON.stringify(body),
+          }
+        : {}),
+    }
+  );
 
-          Authorization:
-            `Bearer ${token}`,
-        },
+  const text =
+    await response.text();
 
-        ...(body !== null
-          ? {
-              body: JSON.stringify(
-                body
-              ),
-            }
-          : {}),
-      }
-    );
+  let data = {};
 
-  const data =
-    await response
-      .json()
-      .catch(() => ({}));
+  try {
+    data = text
+      ? JSON.parse(text)
+      : {};
+  } catch {
+    data = {
+      raw: text,
+    };
+  }
 
   if (!response.ok) {
     const details =
       data?.errors ||
       data?.error ||
       data?.message ||
+      data?.raw ||
       data;
 
-    throw new Error(
+    const message =
       typeof details === "string"
         ? details
-        : JSON.stringify(details)
+        : JSON.stringify(details);
+
+    const error = new Error(
+      message ||
+        `Shiprocket API failed with HTTP ${response.status}.`
     );
+
+    error.status =
+      response.status;
+
+    error.data = data;
+
+    throw error;
   }
 
   return data;
@@ -200,18 +189,20 @@ function getShippingAddress(order) {
       order?.name
   );
 
-  const phone = normalizePhone(
-    address.phone ||
-      customer.phone ||
-      order?.phone ||
-      order?.mobile
-  );
+  const phone =
+    normalizePhone(
+      address.phone ||
+        customer.phone ||
+        order?.phone ||
+        order?.mobile
+    );
 
-  const email = normalizeEmail(
-    address.email ||
-      customer.email ||
-      order?.email
-  );
+  const email =
+    normalizeEmail(
+      address.email ||
+        customer.email ||
+        order?.email
+    );
 
   const line1 = clean(
     address.line1 ||
@@ -271,20 +262,16 @@ function getPickupLocation() {
 }
 
 /* =========================================================
-   ITEMS
+   ORDER ITEMS
 ========================================================= */
 
 function getOrderItems(order) {
   const source =
     Array.isArray(order?.items)
       ? order.items
-      : Array.isArray(
-          order?.orderItems
-        )
+      : Array.isArray(order?.orderItems)
       ? order.orderItems
-      : Array.isArray(
-          order?.products
-        )
+      : Array.isArray(order?.products)
       ? order.products
       : [];
 
@@ -314,24 +301,27 @@ function getOrderItems(order) {
           0
         );
 
-      const sku = clean(
-        item?.sku ||
-          item?.productSku ||
-          item?.id ||
-          `LUXMO-${index + 1}`
-      );
+      const sku =
+        clean(
+          item?.sku ||
+            item?.productSku ||
+            item?.id ||
+            `LUXMO-${index + 1}`
+        );
 
-      const name = clean(
-        item?.title ||
-          item?.name ||
-          item?.productName ||
-          `LUXMO HUB Product ${index + 1}`
-      );
+      const name =
+        clean(
+          item?.title ||
+            item?.name ||
+            item?.productName ||
+            `LUXMO HUB Product ${index + 1}`
+        );
 
       return {
         name,
         sku,
         units: quantity,
+
         selling_price:
           Math.max(
             0,
@@ -340,8 +330,7 @@ function getOrderItems(order) {
 
         discount:
           number(
-            item?.discount ||
-              0,
+            item?.discount || 0,
             0
           ),
 
@@ -368,7 +357,10 @@ function getOrderItems(order) {
    TOTALS
 ========================================================= */
 
-function getOrderTotals(order, items) {
+function getOrderTotals(
+  order,
+  items
+) {
   let subtotal =
     number(
       order?.subtotal,
@@ -380,19 +372,20 @@ function getOrderTotals(order, items) {
       subtotal
     )
   ) {
-    subtotal = items.reduce(
-      (sum, item) =>
-        sum +
-        number(
-          item.selling_price,
-          0
-        ) *
+    subtotal =
+      items.reduce(
+        (sum, item) =>
+          sum +
           number(
-            item.units,
-            1
-          ),
-      0
-    );
+            item.selling_price,
+            0
+          ) *
+            number(
+              item.units,
+              1
+            ),
+        0
+      );
   }
 
   const discount =
@@ -448,12 +441,10 @@ function getOrderTotals(order, items) {
 }
 
 /* =========================================================
-   PACKAGE DETAILS
+   PACKAGE
 ========================================================= */
 
-function getPackageDetails(
-  order
-) {
+function getPackageDetails(order) {
   const weight =
     positiveNumber(
       order?.weight ||
@@ -539,6 +530,12 @@ async function createShiprocketOrder(
     );
   }
 
+  if (!address.line1) {
+    throw new Error(
+      "Delivery address is missing."
+    );
+  }
+
   const items =
     getOrderItems(order);
 
@@ -570,29 +567,39 @@ async function createShiprocketOrder(
     );
   }
 
-  /*
-    IMPORTANT:
-    Shiprocket's order_id must be unique.
-  */
-
   const shiprocketOrderId =
     websiteOrderId
       .replace(
         /[^a-zA-Z0-9_-]/g,
         "_"
       )
-      .slice(0, 40);
+      .slice(0, 50);
 
-  const orderDate =
+  const createdAt =
     order.createdAt
       ? new Date(
           order.createdAt
         )
+      : new Date();
+
+  const orderDate =
+    Number.isNaN(
+      createdAt.getTime()
+    )
+      ? new Date()
           .toISOString()
-          .slice(0, 19)
-      : new Date()
+          .slice(0, 16)
+          .replace(
+            "T",
+            " "
+          )
+      : createdAt
           .toISOString()
-          .slice(0, 19);
+          .slice(0, 16)
+          .replace(
+            "T",
+            " "
+          );
 
   const payload = {
     order_id:
@@ -718,7 +725,6 @@ async function createShiprocketOrder(
       token,
       {
         method: "POST",
-
         body: payload,
       }
     );
@@ -727,6 +733,459 @@ async function createShiprocketOrder(
     data,
     payload,
   };
+}
+
+/* =========================================================
+   FIND DEEP VALUE
+========================================================= */
+
+function findFieldDeep(
+  value,
+  keys,
+  depth = 0
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    depth > 8
+  ) {
+    return null;
+  }
+
+  if (
+    typeof value !==
+    "object"
+  ) {
+    return null;
+  }
+
+  if (
+    Array.isArray(value)
+  ) {
+    for (
+      const item of value
+    ) {
+      const found =
+        findFieldDeep(
+          item,
+          keys,
+          depth + 1
+        );
+
+      if (
+        found !== null
+      ) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
+  for (
+    const key of keys
+  ) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        value,
+        key
+      )
+    ) {
+      const candidate =
+        value[key];
+
+      if (
+        candidate !==
+          undefined &&
+        candidate !== null &&
+        String(
+          candidate
+        ).trim() !== ""
+      ) {
+        return candidate;
+      }
+    }
+  }
+
+  for (
+    const child of
+      Object.values(value)
+  ) {
+    const found =
+      findFieldDeep(
+        child,
+        keys,
+        depth + 1
+      );
+
+    if (
+      found !== null
+    ) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT SHIPMENT ID
+========================================================= */
+
+function extractShipmentId(
+  ...sources
+) {
+  for (
+    const source of sources
+  ) {
+    const value =
+      findFieldDeep(
+        source,
+        [
+          "shipment_id",
+          "shipmentId",
+        ]
+      );
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT ORDER ID
+========================================================= */
+
+function extractOrderId(
+  ...sources
+) {
+  for (
+    const source of sources
+  ) {
+    const value =
+      findFieldDeep(
+        source,
+        [
+          "order_id",
+          "orderId",
+        ]
+      );
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT AWB
+========================================================= */
+
+function extractAwb(
+  ...sources
+) {
+  for (
+    const source of sources
+  ) {
+    const value =
+      findFieldDeep(
+        source,
+        [
+          "awb_code",
+          "awb",
+          "waybill",
+        ]
+      );
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT COURIER
+========================================================= */
+
+function extractCourier(
+  ...sources
+) {
+  for (
+    const source of sources
+  ) {
+    const value =
+      findFieldDeep(
+        source,
+        [
+          "courier_name",
+          "courier",
+        ]
+      );
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT COURIER ID
+========================================================= */
+
+function extractCourierId(
+  ...sources
+) {
+  for (
+    const source of sources
+  ) {
+    const value =
+      findFieldDeep(
+        source,
+        [
+          "courier_company_id",
+          "courier_id",
+          "courierId",
+        ]
+      );
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT TRACKING
+========================================================= */
+
+function extractTrackingUrl(
+  ...sources
+) {
+  for (
+    const source of sources
+  ) {
+    const value =
+      findFieldDeep(
+        source,
+        [
+          "tracking_url",
+          "trackingUrl",
+        ]
+      );
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   EXTRACT ALL SHIPMENT DATA
+========================================================= */
+
+function extractShipmentData(
+  ...sources
+) {
+  return {
+    shipmentId:
+      extractShipmentId(
+        ...sources
+      ),
+
+    orderId:
+      extractOrderId(
+        ...sources
+      ),
+
+    awb:
+      extractAwb(
+        ...sources
+      ),
+
+    courier:
+      extractCourier(
+        ...sources
+      ),
+
+    courierId:
+      extractCourierId(
+        ...sources
+      ),
+
+    trackingUrl:
+      extractTrackingUrl(
+        ...sources
+      ),
+  };
+}
+
+/* =========================================================
+   SEARCH EXISTING ORDER
+========================================================= */
+
+async function findExistingShiprocketOrder(
+  token,
+  websiteOrderId
+) {
+  try {
+    const search =
+      encodeURIComponent(
+        clean(
+          websiteOrderId
+        )
+      );
+
+    const data =
+      await shiprocketRequest(
+        `/orders?search=${search}`,
+        token,
+        {
+          method: "GET",
+        }
+      );
+
+    let candidates = [];
+
+    if (
+      Array.isArray(data)
+    ) {
+      candidates =
+        data;
+    } else if (
+      Array.isArray(
+        data?.data
+      )
+    ) {
+      candidates =
+        data.data;
+    } else if (
+      Array.isArray(
+        data?.data?.data
+      )
+    ) {
+      candidates =
+        data.data.data;
+    } else if (
+      Array.isArray(
+        data?.results
+      )
+    ) {
+      candidates =
+        data.results;
+    }
+
+    const wanted =
+      clean(
+        websiteOrderId
+      ).toLowerCase();
+
+    const exact =
+      candidates.find(
+        (item) => {
+          const ids = [
+            item?.channel_order_id,
+            item?.channelOrderId,
+            item?.order_id,
+            item?.orderId,
+          ]
+            .filter(
+              (value) =>
+                value !==
+                  undefined &&
+                value !== null
+            )
+            .map(
+              (value) =>
+                clean(
+                  value
+                ).toLowerCase()
+            );
+
+          return ids.includes(
+            wanted
+          );
+        }
+      );
+
+    return {
+      data,
+      order:
+        exact ||
+        candidates[0] ||
+        null,
+    };
+  } catch (error) {
+    console.warn(
+      "Shiprocket order search warning:",
+      error?.message ||
+        error
+    );
+
+    return {
+      data: {},
+      order: null,
+    };
+  }
+}
+
+/* =========================================================
+   GET SPECIFIC ORDER DETAILS
+========================================================= */
+
+async function getShiprocketOrderDetails(
+  token,
+  shiprocketOrderId
+) {
+  if (!shiprocketOrderId) {
+    return {};
+  }
+
+  return shiprocketRequest(
+    `/orders/show/${encodeURIComponent(
+      shiprocketOrderId
+    )}`,
+    token,
+    {
+      method: "GET",
+    }
+  );
 }
 
 /* =========================================================
@@ -751,7 +1210,13 @@ async function getShipmentDetails(
         method: "GET",
       }
     );
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Shiprocket shipment details warning:",
+      error?.message ||
+        error
+    );
+
     return {};
   }
 }
@@ -781,107 +1246,28 @@ async function assignAwb(
     courierId !== null &&
     String(courierId).trim()
   ) {
-    body.courier_id =
+    const numericCourierId =
       Number(courierId);
+
+    if (
+      Number.isFinite(
+        numericCourierId
+      ) &&
+      numericCourierId > 0
+    ) {
+      body.courier_id =
+        numericCourierId;
+    }
   }
 
-  return await shiprocketRequest(
+  return shiprocketRequest(
     "/courier/assign/awb",
     token,
     {
       method: "POST",
-
       body,
     }
   );
-}
-
-/* =========================================================
-   EXTRACT RESPONSE
-========================================================= */
-
-function extractShipmentData(
-  createData,
-  shipmentDetails,
-  awbData
-) {
-  const shipment =
-    createData?.shipment ||
-    createData?.data?.shipment ||
-    createData?.response?.data ||
-    {};
-
-  const awbResponse =
-    awbData?.response?.data ||
-    awbData?.data ||
-    awbData ||
-    {};
-
-  const details =
-    shipmentDetails?.data ||
-    shipmentDetails ||
-    {};
-
-  const shipmentId =
-    createData?.shipment_id ||
-    createData?.shipmentId ||
-    createData?.data
-      ?.shipment_id ||
-    shipment?.shipment_id ||
-    shipment?.id ||
-    details?.shipment_id ||
-    details?.id ||
-    null;
-
-  const orderId =
-    createData?.order_id ||
-    createData?.orderId ||
-    createData?.data
-      ?.order_id ||
-    createData?.data
-      ?.orderId ||
-    null;
-
-  const awb =
-    awbResponse?.awb_code ||
-    awbResponse?.awb ||
-    awbResponse?.waybill ||
-    shipment?.awb_code ||
-    shipment?.awb ||
-    details?.awb_code ||
-    details?.awb ||
-    null;
-
-  const courier =
-    awbResponse?.courier_name ||
-    awbResponse?.courier ||
-    shipment?.courier_name ||
-    details?.courier_name ||
-    null;
-
-  const courierId =
-    awbResponse?.courier_company_id ||
-    awbResponse?.courier_id ||
-    shipment?.courier_company_id ||
-    null;
-
-  const trackingUrl =
-    createData?.tracking_url ||
-    createData?.trackingUrl ||
-    awbResponse?.tracking_url ||
-    awbResponse?.trackingUrl ||
-    details?.tracking_url ||
-    details?.trackingUrl ||
-    null;
-
-  return {
-    shipmentId,
-    orderId,
-    awb,
-    courier,
-    courierId,
-    trackingUrl,
-  };
 }
 
 /* =========================================================
@@ -893,7 +1279,8 @@ export default async function handler(
   res
 ) {
   if (
-    req.method !== "POST"
+    req.method !==
+    "POST"
   ) {
     res.setHeader(
       "Allow",
@@ -978,7 +1365,7 @@ export default async function handler(
     }
 
     /* =====================================================
-       RAZORPAY IDs
+       RAZORPAY PAYMENT
     ===================================================== */
 
     const razorpayOrderId =
@@ -1009,24 +1396,145 @@ export default async function handler(
     }
 
     /* =====================================================
-       SHIPROCKET TOKEN
+       WEBSITE ORDER ID
+    ===================================================== */
+
+    const websiteOrderId =
+      clean(
+        order.websiteOrderId ||
+          order.orderId ||
+          order.id
+      );
+
+    if (!websiteOrderId) {
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
+          error:
+            "Website order ID is missing.",
+        }
+      );
+    }
+
+    /* =====================================================
+       SHIPROCKET LOGIN
     ===================================================== */
 
     const token =
       await getShiprocketToken();
 
     /* =====================================================
-       CREATE ORDER
+       CREATE OR RECOVER EXISTING ORDER
     ===================================================== */
 
-    const created =
-      await createShiprocketOrder(
+    let createdData = {};
+
+    let recoveredOrder =
+      null;
+
+    /*
+     * IMPORTANT:
+     * First search Shiprocket.
+     *
+     * This prevents duplicate order creation when the
+     * previous request successfully created an order but
+     * the website did not receive shipment_id.
+     */
+
+    const existing =
+      await findExistingShiprocketOrder(
         token,
-        order
+        websiteOrderId
       );
 
-    const createData =
-      created.data || {};
+    if (
+      existing.order
+    ) {
+      recoveredOrder =
+        existing.order;
+    }
+
+    /*
+     * If no existing order is found, create one.
+     */
+
+    if (
+      !recoveredOrder
+    ) {
+      try {
+        const created =
+          await createShiprocketOrder(
+            token,
+            order
+          );
+
+        createdData =
+          created?.data ||
+          {};
+      } catch (createError) {
+        /*
+         * Creation may have succeeded on Shiprocket
+         * even if the response/request timed out.
+         *
+         * Search once more before returning an error.
+         */
+
+        const recovery =
+          await findExistingShiprocketOrder(
+            token,
+            websiteOrderId
+          );
+
+        if (
+          !recovery.order
+        ) {
+          throw createError;
+        }
+
+        recoveredOrder =
+          recovery.order;
+      }
+    }
+
+    /* =====================================================
+       SHIPROCKET ORDER ID
+    ===================================================== */
+
+    let shiprocketOrderId =
+      extractOrderId(
+        createdData,
+        recoveredOrder
+      );
+
+    if (
+      !shiprocketOrderId &&
+      recoveredOrder
+    ) {
+      shiprocketOrderId =
+        recoveredOrder.id ||
+        recoveredOrder.order_id ||
+        recoveredOrder.orderId ||
+        null;
+    }
+
+    /* =====================================================
+       ORDER DETAILS
+    ===================================================== */
+
+    let orderDetails =
+      {};
+
+    if (
+      shiprocketOrderId
+    ) {
+      orderDetails =
+        await getShiprocketOrderDetails(
+          token,
+          shiprocketOrderId
+        );
+    }
 
     /* =====================================================
        EXTRACT SHIPMENT
@@ -1034,13 +1542,107 @@ export default async function handler(
 
     let shipmentInfo =
       extractShipmentData(
-        createData,
-        {},
-        {}
+        createdData,
+        recoveredOrder,
+        orderDetails
       );
 
+    /*
+     * Shiprocket can take a short time to expose the
+     * shipment inside order details.
+     *
+     * Retry instead of immediately returning:
+     *
+     * "Shipment ID was not returned."
+     */
+
+    if (
+      !shipmentInfo.shipmentId
+    ) {
+      for (
+        let attempt = 0;
+        attempt < 5;
+        attempt++
+      ) {
+        await sleep(
+          1500
+        );
+
+        if (
+          shiprocketOrderId
+        ) {
+          orderDetails =
+            await getShiprocketOrderDetails(
+              token,
+              shiprocketOrderId
+            );
+        }
+
+        shipmentInfo =
+          extractShipmentData(
+            createdData,
+            recoveredOrder,
+            orderDetails
+          );
+
+        if (
+          shipmentInfo.shipmentId
+        ) {
+          break;
+        }
+      }
+    }
+
     /* =====================================================
-       SHIPMENT ID CHECK
+       FINAL ORDER SEARCH RECOVERY
+    ===================================================== */
+
+    if (
+      !shipmentInfo.shipmentId
+    ) {
+      const retrySearch =
+        await findExistingShiprocketOrder(
+          token,
+          websiteOrderId
+        );
+
+      if (
+        retrySearch.order
+      ) {
+        recoveredOrder =
+          retrySearch.order;
+
+        const recoveredId =
+          recoveredOrder.id ||
+          recoveredOrder.order_id ||
+          recoveredOrder.orderId ||
+          null;
+
+        if (
+          recoveredId
+        ) {
+          shiprocketOrderId =
+            shiprocketOrderId ||
+            recoveredId;
+
+          orderDetails =
+            await getShiprocketOrderDetails(
+              token,
+              recoveredId
+            );
+        }
+
+        shipmentInfo =
+          extractShipmentData(
+            createdData,
+            recoveredOrder,
+            orderDetails
+          );
+      }
+    }
+
+    /* =====================================================
+       SHIPMENT ID STILL MISSING
     ===================================================== */
 
     if (
@@ -1052,20 +1654,44 @@ export default async function handler(
         {
           success: false,
 
-          error:
-            "Shiprocket order was created but shipment ID was not returned.",
+          provider:
+            "shiprocket",
 
-          details:
-            createData,
+          error:
+            "Shiprocket order was created/recovered, but shipment ID is still not available.",
+
+          message:
+            "Payment is already successful. Do NOT pay again. Retry Create Shipment after a short wait.",
+
+          orderId:
+            websiteOrderId,
+
+          shiprocketOrderId:
+            shiprocketOrderId ||
+            null,
+
+          retryable:
+            true,
+
+          details: {
+            create:
+              createdData,
+
+            recovered:
+              recoveredOrder,
+
+            order:
+              orderDetails,
+          },
         }
       );
     }
 
     /* =====================================================
-       FETCH SHIPMENT DETAILS
+       SHIPMENT DETAILS
     ===================================================== */
 
-    const shipmentDetails =
+    let shipmentDetails =
       await getShipmentDetails(
         token,
         shipmentInfo.shipmentId
@@ -1073,27 +1699,22 @@ export default async function handler(
 
     shipmentInfo =
       extractShipmentData(
-        createData,
-        shipmentDetails,
-        {}
+        createdData,
+        recoveredOrder,
+        orderDetails,
+        shipmentDetails
       );
 
     /* =====================================================
        AWB
     ===================================================== */
 
-    let awbData = {};
+    let awbData =
+      {};
 
     if (
       !shipmentInfo.awb
     ) {
-      /*
-        Let Shiprocket choose the courier when courier ID
-        is not supplied.
-
-        If a preferred courier ID is configured, use it.
-      */
-
       const configuredCourierId =
         clean(
           process.env
@@ -1103,33 +1724,34 @@ export default async function handler(
       awbData =
         await assignAwb(
           token,
-
           shipmentInfo.shipmentId,
-
-          configuredCourierId
-            ? configuredCourierId
-            : undefined
+          configuredCourierId ||
+            undefined
         );
 
       shipmentInfo =
         extractShipmentData(
-          createData,
-
+          createdData,
+          recoveredOrder,
+          orderDetails,
           shipmentDetails,
-
           awbData
         );
     }
 
     /* =====================================================
-       REFRESH SHIPMENT DETAILS
+       REFRESH SHIPMENT
     ===================================================== */
 
     if (
       !shipmentInfo.awb ||
       !shipmentInfo.courier
     ) {
-      const refreshed =
+      await sleep(
+        1000
+      );
+
+      shipmentDetails =
         await getShipmentDetails(
           token,
           shipmentInfo.shipmentId
@@ -1137,16 +1759,16 @@ export default async function handler(
 
       shipmentInfo =
         extractShipmentData(
-          createData,
-
-          refreshed,
-
+          createdData,
+          recoveredOrder,
+          orderDetails,
+          shipmentDetails,
           awbData
         );
     }
 
     /* =====================================================
-       TRACKING URL FALLBACK
+       TRACKING URL
     ===================================================== */
 
     let trackingUrl =
@@ -1164,49 +1786,25 @@ export default async function handler(
     }
 
     /* =====================================================
-       FINAL VALIDATION
+       SUCCESS
     ===================================================== */
-
-    if (
-      !shipmentInfo.shipmentId
-    ) {
-      return sendJson(
-        res,
-        502,
-        {
-          success: false,
-          error:
-            "Shiprocket shipment ID is missing.",
-        }
-      );
-    }
-
-    /*
-      AWB may sometimes be assigned slightly after shipment
-      creation. Do not fail the whole payment/order because
-      of a temporary AWB delay.
-    */
 
     return sendJson(
       res,
       200,
       {
-        success: true,
+        success:
+          true,
 
         provider:
           "shiprocket",
 
         orderId:
-          order.websiteOrderId ||
-          order.orderId ||
-          order.id ||
-          createData.order_id ||
-          createData.orderId ||
-          null,
+          websiteOrderId,
 
         shiprocketOrderId:
-          createData.order_id ||
-          createData.orderId ||
+          shiprocketOrderId ||
+          shipmentInfo.orderId ||
           null,
 
         shipmentId:
@@ -1249,9 +1847,19 @@ export default async function handler(
         paymentVerified:
           true,
 
-        razorpayOrderId,
+        razorpayOrderId:
+          razorpayOrderId,
 
-        razorpayPaymentId,
+        razorpayPaymentId:
+          razorpayPaymentId,
+
+        shipmentReady:
+          true,
+
+        labelReady:
+          Boolean(
+            shipmentInfo.awb
+          ),
 
         message:
           shipmentInfo.awb
@@ -1260,7 +1868,16 @@ export default async function handler(
 
         raw: {
           create:
-            createData,
+            createdData,
+
+          recovered:
+            recoveredOrder,
+
+          order:
+            orderDetails,
+
+          shipment:
+            shipmentDetails,
 
           awb:
             awbData,
@@ -1275,9 +1892,15 @@ export default async function handler(
 
     return sendJson(
       res,
-      500,
+      Number(error?.status) >=
+        400
+        ? Number(
+            error.status
+          )
+        : 500,
       {
-        success: false,
+        success:
+          false,
 
         provider:
           "shiprocket",
