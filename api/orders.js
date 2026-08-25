@@ -2,37 +2,6 @@
 // ============================================================
 // LUXMO HUB — CUSTOMER MY ORDERS + ADMIN ORDERS API
 // ============================================================
-//
-// CUSTOMER:
-// POST /api/orders
-// {
-//   action: "customer",
-//   orderId: "LMH....",
-//   mobile: "98XXXXXXXX"
-// }
-//
-// GET compatibility:
-// /api/orders?action=customer&orderId=LMH...&mobile=98XXXXXXXX
-//
-// CUSTOMER SESSION COMPATIBILITY:
-// /api/orders?action=customer-session
-//
-// ADMIN:
-// GET /api/orders
-// Cookie: luxmo_admin_session=...
-//
-// POST /api/orders
-// {
-//   action: "admin"
-// }
-//
-// IMPORTANT:
-// - No new API function
-// - Customer-session uses this same function
-// - COD orders are supported
-// - Razorpay orders are supported
-// - Existing Firestore orders collection is used
-// ============================================================
 
 import crypto from "crypto";
 import { getFirestore } from "firebase-admin/firestore";
@@ -63,7 +32,7 @@ function sendJson(res, status, data) {
 }
 
 /* ============================================================
-   HELPERS
+   BASIC HELPERS
 ============================================================ */
 
 function clean(value) {
@@ -93,8 +62,11 @@ function normalizeEmail(value) {
 }
 
 function safeNumber(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
 }
 
 function pickFirst(...values) {
@@ -112,7 +84,235 @@ function pickFirst(...values) {
 }
 
 /* ============================================================
-   SERIALIZE FIRESTORE VALUES
+   COOKIE
+============================================================ */
+
+function getCookie(req, name) {
+  const cookieHeader = req.headers?.cookie || "";
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = cookieHeader.split(";");
+
+  for (const cookie of cookies) {
+    const index = cookie.indexOf("=");
+
+    if (index === -1) {
+      continue;
+    }
+
+    const key = cookie
+      .slice(0, index)
+      .trim();
+
+    const value = cookie
+      .slice(index + 1)
+      .trim();
+
+    if (key === name) {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+/* ============================================================
+   ADMIN SESSION
+   Same format as /api/admin-session.js
+============================================================ */
+
+function base64UrlDecode(value) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return Buffer.from(
+      value,
+      "base64url"
+    ).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function safeEqual(a, b) {
+  if (
+    typeof a !== "string" ||
+    typeof b !== "string"
+  ) {
+    return false;
+  }
+
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  try {
+    return crypto.timingSafeEqual(
+      left,
+      right
+    );
+  } catch {
+    return false;
+  }
+}
+
+function verifyAdminSession(req) {
+  const secret = clean(
+    process.env.ADMIN_SESSION_SECRET
+  );
+
+  if (!secret) {
+    return {
+      ok: false,
+      status: 500,
+      error:
+        "ADMIN_SESSION_SECRET is not configured on the server.",
+    };
+  }
+
+  const token = getCookie(
+    req,
+    ADMIN_COOKIE_NAME
+  );
+
+  if (!token) {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Admin session cookie not found.",
+    };
+  }
+
+  const parts = String(token).split(".");
+
+  if (parts.length !== 3) {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Invalid or expired admin session.",
+    };
+  }
+
+  const [
+    encodedPayload,
+    expiresAtText,
+    signature,
+  ] = parts;
+
+  if (
+    !encodedPayload ||
+    !expiresAtText ||
+    !signature
+  ) {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Invalid or expired admin session.",
+    };
+  }
+
+  const expectedSignature = crypto
+    .createHmac(
+      "sha256",
+      secret
+    )
+    .update(
+      `${encodedPayload}.${expiresAtText}`
+    )
+    .digest("base64url");
+
+  if (
+    !safeEqual(
+      signature,
+      expectedSignature
+    )
+  ) {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Invalid or expired admin session.",
+    };
+  }
+
+  const expiresAt =
+    Number(expiresAtText);
+
+  if (
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= 0 ||
+    Date.now() >= expiresAt
+  ) {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Invalid or expired admin session.",
+    };
+  }
+
+  const payloadText =
+    base64UrlDecode(
+      encodedPayload
+    );
+
+  if (!payloadText) {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Invalid or expired admin session.",
+    };
+  }
+
+  try {
+    const payload =
+      JSON.parse(payloadText);
+
+    if (
+      !payload ||
+      payload.role !== "admin"
+    ) {
+      return {
+        ok: false,
+        status: 401,
+        error:
+          "Invalid or expired admin session.",
+      };
+    }
+
+    return {
+      ok: true,
+      payload,
+      expiresAt,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 401,
+      error:
+        "Invalid or expired admin session.",
+    };
+  }
+}
+
+/* ============================================================
+   FIRESTORE SERIALIZATION
 ============================================================ */
 
 function serializeValue(value) {
@@ -140,14 +340,20 @@ function serializeValue(value) {
   }
 
   if (Array.isArray(value)) {
-    return value.map(serializeValue);
+    return value.map(
+      serializeValue
+    );
   }
 
   if (typeof value === "object") {
     const output = {};
 
-    for (const [key, item] of Object.entries(value)) {
-      output[key] = serializeValue(item);
+    for (
+      const [key, item]
+      of Object.entries(value)
+    ) {
+      output[key] =
+        serializeValue(item);
     }
 
     return output;
@@ -157,29 +363,49 @@ function serializeValue(value) {
 }
 
 /* ============================================================
-   MOBILE MATCH
+   MOBILE EXTRACTION
 ============================================================ */
 
-function mobileMatches(order, suppliedMobile) {
-  const expected = normalizeMobile(
+function getOrderMobile(order) {
+  return normalizeMobile(
     pickFirst(
       order?.customer?.phone,
       order?.customer?.mobile,
+      order?.customer?.contact,
       order?.customerPhone,
+      order?.customerMobile,
       order?.phone,
       order?.mobile,
+      order?.contactNumber,
+      order?.contact,
       order?.shippingAddress?.phone,
       order?.shippingAddress?.mobile,
+      order?.shippingAddress?.contact,
       order?.address?.phone,
       order?.address?.mobile,
+      order?.address?.contact,
       order?.billingAddress?.phone,
       order?.billingAddress?.mobile
     )
   );
+}
 
-  const actual = normalizeMobile(suppliedMobile);
+function mobileMatches(
+  order,
+  suppliedMobile
+) {
+  const expected =
+    getOrderMobile(order);
 
-  if (!expected || !actual) {
+  const actual =
+    normalizeMobile(
+      suppliedMobile
+    );
+
+  if (
+    !expected ||
+    !actual
+  ) {
     return false;
   }
 
@@ -187,87 +413,219 @@ function mobileMatches(order, suppliedMobile) {
 }
 
 /* ============================================================
+   ORDER ID EXTRACTION
+============================================================ */
+
+function getOrderIdentifiers(
+  order,
+  firestoreId = ""
+) {
+  return [
+    order?.websiteOrderId,
+    order?.website_order_id,
+    order?.orderId,
+    order?.orderID,
+    order?.order_id,
+    order?.externalOrderId,
+    order?.external_order_id,
+    order?.id,
+    firestoreId,
+  ]
+    .map(normalizeOrderId)
+    .filter(Boolean);
+}
+
+function orderIdMatches(
+  order,
+  requestedOrderId,
+  firestoreId = ""
+) {
+  const requested =
+    normalizeOrderId(
+      requestedOrderId
+    );
+
+  if (!requested) {
+    return false;
+  }
+
+  const identifiers =
+    getOrderIdentifiers(
+      order,
+      firestoreId
+    );
+
+  return identifiers.some(
+    (id) => id === requested
+  );
+}
+
+/* ============================================================
    FIND ORDER
 ============================================================ */
 
-async function findOrder(db, orderId) {
-  const normalized = normalizeOrderId(orderId);
+async function findOrder(
+  db,
+  orderId,
+  mobile
+) {
+  const normalizedOrderId =
+    normalizeOrderId(orderId);
 
-  if (!normalized) {
+  const normalizedMobile =
+    normalizeMobile(mobile);
+
+  if (!normalizedOrderId) {
     return null;
   }
 
-  const ordersRef = db.collection("orders");
+  const ordersRef =
+    db.collection("orders");
 
-  // 1. Firestore document ID
-  const directRef = ordersRef.doc(normalized);
-  const directSnapshot = await directRef.get();
+  /* ----------------------------------------------------------
+     1. Direct Firestore document ID
+  ---------------------------------------------------------- */
 
-  if (directSnapshot.exists) {
-    return {
-      ref: directRef,
-      data: directSnapshot.data() || {},
-    };
+  try {
+    const directRef =
+      ordersRef.doc(
+        normalizedOrderId
+      );
+
+    const directSnapshot =
+      await directRef.get();
+
+    if (directSnapshot.exists) {
+      const data =
+        directSnapshot.data() || {};
+
+      if (
+        !normalizedMobile ||
+        mobileMatches(
+          data,
+          normalizedMobile
+        )
+      ) {
+        return {
+          ref: directRef,
+          data,
+          id: directSnapshot.id,
+        };
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Direct order lookup failed:",
+      error
+    );
   }
 
-  // 2. websiteOrderId
-  const websiteQuery = await ordersRef
-    .where("websiteOrderId", "==", normalized)
-    .limit(1)
-    .get();
+  /* ----------------------------------------------------------
+     2. Search all known Order ID fields
+  ---------------------------------------------------------- */
 
-  if (!websiteQuery.empty) {
-    const doc = websiteQuery.docs[0];
+  const idFields = [
+    "websiteOrderId",
+    "website_order_id",
+    "orderId",
+    "orderID",
+    "order_id",
+    "externalOrderId",
+    "external_order_id",
+    "id",
+  ];
 
-    return {
-      ref: doc.ref,
-      data: doc.data() || {},
-    };
+  for (const field of idFields) {
+    try {
+      const snapshot =
+        await ordersRef
+          .where(
+            field,
+            "==",
+            normalizedOrderId
+          )
+          .limit(10)
+          .get();
+
+      if (!snapshot.empty) {
+        for (
+          const doc
+          of snapshot.docs
+        ) {
+          const data =
+            doc.data() || {};
+
+          if (
+            !normalizedMobile ||
+            mobileMatches(
+              data,
+              normalizedMobile
+            )
+          ) {
+            return {
+              ref: doc.ref,
+              data,
+              id: doc.id,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `Order lookup failed for ${field}:`,
+        error
+      );
+    }
   }
 
-  // 3. orderId
-  const orderQuery = await ordersRef
-    .where("orderId", "==", normalized)
-    .limit(1)
-    .get();
+  /* ----------------------------------------------------------
+     3. Final compatibility scan
+     
+     This handles older orders where the Order ID or mobile
+     was stored inside a different nested structure.
+     
+     Limit keeps the request bounded.
+  ---------------------------------------------------------- */
 
-  if (!orderQuery.empty) {
-    const doc = orderQuery.docs[0];
+  try {
+    const snapshot =
+      await ordersRef
+        .limit(500)
+        .get();
 
-    return {
-      ref: doc.ref,
-      data: doc.data() || {},
-    };
-  }
+    for (
+      const doc
+      of snapshot.docs
+    ) {
+      const data =
+        doc.data() || {};
 
-  // 4. id
-  const idQuery = await ordersRef
-    .where("id", "==", normalized)
-    .limit(1)
-    .get();
-
-  if (!idQuery.empty) {
-    const doc = idQuery.docs[0];
-
-    return {
-      ref: doc.ref,
-      data: doc.data() || {},
-    };
-  }
-
-  // 5. externalOrderId
-  const externalQuery = await ordersRef
-    .where("externalOrderId", "==", normalized)
-    .limit(1)
-    .get();
-
-  if (!externalQuery.empty) {
-    const doc = externalQuery.docs[0];
-
-    return {
-      ref: doc.ref,
-      data: doc.data() || {},
-    };
+      if (
+        orderIdMatches(
+          data,
+          normalizedOrderId,
+          doc.id
+        ) &&
+        (
+          !normalizedMobile ||
+          mobileMatches(
+            data,
+            normalizedMobile
+          )
+        )
+      ) {
+        return {
+          ref: doc.ref,
+          data,
+          id: doc.id,
+        };
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Compatibility order scan failed:",
+      error
+    );
   }
 
   return null;
@@ -281,126 +639,136 @@ function buildItems(order) {
   const rawItems =
     Array.isArray(order?.items)
       ? order.items
-      : Array.isArray(order?.orderItems)
+      : Array.isArray(
+          order?.orderItems
+        )
       ? order.orderItems
-      : Array.isArray(order?.products)
+      : Array.isArray(
+          order?.products
+        )
       ? order.products
       : [];
 
-  return rawItems.map((item) => {
-    const quantity = Math.max(
-      1,
-      Math.floor(
+  return rawItems.map(
+    (item) => {
+      const quantity =
+        Math.max(
+          1,
+          Math.floor(
+            safeNumber(
+              item?.qty ??
+                item?.quantity ??
+                item?.count ??
+                1
+            )
+          )
+        );
+
+      const price =
         safeNumber(
-          item?.qty ??
-          item?.quantity ??
-          item?.count ??
-          1
-        )
-      )
-    );
+          item?.price ??
+            item?.salePrice ??
+            item?.sellingPrice ??
+            item?.unitPrice ??
+            item?.amount ??
+            0
+        );
 
-    const price = safeNumber(
-      item?.price ??
-      item?.salePrice ??
-      item?.sellingPrice ??
-      item?.unitPrice ??
-      item?.amount ??
-      0
-    );
+      return {
+        id:
+          item?.id ||
+          item?.productId ||
+          item?.product_id ||
+          "",
 
-    return {
-      id:
-        item?.id ||
-        item?.productId ||
-        item?.product_id ||
-        "",
+        productId:
+          item?.productId ||
+          item?.product_id ||
+          item?.id ||
+          "",
 
-      productId:
-        item?.productId ||
-        item?.product_id ||
-        item?.id ||
-        "",
+        sku:
+          item?.sku ||
+          item?.SKU ||
+          "",
 
-      sku:
-        item?.sku ||
-        item?.SKU ||
-        "",
+        title:
+          item?.title ||
+          item?.name ||
+          item?.productName ||
+          item?.product_name ||
+          "",
 
-      title:
-        item?.title ||
-        item?.name ||
-        item?.productName ||
-        item?.product_name ||
-        "",
+        name:
+          item?.name ||
+          item?.title ||
+          item?.productName ||
+          "",
 
-      name:
-        item?.name ||
-        item?.title ||
-        item?.productName ||
-        "",
+        image:
+          item?.image ||
+          item?.imageUrl ||
+          item?.image_url ||
+          item?.thumbnail ||
+          "",
 
-      image:
-        item?.image ||
-        item?.imageUrl ||
-        item?.image_url ||
-        item?.thumbnail ||
-        "",
+        quantity,
+        qty: quantity,
 
-      quantity,
-      qty: quantity,
+        price,
 
-      price,
+        salePrice:
+          safeNumber(
+            item?.salePrice ??
+              item?.sellingPrice ??
+              item?.price ??
+              0
+          ),
 
-      salePrice: safeNumber(
-        item?.salePrice ??
-        item?.sellingPrice ??
-        item?.price ??
-        0
-      ),
+        colour:
+          item?.colour ||
+          item?.color ||
+          item?.colourName ||
+          "",
 
-      colour:
-        item?.colour ||
-        item?.color ||
-        item?.colourName ||
-        "",
+        color:
+          item?.color ||
+          item?.colour ||
+          item?.colourName ||
+          "",
 
-      color:
-        item?.color ||
-        item?.colour ||
-        item?.colourName ||
-        "",
+        model:
+          item?.model ||
+          item?.modelName ||
+          "",
 
-      model:
-        item?.model ||
-        item?.modelName ||
-        "",
+        variant:
+          item?.variant ||
+          item?.variantName ||
+          "",
 
-      variant:
-        item?.variant ||
-        item?.variantName ||
-        "",
+        size:
+          item?.size ||
+          "",
 
-      size:
-        item?.size ||
-        "",
+        category:
+          item?.category ||
+          "",
 
-      category:
-        item?.category ||
-        "",
+        hsn:
+          item?.hsn ||
+          item?.HSN ||
+          "",
 
-      hsn:
-        item?.hsn ||
-        item?.HSN ||
-        "",
-
-      gst: safeNumber(
-        item?.gst ??
-        item?.gstAmount ??
-        0
-      ),
-    };
-  });
+        gst:
+          safeNumber(
+            item?.gst ??
+              item?.gstAmount ??
+              0
+          ),
+      };
+    }
+  );
 }
 
 /* ============================================================
@@ -408,15 +776,19 @@ function buildItems(order) {
 ============================================================ */
 
 function getPaymentMethod(order) {
-  const explicit = clean(
-    order?.paymentMethod ||
-    order?.payment_method ||
-    order?.method ||
-    order?.paymentType
-  );
+  const explicit =
+    clean(
+      order?.paymentMethod ||
+      order?.payment_method ||
+      order?.method ||
+      order?.paymentType
+    );
 
   if (explicit) {
-    if (explicit.toLowerCase() === "cod") {
+    if (
+      explicit.toLowerCase() ===
+      "cod"
+    ) {
       return "COD";
     }
 
@@ -434,22 +806,21 @@ function getPaymentMethod(order) {
 }
 
 function getPaymentStatus(order) {
-  const explicit = clean(
-    order?.paymentStatus ||
-    order?.payment_status ||
-    order?.paymentState
-  );
+  const explicit =
+    clean(
+      order?.paymentStatus ||
+      order?.payment_status ||
+      order?.paymentState
+    );
 
   if (explicit) {
     return explicit;
   }
 
-  if (order?.paymentVerified === true) {
+  if (
+    order?.paymentVerified === true
+  ) {
     return "Paid";
-  }
-
-  if (getPaymentMethod(order) === "COD") {
-    return "Pending";
   }
 
   return "Pending";
@@ -460,18 +831,21 @@ function getPaymentStatus(order) {
 ============================================================ */
 
 function getShipmentStatus(order) {
-  const explicit = clean(
-    order?.shipmentStatus ||
-    order?.shipment_status ||
-    order?.deliveryStatus ||
-    order?.delivery_status
-  );
+  const explicit =
+    clean(
+      order?.shipmentStatus ||
+      order?.shipment_status ||
+      order?.deliveryStatus ||
+      order?.delivery_status
+    );
 
   if (explicit) {
     return explicit;
   }
 
-  if (order?.delivered === true) {
+  if (
+    order?.delivered === true
+  ) {
     return "Delivered";
   }
 
@@ -491,105 +865,117 @@ function getShipmentStatus(order) {
    CUSTOMER ORDER RESPONSE
 ============================================================ */
 
-function buildCustomerOrder(order, firestoreId = "") {
+function buildCustomerOrder(
+  order,
+  firestoreId = ""
+) {
   const customer =
     order?.customer &&
-    typeof order.customer === "object"
+    typeof order.customer ===
+      "object"
       ? order.customer
       : {};
 
   const shippingAddress =
     order?.shippingAddress &&
-    typeof order.shippingAddress === "object"
+    typeof order.shippingAddress ===
+      "object"
       ? order.shippingAddress
       : order?.address &&
-        typeof order.address === "object"
+        typeof order.address ===
+          "object"
       ? order.address
       : {};
 
   const billingAddress =
     order?.billingAddress &&
-    typeof order.billingAddress === "object"
+    typeof order.billingAddress ===
+      "object"
       ? order.billingAddress
       : {};
 
-  const orderId = pickFirst(
-    order?.websiteOrderId,
-    order?.orderId,
-    order?.externalOrderId,
-    order?.id,
-    firestoreId
-  );
-
-  const paymentMethod = getPaymentMethod(order);
-  const paymentStatus = getPaymentStatus(order);
-  const shipmentStatus = getShipmentStatus(order);
-
-  const customerMobile = normalizeMobile(
+  const orderId =
     pickFirst(
-      customer?.phone,
-      customer?.mobile,
-      order?.customerPhone,
-      order?.phone,
-      order?.mobile,
-      shippingAddress?.phone,
-      shippingAddress?.mobile
-    )
-  );
+      order?.websiteOrderId,
+      order?.website_order_id,
+      order?.orderId,
+      order?.orderID,
+      order?.order_id,
+      order?.externalOrderId,
+      order?.external_order_id,
+      order?.id,
+      firestoreId
+    );
 
-  const customerEmail = normalizeEmail(
-    pickFirst(
-      customer?.email,
-      order?.customerEmail,
-      order?.email,
-      shippingAddress?.email
-    )
-  );
+  const paymentMethod =
+    getPaymentMethod(order);
 
-  const subtotal = safeNumber(
-    order?.subtotal ??
-    order?.subTotal ??
-    0
-  );
+  const paymentStatus =
+    getPaymentStatus(order);
 
-  const discount = safeNumber(
-    order?.discount ??
-    order?.totalDiscount ??
-    order?.total_discount ??
-    0
-  );
+  const shipmentStatus =
+    getShipmentStatus(order);
 
-  const shippingFee = safeNumber(
-    order?.shippingFee ??
-    order?.shippingCharges ??
-    order?.shippingCharge ??
-    order?.shippingCost ??
-    order?.shipping ??
-    0
-  );
+  const customerMobile =
+    getOrderMobile(order);
 
-  const total = safeNumber(
-    order?.total ??
-    order?.grandTotal ??
-    order?.totalAmount ??
-    order?.amount ??
-    0
-  );
+  const customerEmail =
+    normalizeEmail(
+      pickFirst(
+        customer?.email,
+        order?.customerEmail,
+        order?.email,
+        shippingAddress?.email
+      )
+    );
 
-  const paidAmount = safeNumber(
-    order?.paidAmount ??
-    (
-      paymentStatus === "Paid"
-        ? total
-        : 0
-    )
-  );
+  const subtotal =
+    safeNumber(
+      order?.subtotal ??
+        order?.subTotal ??
+        0
+    );
 
-  const result = {
-    // ---------------------------------------------------------
-    // BASIC
-    // ---------------------------------------------------------
+  const discount =
+    safeNumber(
+      order?.discount ??
+        order?.totalDiscount ??
+        order?.total_discount ??
+        0
+    );
 
+  const shippingFee =
+    safeNumber(
+      order?.shippingFee ??
+        order?.shippingCharges ??
+        order?.shippingCharge ??
+        order?.shippingCost ??
+        order?.shipping ??
+        0
+    );
+
+  const total =
+    safeNumber(
+      order?.total ??
+        order?.grandTotal ??
+        order?.totalAmount ??
+        order?.amount ??
+        0
+    );
+
+  const paidAmount =
+    safeNumber(
+      order?.paidAmount ??
+        (
+          paymentStatus
+            .toLowerCase() ===
+            "paid"
+            ? total
+            : 0
+        )
+    );
+
+  return {
     id:
       firestoreId ||
       order?.id ||
@@ -615,6 +1001,8 @@ function buildCustomerOrder(order, firestoreId = "") {
       order?.status ||
       "Order Placed",
 
+    shipmentStatus,
+
     createdAt:
       order?.createdAt ||
       order?.created_at ||
@@ -631,17 +1019,16 @@ function buildCustomerOrder(order, firestoreId = "") {
       order?.payment_date ||
       null,
 
-    // ---------------------------------------------------------
-    // PAYMENT
-    // ---------------------------------------------------------
-
     payment: {
-      status: paymentStatus,
+      status:
+        paymentStatus,
 
       verified:
-        order?.paymentVerified === true,
+        order?.paymentVerified ===
+        true,
 
-      method: paymentMethod,
+      method:
+        paymentMethod,
 
       amount:
         paidAmount,
@@ -669,11 +1056,8 @@ function buildCustomerOrder(order, firestoreId = "") {
     paymentMethod,
 
     paymentVerified:
-      order?.paymentVerified === true,
-
-    // ---------------------------------------------------------
-    // PRICING
-    // ---------------------------------------------------------
+      order?.paymentVerified ===
+      true,
 
     pricing: {
       subtotal,
@@ -695,68 +1079,74 @@ function buildCustomerOrder(order, firestoreId = "") {
     grandTotal: total,
     totalAmount: total,
 
-    // ---------------------------------------------------------
-    // CUSTOMER
-    // ---------------------------------------------------------
-
     customer: {
-      name: pickFirst(
-        customer?.name,
-        customer?.fullName,
-        order?.customerName,
-        order?.name,
-        order?.fullName,
-        shippingAddress?.name
-      ),
+      name:
+        pickFirst(
+          customer?.name,
+          customer?.fullName,
+          order?.customerName,
+          order?.name,
+          order?.fullName,
+          shippingAddress?.name
+        ),
 
-      mobile: customerMobile,
-      phone: customerMobile,
-      email: customerEmail,
+      mobile:
+        customerMobile,
+
+      phone:
+        customerMobile,
+
+      email:
+        customerEmail,
     },
-
-    // ---------------------------------------------------------
-    // SHIPPING ADDRESS
-    // ---------------------------------------------------------
 
     shippingAddress: {
       name:
-        shippingAddress?.name ||
-        shippingAddress?.fullName ||
-        "",
+        pickFirst(
+          shippingAddress?.name,
+          shippingAddress?.fullName
+        ),
 
-      address: pickFirst(
-        shippingAddress?.line1,
-        shippingAddress?.address1,
-        shippingAddress?.address,
-        shippingAddress?.street
-      ),
+      address:
+        pickFirst(
+          shippingAddress?.line1,
+          shippingAddress?.address1,
+          shippingAddress?.address,
+          shippingAddress?.street
+        ),
 
-      address1: pickFirst(
-        shippingAddress?.line1,
-        shippingAddress?.address1,
-        shippingAddress?.address
-      ),
+      address1:
+        pickFirst(
+          shippingAddress?.line1,
+          shippingAddress?.address1,
+          shippingAddress?.address
+        ),
 
-      address2: pickFirst(
-        shippingAddress?.line2,
-        shippingAddress?.address2
-      ),
+      address2:
+        pickFirst(
+          shippingAddress?.line2,
+          shippingAddress?.address2
+        ),
 
       city:
         shippingAddress?.city ||
-        shippingAddress?.cityName ||
         "",
 
       state:
         shippingAddress?.state ||
-        shippingAddress?.stateName ||
         "",
 
       pincode:
         shippingAddress?.pincode ||
+        shippingAddress?.pinCode ||
         shippingAddress?.postalCode ||
         shippingAddress?.zip ||
-        shippingAddress?.zipCode ||
+        "",
+
+      postalCode:
+        shippingAddress?.postalCode ||
+        shippingAddress?.pincode ||
+        shippingAddress?.pinCode ||
         "",
 
       country:
@@ -764,33 +1154,59 @@ function buildCustomerOrder(order, firestoreId = "") {
         "India",
 
       phone:
-        shippingAddress?.phone ||
-        shippingAddress?.mobile ||
-        customerMobile,
-
-      email:
-        shippingAddress?.email ||
-        customerEmail,
+        normalizeMobile(
+          pickFirst(
+            shippingAddress?.phone,
+            shippingAddress?.mobile,
+            customerMobile
+          )
+        ),
     },
 
-    billingAddress,
+    billingAddress: {
+      name:
+        pickFirst(
+          billingAddress?.name,
+          billingAddress?.fullName
+        ),
 
-    // ---------------------------------------------------------
-    // ITEMS
-    // ---------------------------------------------------------
+      address:
+        pickFirst(
+          billingAddress?.line1,
+          billingAddress?.address1,
+          billingAddress?.address
+        ),
 
-    items: buildItems(order),
+      address2:
+        billingAddress?.line2 ||
+        billingAddress?.address2 ||
+        "",
 
-    orderItems: buildItems(order),
+      city:
+        billingAddress?.city ||
+        "",
 
-    products: buildItems(order),
+      state:
+        billingAddress?.state ||
+        "",
 
-    // ---------------------------------------------------------
-    // SHIPMENT
-    // ---------------------------------------------------------
+      pincode:
+        billingAddress?.pincode ||
+        billingAddress?.pinCode ||
+        billingAddress?.postalCode ||
+        "",
+
+      country:
+        billingAddress?.country ||
+        "India",
+    },
+
+    items:
+      buildItems(order),
 
     shipment: {
-      status: shipmentStatus,
+      status:
+        shipmentStatus,
 
       shipmentId:
         order?.shipmentId ||
@@ -803,445 +1219,90 @@ function buildCustomerOrder(order, firestoreId = "") {
         order?.trackingNumber ||
         null,
 
+      trackingNumber:
+        order?.trackingNumber ||
+        order?.awb ||
+        order?.awbNumber ||
+        null,
+
       courier:
         order?.courier ||
         order?.courierName ||
-        order?.shippingProvider ||
+        order?.carrier ||
         null,
 
       trackingUrl:
         order?.trackingUrl ||
-        order?.trackingURL ||
         order?.tracking_url ||
         null,
 
-      labelUrl:
-        order?.labelUrl ||
-        order?.shippingLabelUrl ||
-        order?.shipping_label_url ||
+      estimatedDelivery:
+        order?.estimatedDelivery ||
+        order?.estimated_delivery ||
+        null,
+    },
+
+    invoice: {
+      number:
+        order?.invoiceNumber ||
+        order?.invoice_number ||
         null,
 
-      invoiceUrl:
+      url:
         order?.invoiceUrl ||
-        order?.invoiceURL ||
         order?.invoice_url ||
         null,
-
-      combinedLabelInvoiceUrl:
-        order?.combinedLabelInvoiceUrl ||
-        order?.combinedLabelUrl ||
-        order?.labelInvoiceUrl ||
-        null,
     },
 
-    shipmentStatus,
+    notes:
+      order?.notes ||
+      "",
 
-    awb:
-      order?.awb ||
-      order?.awbNumber ||
-      order?.trackingNumber ||
-      null,
-
-    courier:
-      order?.courier ||
-      order?.courierName ||
-      order?.shippingProvider ||
-      null,
-
-    trackingUrl:
-      order?.trackingUrl ||
-      order?.trackingURL ||
-      order?.tracking_url ||
-      null,
-
-    shippingLabel:
-      order?.shippingLabel ||
-      order?.shippingLabelUrl ||
-      order?.labelUrl ||
-      null,
-
-    invoice:
-      order?.invoice ||
-      order?.invoiceUrl ||
-      null,
-
-    combinedLabelInvoice:
-      order?.combinedLabelInvoice ||
-      order?.combinedLabelInvoiceUrl ||
-      order?.combinedLabelUrl ||
-      null,
-
-    // ---------------------------------------------------------
-    // WARRANTY
-    // ---------------------------------------------------------
-
-    warranty: {
-      registered:
-        order?.warranty?.registered === true ||
-        order?.warrantyRegistered === true,
-
-      registrationId:
-        order?.warranty?.registrationId ||
-        order?.warrantyRegistrationId ||
-        null,
-
-      status:
-        order?.warranty?.status ||
-        null,
-    },
-
-    warrantyRegistration:
-      order?.warrantyRegistration ||
-      null,
-  };
-
-  // Keep additional safe order information that frontend may
-  // already expect, without exposing admin credentials/secrets.
-
-  if (order?.notes) {
-    result.notes = order.notes;
-  }
-
-  if (order?.couponCode) {
-    result.couponCode = order.couponCode;
-  }
-
-  return serializeValue(result);
-}
-
-/* ============================================================
-   ADMIN COOKIE
-============================================================ */
-
-function getCookie(req, name) {
-  const cookieHeader =
-    req.headers?.cookie || "";
-
-  if (!cookieHeader) {
-    return null;
-  }
-
-  const cookies =
-    cookieHeader.split(";");
-
-  for (const cookie of cookies) {
-    const index =
-      cookie.indexOf("=");
-
-    if (index === -1) {
-      continue;
-    }
-
-    const key =
-      cookie
-        .slice(0, index)
-        .trim();
-
-    const value =
-      cookie
-        .slice(index + 1)
-        .trim();
-
-    if (key === name) {
-      try {
-        return decodeURIComponent(value);
-      } catch {
-        return value;
-      }
-    }
-  }
-
-  return null;
-}
-
-/* ============================================================
-   SAFE EQUAL
-============================================================ */
-
-function safeEqual(a, b) {
-  if (
-    typeof a !== "string" ||
-    typeof b !== "string"
-  ) {
-    return false;
-  }
-
-  const left =
-    Buffer.from(a, "utf8");
-
-  const right =
-    Buffer.from(b, "utf8");
-
-  if (
-    left.length !== right.length
-  ) {
-    return false;
-  }
-
-  try {
-    return crypto.timingSafeEqual(
-      left,
-      right
-    );
-  } catch {
-    return false;
-  }
-}
-
-/* ============================================================
-   VERIFY ADMIN SESSION
-   Same format used by api/admin-session.js
-============================================================ */
-
-function verifyAdminSession(req) {
-  const secret =
-    String(
-      process.env.ADMIN_SESSION_SECRET || ""
-    ).trim();
-
-  if (!secret) {
-    return {
-      valid: false,
-      reason: "missing_secret",
-    };
-  }
-
-  const token =
-    getCookie(
-      req,
-      ADMIN_COOKIE_NAME
-    );
-
-  if (!token) {
-    return {
-      valid: false,
-      reason: "missing_cookie",
-    };
-  }
-
-  const parts =
-    String(token).split(".");
-
-  if (parts.length !== 3) {
-    return {
-      valid: false,
-      reason: "invalid_token",
-    };
-  }
-
-  const [
-    encodedPayload,
-    expiresAtText,
-    signature,
-  ] = parts;
-
-  if (
-    !encodedPayload ||
-    !expiresAtText ||
-    !signature
-  ) {
-    return {
-      valid: false,
-      reason: "invalid_token",
-    };
-  }
-
-  const expectedSignature =
-    crypto
-      .createHmac(
-        "sha256",
-        secret
-      )
-      .update(
-        `${encodedPayload}.${expiresAtText}`
-      )
-      .digest("base64url");
-
-  if (
-    !safeEqual(
-      signature,
-      expectedSignature
-    )
-  ) {
-    return {
-      valid: false,
-      reason: "invalid_signature",
-    };
-  }
-
-  const expiresAt =
-    Number(expiresAtText);
-
-  if (
-    !Number.isFinite(expiresAt) ||
-    expiresAt <= 0 ||
-    Date.now() >= expiresAt
-  ) {
-    return {
-      valid: false,
-      reason: "expired",
-    };
-  }
-
-  let payload;
-
-  try {
-    const payloadText =
-      Buffer.from(
-        encodedPayload,
-        "base64url"
-      ).toString("utf8");
-
-    payload =
-      JSON.parse(payloadText);
-  } catch {
-    return {
-      valid: false,
-      reason: "invalid_payload",
-    };
-  }
-
-  if (
-    !payload ||
-    payload.role !== "admin"
-  ) {
-    return {
-      valid: false,
-      reason: "not_admin",
-    };
-  }
-
-  return {
-    valid: true,
-    payload,
-    expiresAt,
+    raw: serializeValue(
+      order
+    ),
   };
 }
 
 /* ============================================================
-   ADMIN ORDER LIST
+   CUSTOMER LOOKUP
 ============================================================ */
 
-async function getAdminOrders(db) {
-  const snapshot =
-    await db
-      .collection("orders")
-      .orderBy(
-        "createdAt",
-        "desc"
-      )
-      .limit(500)
-      .get();
-
-  const orders =
-    snapshot.docs.map((doc) => {
-      const raw =
-        doc.data() || {};
-
-      return serializeValue({
-        id: doc.id,
-
-        ...raw,
-
-        websiteOrderId:
-          raw.websiteOrderId ||
-          raw.orderId ||
-          raw.externalOrderId ||
-          doc.id,
-
-        paymentMethod:
-          getPaymentMethod(raw),
-
-        paymentStatus:
-          getPaymentStatus(raw),
-
-        shipmentStatus:
-          getShipmentStatus(raw),
-      });
-    });
-
-  return orders;
-}
-
-/* ============================================================
-   CUSTOMER SESSION COMPATIBILITY
-   ------------------------------------------------------------
-   IMPORTANT:
-   This does NOT create another Vercel function.
-   It is handled by api/orders.js after a Vercel rewrite.
-============================================================ */
-
-function handleCustomerSession(req, res) {
-  if (
-    req.method !== "GET" &&
-    req.method !== "POST"
-  ) {
-    res.setHeader(
-      "Allow",
-      "GET, POST"
-    );
-
-    return sendJson(
-      res,
-      405,
-      {
-        success: false,
-        authenticated: false,
-        error: "Method not allowed.",
-      }
-    );
-  }
-
-  return sendJson(
-    res,
-    200,
-    {
-      success: true,
-      authenticated: false,
-      customer: null,
-      message:
-        "Customer session is available through the orders API.",
-    }
-  );
-}
-
-/* ============================================================
-   CUSTOMER ORDER
-============================================================ */
-
-async function handleCustomerOrder(
+async function handleCustomer(
   req,
-  res,
-  db
+  res
 ) {
   const body =
-    req.body &&
-    typeof req.body === "object"
-      ? req.body
+    req.method === "POST"
+      ? (
+          req.body &&
+          typeof req.body === "object"
+            ? req.body
+            : {}
+        )
       : {};
 
   const query =
-    req.query &&
-    typeof req.query === "object"
-      ? req.query
-      : {};
+    req.query || {};
 
   const orderId =
     clean(
-      body.orderId ||
-      body.websiteOrderId ||
-      query.orderId ||
-      query.websiteOrderId ||
-      ""
+      body.orderId ??
+        body.websiteOrderId ??
+        body.id ??
+        query.orderId ??
+        query.websiteOrderId ??
+        query.id
     );
 
   const mobile =
-    normalizeMobile(
-      body.mobile ||
-      body.phone ||
-      query.mobile ||
-      query.phone ||
-      ""
+    clean(
+      body.mobile ??
+        body.phone ??
+        body.customerMobile ??
+        query.mobile ??
+        query.phone ??
+        query.customerMobile
     );
 
   if (!orderId) {
@@ -1268,24 +1329,13 @@ async function handleCustomerOrder(
     );
   }
 
-  if (
-    mobile.length !== 10
-  ) {
-    return sendJson(
-      res,
-      400,
-      {
-        success: false,
-        error:
-          "Enter a valid 10-digit mobile number.",
-      }
-    );
-  }
+  const db = getDb();
 
   const found =
     await findOrder(
       db,
-      orderId
+      orderId,
+      mobile
     );
 
   if (!found) {
@@ -1294,47 +1344,168 @@ async function handleCustomerOrder(
       404,
       {
         success: false,
+        found: false,
         error:
           "Order not found.",
       }
     );
   }
 
-  const order =
-    found.data || {};
+  return sendJson(
+    res,
+    200,
+    {
+      success: true,
+      found: true,
 
-  if (
-    !mobileMatches(
-      order,
-      mobile
-    )
-  ) {
-    return sendJson(
-      res,
-      403,
-      {
-        success: false,
-        error:
-          "Order ID and mobile number do not match.",
-      }
-    );
-  }
+      order:
+        buildCustomerOrder(
+          found.data,
+          found.id
+        ),
+    }
+  );
+}
 
-  const customerOrder =
-    buildCustomerOrder(
-      order,
-      found.ref.id
-    );
+/* ============================================================
+   CUSTOMER SESSION COMPATIBILITY
+============================================================ */
+
+async function handleCustomerSession(
+  req,
+  res
+) {
+  /*
+    IMPORTANT:
+
+    This does NOT create a new API endpoint.
+    It is handled inside /api/orders.
+
+    If there is no customer session, return a normal
+    unauthenticated response instead of 404.
+  */
 
   return sendJson(
     res,
     200,
     {
       success: true,
-      order: customerOrder,
-      data: customerOrder,
+      authenticated: false,
+      customer: null,
+      message:
+        "Customer session is not active.",
     }
   );
+}
+
+/* ============================================================
+   ADMIN ORDERS
+============================================================ */
+
+async function handleAdminOrders(
+  req,
+  res
+) {
+  const session =
+    verifyAdminSession(req);
+
+  if (!session.ok) {
+    return sendJson(
+      res,
+      session.status,
+      {
+        success: false,
+        authenticated: false,
+        error: session.error,
+      }
+    );
+  }
+
+  const db = getDb();
+
+  const limitValue =
+    Number(
+      req.query?.limit || 100
+    );
+
+  const limit = Math.min(
+    Math.max(
+      Number.isFinite(
+        limitValue
+      )
+        ? Math.floor(
+            limitValue
+          )
+        : 100,
+      1
+    ),
+    500
+  );
+
+  try {
+    const snapshot =
+      await db
+        .collection("orders")
+        .limit(limit)
+        .get();
+
+    const orders =
+      snapshot.docs.map(
+        (doc) => {
+          const data =
+            doc.data() || {};
+
+          return {
+            ...serializeValue(
+              data
+            ),
+
+            id:
+              doc.id,
+
+            orderId:
+              pickFirst(
+                data?.websiteOrderId,
+                data?.website_order_id,
+                data?.orderId,
+                data?.orderID,
+                data?.order_id,
+                data?.externalOrderId,
+                data?.external_order_id,
+                data?.id,
+                doc.id
+              ),
+          };
+        }
+      );
+
+    return sendJson(
+      res,
+      200,
+      {
+        success: true,
+        authenticated: true,
+        orders,
+        count: orders.length,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Admin orders failed:",
+      error
+    );
+
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
+        authenticated: true,
+        error:
+          "Unable to load orders.",
+      }
+    );
+  }
 }
 
 /* ============================================================
@@ -1348,63 +1519,88 @@ export default async function handler(
   try {
     const method =
       String(
-        req.method || ""
+        req.method || "GET"
       ).toUpperCase();
-
-    const body =
-      req.body &&
-      typeof req.body === "object"
-        ? req.body
-        : {};
-
-    const query =
-      req.query &&
-      typeof req.query === "object"
-        ? req.query
-        : {};
 
     const action =
       clean(
-        body.action ||
-        query.action ||
-        ""
+        req.query?.action
       ).toLowerCase();
 
-    /* ========================================================
+    /* --------------------------------------------------------
        CUSTOMER SESSION COMPATIBILITY
-       /api/orders?action=customer-session
-    ======================================================== */
+    -------------------------------------------------------- */
 
     if (
       action ===
         "customer-session" ||
-      action === "session"
+      action ===
+        "customersession"
     ) {
+      if (
+        method !== "GET"
+      ) {
+        res.setHeader(
+          "Allow",
+          "GET"
+        );
+
+        return sendJson(
+          res,
+          405,
+          {
+            success: false,
+            error:
+              "Method not allowed.",
+          }
+        );
+      }
+
       return handleCustomerSession(
         req,
         res
       );
     }
 
-    /* ========================================================
-       DATABASE
-    ======================================================== */
+    /* --------------------------------------------------------
+       CUSTOMER ORDER LOOKUP
 
-    const db =
-      getDb();
+       POST:
+       /api/orders
 
-    /* ========================================================
-       CUSTOMER
-    ======================================================== */
+       {
+         action: "customer",
+         orderId: "...",
+         mobile: "..."
+       }
+
+       GET:
+       /api/orders?action=customer&orderId=...&mobile=...
+    -------------------------------------------------------- */
 
     if (
-      action === "customer" ||
-      action === "my-orders" ||
-      action === "myorder"
+      action ===
+        "customer" ||
+      action ===
+        "lookup" ||
+      action ===
+        "my-orders" ||
+      (
+        method === "POST" &&
+        req.body &&
+        typeof req.body ===
+          "object" &&
+        (
+          req.body.action ===
+            "customer" ||
+          req.body.orderId ||
+          req.body.websiteOrderId
+        )
+      )
     ) {
       if (
-        method !== "POST" &&
-        method !== "GET"
+        method !== "GET" &&
+        method !== "POST"
       ) {
         res.setHeader(
           "Allow",
@@ -1422,142 +1618,91 @@ export default async function handler(
         );
       }
 
-      return handleCustomerOrder(
+      return handleCustomer(
         req,
-        res,
-        db
+        res
       );
     }
 
-    /* ========================================================
+    /* --------------------------------------------------------
        ADMIN
-    ======================================================== */
+
+       GET /api/orders
+
+       POST /api/orders
+       {
+         action: "admin"
+       }
+    -------------------------------------------------------- */
 
     if (
-      action === "admin"
+      action === "admin" ||
+      method === "GET"
     ) {
-      if (
-        method !== "POST" &&
-        method !== "GET"
-      ) {
-        res.setHeader(
-          "Allow",
-          "GET, POST"
-        );
-
-        return sendJson(
-          res,
-          405,
-          {
-            success: false,
-            error:
-              "Method not allowed.",
-          }
-        );
-      }
-
-      const session =
-        verifyAdminSession(req);
-
-      if (!session.valid) {
-        return sendJson(
-          res,
-          401,
-          {
-            success: false,
-            authenticated: false,
-            error:
-              "Unauthorized.",
-          }
-        );
-      }
-
-      const orders =
-        await getAdminOrders(
-          db
-        );
-
-      return sendJson(
-        res,
-        200,
-        {
-          success: true,
-          authenticated: true,
-          orders,
-          data: orders,
-          count: orders.length,
-        }
+      return handleAdminOrders(
+        req,
+        res
       );
     }
 
-    /* ========================================================
-       ADMIN GET
-       GET /api/orders
-    ======================================================== */
+    if (
+      method === "POST" &&
+      req.body &&
+      typeof req.body ===
+        "object" &&
+      req.body.action ===
+        "admin"
+    ) {
+      return handleAdminOrders(
+        req,
+        res
+      );
+    }
+
+    /* --------------------------------------------------------
+       DEFAULT
+
+       Preserve old behaviour:
+       GET = ADMIN
+       POST = CUSTOMER/ADMIN based on body
+    -------------------------------------------------------- */
 
     if (
       method === "GET"
     ) {
-      const session =
-        verifyAdminSession(req);
-
-      if (!session.valid) {
-        return sendJson(
-          res,
-          401,
-          {
-            success: false,
-            authenticated: false,
-            error:
-              "Unauthorized.",
-          }
-        );
-      }
-
-      const orders =
-        await getAdminOrders(
-          db
-        );
-
-      return sendJson(
-        res,
-        200,
-        {
-          success: true,
-          authenticated: true,
-          orders,
-          data: orders,
-          count: orders.length,
-        }
+      return handleAdminOrders(
+        req,
+        res
       );
     }
-
-    /* ========================================================
-       POST WITHOUT ACTION
-    ======================================================== */
 
     if (
       method === "POST"
     ) {
-      return sendJson(
-        res,
-        400,
-        {
-          success: false,
-          error:
-            "Invalid action.",
-          supportedActions: [
-            "customer",
-            "admin",
-            "customer-session",
-          ],
-        }
+      const body =
+        req.body &&
+        typeof req.body ===
+          "object"
+          ? req.body
+          : {};
+
+      if (
+        body.orderId ||
+        body.websiteOrderId ||
+        body.id ||
+        body.mobile
+      ) {
+        return handleCustomer(
+          req,
+          res
+        );
+      }
+
+      return handleAdminOrders(
+        req,
+        res
       );
     }
-
-    /* ========================================================
-       METHOD NOT ALLOWED
-    ======================================================== */
 
     res.setHeader(
       "Allow",
@@ -1575,7 +1720,7 @@ export default async function handler(
     );
   } catch (error) {
     console.error(
-      "orders.js error:",
+      "Orders API error:",
       error
     );
 
