@@ -115,6 +115,22 @@ function luxmoEscapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function luxmoFormatInvoiceDate(value) {
+  const raw = value || "";
+  const date = raw ? new Date(raw) : new Date();
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  }).format(safeDate) + " IST";
+}
+
 function luxmoBuildInvoiceHtml(order) {
   const items = Array.isArray(order?.items) ? order.items : [];
   const address = order?.shippingAddress || order?.address || {};
@@ -123,6 +139,8 @@ function luxmoBuildInvoiceHtml(order) {
   const discount = Number(order?.discount ?? order?.pricing?.discount ?? 0);
   const shipping = Number(order?.shippingFee ?? order?.pricing?.shippingFee ?? 0);
   const total = Number(order?.total ?? order?.pricing?.total ?? order?.amount ?? 0);
+  const invoiceDate = luxmoFormatInvoiceDate(order?.paidAt || order?.verifiedAt || order?.createdAt);
+  const invoicePaymentStatus = order?.paymentVerified === true || String(order?.paymentStatus || "").toLowerCase() === "paid" ? "Paid" : (order?.paymentStatus || "Pending");
   const rows = items.map((item, index) => {
     const qty = Math.max(1, Number(item?.qty ?? item?.quantity ?? 1));
     const lineTotal = Number(item?.price ?? item?.salePrice ?? item?.sellingPrice ?? 0) * qty;
@@ -138,7 +156,7 @@ function luxmoBuildInvoiceHtml(order) {
   const cgst = isIntraState ? totalTax / 2 : 0;
   const sgst = isIntraState ? totalTax / 2 : 0;
   const igst = isIntraState ? 0 : totalTax;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</title><style>body{font-family:Arial,sans-serif;color:#111827;padding:28px;max-width:1000px;margin:auto}h1{margin:0;font-size:28px}h2{margin:0 0 8px}small{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px;vertical-align:top}th{background:#f1f5f9}.row{display:flex;justify-content:space-between;gap:24px;margin-top:18px}.box{border:1px solid #cbd5e1;border-radius:10px;padding:14px;flex:1}.totals{margin-left:auto;width:360px;margin-top:18px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{font-size:18px;font-weight:800;border-top:2px solid #0f172a;margin-top:6px;padding-top:10px}.print{margin:20px 0;padding:10px 16px;border:0;border-radius:8px;background:#0f172a;color:#fff;font-weight:700}@media print{.print{display:none}body{padding:0}}</style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><div class="row"><div><h1>LUXMO HUB</h1><div>GSTIN: ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.gstin)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.businessAddress)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportEmail)} · ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportPhone)}</div></div><div><h2>TAX INVOICE</h2><div><b>Invoice / Order ID:</b> ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</div><div><b>Date:</b> ${luxmoEscapeHtml(order?.createdAt || new Date().toISOString())}</div><div><b>Payment:</b> ${luxmoEscapeHtml(order?.paymentStatus || "Paid")}</div></div></div><div class="row"><div class="box"><b>Bill To / Ship To</b><br>${luxmoEscapeHtml(customer?.name || address?.name || "")}<br>${luxmoEscapeHtml(address?.line1 || address?.address || "")}${address?.line2 ? `<br>${luxmoEscapeHtml(address.line2)}` : ""}<br>${luxmoEscapeHtml(address?.city || "")}, ${luxmoEscapeHtml(address?.state || "")} - ${luxmoEscapeHtml(address?.pincode || "")}<br>Mobile: ${luxmoEscapeHtml(customer?.phone || customer?.mobile || address?.phone || "")}<br>Email: ${luxmoEscapeHtml(customer?.email || address?.email || "")}</div></div><table><thead><tr><th>#</th><th>Product</th><th>HSN</th><th>Qty</th><th>GST</th><th>Taxable</th><th>Tax</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="totals"><div><span>Subtotal</span><b>₹${luxmoInvoiceValue(subtotal)}</b></div><div><span>Discount</span><b>-₹${luxmoInvoiceValue(discount)}</b></div><div><span>Shipping</span><b>₹${luxmoInvoiceValue(shipping)}</b></div>${cgst ? `<div><span>CGST</span><b>₹${luxmoInvoiceValue(cgst)}</b></div><div><span>SGST</span><b>₹${luxmoInvoiceValue(sgst)}</b></div>` : `<div><span>IGST</span><b>₹${luxmoInvoiceValue(igst)}</b></div>`}<div class="grand"><span>Grand Total</span><b>₹${luxmoInvoiceValue(total)}</b></div></div><p style="margin-top:28px;font-size:12px;color:#475569">This invoice is generated for the Luxmo Hub order shown above. Please retain it for your records.</p></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</title><style>body{font-family:Arial,sans-serif;color:#111827;padding:28px;max-width:1000px;margin:auto}h1{margin:0;font-size:28px}h2{margin:0 0 8px}small{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px;vertical-align:top}th{background:#f1f5f9}.row{display:flex;justify-content:space-between;gap:24px;margin-top:18px}.box{border:1px solid #cbd5e1;border-radius:10px;padding:14px;flex:1}.totals{margin-left:auto;width:360px;margin-top:18px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{font-size:18px;font-weight:800;border-top:2px solid #0f172a;margin-top:6px;padding-top:10px}.print{margin:20px 0;padding:10px 16px;border:0;border-radius:8px;background:#0f172a;color:#fff;font-weight:700}@media print{.print{display:none}body{padding:0}}</style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><div class="row"><div><h1>LUXMO HUB</h1><div>GSTIN: ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.gstin)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.businessAddress)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportEmail)} · ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportPhone)}</div></div><div><h2>TAX INVOICE</h2><div><b>Invoice / Order ID:</b> ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</div><div><b>Date:</b> ${luxmoEscapeHtml(invoiceDate)}</div><div><b>Payment:</b> ${luxmoEscapeHtml(invoicePaymentStatus)}</div></div></div><div class="row"><div class="box"><b>Bill To / Ship To</b><br>${luxmoEscapeHtml(customer?.name || address?.name || "")}<br>${luxmoEscapeHtml(address?.line1 || address?.address || "")}${address?.line2 ? `<br>${luxmoEscapeHtml(address.line2)}` : ""}<br>${luxmoEscapeHtml(address?.city || "")}, ${luxmoEscapeHtml(address?.state || "")} - ${luxmoEscapeHtml(address?.pincode || "")}<br>Mobile: ${luxmoEscapeHtml(customer?.phone || customer?.mobile || address?.phone || "")}<br>Email: ${luxmoEscapeHtml(customer?.email || address?.email || "")}</div></div><table><thead><tr><th>#</th><th>Product</th><th>HSN</th><th>Qty</th><th>GST</th><th>Taxable</th><th>Tax</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="totals"><div><span>Subtotal</span><b>₹${luxmoInvoiceValue(subtotal)}</b></div><div><span>Discount</span><b>-₹${luxmoInvoiceValue(discount)}</b></div><div><span>Shipping</span><b>₹${luxmoInvoiceValue(shipping)}</b></div>${cgst ? `<div><span>CGST</span><b>₹${luxmoInvoiceValue(cgst)}</b></div><div><span>SGST</span><b>₹${luxmoInvoiceValue(sgst)}</b></div>` : `<div><span>IGST</span><b>₹${luxmoInvoiceValue(igst)}</b></div>`}<div class="grand"><span>Grand Total</span><b>₹${luxmoInvoiceValue(total)}</b></div></div><p style="margin-top:28px;font-size:12px;color:#475569">This invoice is generated for the Luxmo Hub order shown above. Please retain it for your records.</p></body></html>`;
 }
 
 function luxmoPrintInvoice(order) {
@@ -152,7 +170,10 @@ function luxmoPrintInvoice(order) {
 }
 
 async function luxmoCreateOrRefreshShipment(order) {
-  const provider = String(order?.courierProvider || order?.provider || localStorage.getItem("luxmo_selected_courier") || "ithink").trim().toLowerCase() === "shiprocket" ? "shiprocket" : "ithink";
+  // Shiprocket is the production default. Legacy iThink selections are
+  // intentionally migrated to Shiprocket until iThink pickup configuration
+  // is present server-side. This prevents paid orders from getting stuck.
+  const provider = "shiprocket";
   const payload = {
     razorpay_order_id: order?.razorpayOrderId || "",
     razorpay_payment_id: order?.razorpayPaymentId || "",
@@ -5180,35 +5201,13 @@ export default function LuxmoHubApp() {
             // change payment status to failed.
             console.log("Razorpay payment verified:", response.razorpay_payment_id);
 
-            // STEP 2: Select iThink / Shiprocket.
-            let provider = String(
-              orderPayload.courierProvider || ""
-            ).trim().toLowerCase();
-
-            if (
-              !provider ||
-              provider === "pending" ||
-              provider === "pending assignment"
-            ) {
-              let savedProvider = "";
-              try {
-                savedProvider = String(
-                  localStorage.getItem("luxmo_selected_courier") || ""
-                ).trim().toLowerCase();
-              } catch {}
-
-              if (savedProvider === "ithink" || savedProvider === "shiprocket") {
-                provider = savedProvider;
-              } else {
-                const useIThink = window.confirm(
-                  "Choose Shipping Partner:\n\nOK = iThink Logistics\nCancel = Shiprocket"
-                );
-                provider = useIThink ? "ithink" : "shiprocket";
-                try {
-                  localStorage.setItem("luxmo_selected_courier", provider);
-                } catch {}
-              }
-            }
+            // STEP 2: Shiprocket is the production checkout provider.
+            // Old iThink/localStorage selections are migrated automatically so
+            // a paid order cannot get stuck because ITHINK_PICKUP_ADDRESS_ID is missing.
+            const provider = "shiprocket";
+            try {
+              localStorage.setItem("luxmo_selected_courier", provider);
+            } catch {}
 
             // STEP 3: Do not create the same shipment twice.
             const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
@@ -5261,6 +5260,31 @@ export default function LuxmoHubApp() {
             }
 
             // PAYMENT SUCCESS + SHIPMENT FAILURE = payment remains PAID.
+            // If a stale client somehow sent iThink, retry once through Shiprocket
+            // before marking the shipment as pending. Never ask the customer to pay again.
+            if ((!shipmentResponse.ok || !shipmentData.success) && provider !== "shiprocket") {
+              try {
+                const retryResponse = await fetch("/api/create-shipment", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                    provider: "shiprocket",
+                    order: { ...orderPayload, provider: "shiprocket", courierProvider: "shiprocket", razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, paymentStatus: "Paid", paymentVerified: true },
+                    orderData: { ...orderPayload, provider: "shiprocket", courierProvider: "shiprocket", razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, paymentStatus: "Paid", paymentVerified: true }
+                  })
+                });
+                const retryData = await retryResponse.json().catch(() => ({}));
+                if (retryResponse.ok && retryData?.success) {
+                  shipmentData = retryData;
+                }
+              } catch (retryError) {
+                console.error("Shiprocket fallback after courier failure:", retryError);
+              }
+            }
+
             const rawShipment = shipmentData?.shipment || shipmentData || {};
             const returnedShipmentId =
               rawShipment?.shipmentId ||
@@ -5292,6 +5316,8 @@ export default function LuxmoHubApp() {
                 razorpayPaymentId: response.razorpay_payment_id,
                 paymentStatus: "Paid",
                 paymentVerified: true,
+                paidAt: orderPayload.paidAt || new Date().toISOString(),
+                verifiedAt: orderPayload.verifiedAt || new Date().toISOString(),
                 status: "Payment Confirmed - Shipment Pending",
                 courierProvider: provider,
                 shipmentStatus: "Pending",
