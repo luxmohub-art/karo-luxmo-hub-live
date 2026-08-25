@@ -6,7 +6,8 @@ import crypto from "crypto";
 
 const COOKIE_NAME = "luxmo_admin_session";
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours
-const TOTP_PERIOD = 30; // Google Authenticator default
+
+const TOTP_PERIOD = 30;
 const TOTP_DIGITS = 6;
 
 // ---------------------------------------------------------
@@ -18,11 +19,11 @@ function sendJson(res, status, data) {
 }
 
 // ---------------------------------------------------------
-// BASE64URL
+// BASE64URL ENCODE
 // ---------------------------------------------------------
 
 function base64UrlEncode(value) {
-  return Buffer.from(value).toString("base64url");
+  return Buffer.from(String(value)).toString("base64url");
 }
 
 // ---------------------------------------------------------
@@ -49,7 +50,6 @@ function safeEqual(a, b) {
 
 // ---------------------------------------------------------
 // BASE32 DECODER
-// Google Authenticator secrets normally use Base32.
 // ---------------------------------------------------------
 
 function base32Decode(input) {
@@ -68,8 +68,7 @@ function base32Decode(input) {
   const bytes = [];
 
   for (const character of value) {
-    const index =
-      alphabet.indexOf(character);
+    const index = alphabet.indexOf(character);
 
     if (index === -1) {
       return null;
@@ -112,8 +111,7 @@ function generateTotp(secret, counter) {
     return null;
   }
 
-  const counterBuffer =
-    Buffer.alloc(8);
+  const counterBuffer = Buffer.alloc(8);
 
   const high =
     Math.floor(
@@ -149,16 +147,20 @@ function generateTotp(secret, counter) {
 
   return String(
     binary % 1000000
-  ).padStart(6, "0");
+  ).padStart(TOTP_DIGITS, "0");
 }
 
 // ---------------------------------------------------------
 // VERIFY GOOGLE AUTHENTICATOR CODE
-// Accept previous/current/next 30-second window.
+// Previous / Current / Next 30-second window
 // ---------------------------------------------------------
 
 function verifyTotp(otp, secret) {
-  if (!/^\d{6}$/.test(otp)) {
+  if (
+    !new RegExp(
+      `^\\d{${TOTP_DIGITS}}$`
+    ).test(otp)
+  ) {
     return false;
   }
 
@@ -230,13 +232,16 @@ function createSessionToken(
       .update(signingData)
       .digest("base64url");
 
-  return (
-    `${encodedPayload}.${expiresAt}.${signature}`
-  );
+  return [
+    encodedPayload,
+    String(expiresAt),
+    signature,
+  ].join(".");
 }
 
 // ---------------------------------------------------------
 // REQUEST BODY
+// Supports Vercel parsed object and raw JSON string
 // ---------------------------------------------------------
 
 function getRequestBody(req) {
@@ -247,7 +252,75 @@ function getRequestBody(req) {
     return req.body;
   }
 
+  if (typeof req.body === "string") {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+
   return {};
+}
+
+// ---------------------------------------------------------
+// GET COOKIE DOMAIN
+//
+// The production site may be accessed through:
+//   luxmohub.in
+//   www.luxmohub.in
+//
+// Using .luxmohub.in allows the session cookie to work
+// across both production hostnames.
+// ---------------------------------------------------------
+
+function getCookieDomain(req) {
+  const hostHeader =
+    String(
+      req.headers?.host || ""
+    )
+      .toLowerCase()
+      .split(":")[0];
+
+  if (
+    hostHeader === "luxmohub.in" ||
+    hostHeader === "www.luxmohub.in" ||
+    hostHeader.endsWith(".luxmohub.in")
+  ) {
+    return "Domain=.luxmohub.in; ";
+  }
+
+  // Do NOT set Domain on Vercel preview/other hosts.
+  return "";
+}
+
+// ---------------------------------------------------------
+// CREATE ADMIN COOKIE
+// ---------------------------------------------------------
+
+function createAdminCookie(
+  req,
+  sessionToken
+) {
+  const encodedToken =
+    encodeURIComponent(
+      sessionToken
+    );
+
+  const domain =
+    getCookieDomain(req);
+
+  return [
+    `${COOKIE_NAME}=${encodedToken}`,
+    "Path=/",
+    domain ? domain.trim() : "",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    `Max-Age=${SESSION_MAX_AGE}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
 }
 
 // ---------------------------------------------------------
@@ -273,20 +346,44 @@ export default async function handler(
       405,
       {
         success: false,
+        authenticated: false,
         error: "Method not allowed",
       }
     );
   }
 
   // -------------------------------------------------------
+  // NEVER CACHE LOGIN RESPONSE
+  // -------------------------------------------------------
+
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+
+  res.setHeader(
+    "Pragma",
+    "no-cache"
+  );
+
+  res.setHeader(
+    "Expires",
+    "0"
+  );
+
+  // -------------------------------------------------------
   // SERVER ENVIRONMENT VARIABLES
   // -------------------------------------------------------
 
   const sessionSecret =
-    process.env.ADMIN_SESSION_SECRET;
+    String(
+      process.env.ADMIN_SESSION_SECRET || ""
+    ).trim();
 
   const totpSecret =
-    process.env.ADMIN_TOTP_SECRET;
+    String(
+      process.env.ADMIN_TOTP_SECRET || ""
+    ).trim();
 
   // -------------------------------------------------------
   // SESSION SECRET CHECK
@@ -302,6 +399,7 @@ export default async function handler(
       500,
       {
         success: false,
+        authenticated: false,
         error:
           "Admin session configuration error.",
       }
@@ -322,6 +420,7 @@ export default async function handler(
       500,
       {
         success: false,
+        authenticated: false,
         error:
           "Google Authenticator is not configured.",
       }
@@ -330,7 +429,7 @@ export default async function handler(
 
   try {
     // -----------------------------------------------------
-    // READ REQUEST
+    // READ REQUEST BODY
     // -----------------------------------------------------
 
     const body =
@@ -338,14 +437,18 @@ export default async function handler(
 
     const otp =
       String(
-        body.otp || ""
-      ).trim();
+        body?.otp || ""
+      ).replace(/\s+/g, "");
 
     // -----------------------------------------------------
-    // VALIDATE OTP FORMAT
+    // VALIDATE OTP
     // -----------------------------------------------------
 
-    if (!/^\d{6}$/.test(otp)) {
+    if (
+      !new RegExp(
+        `^\\d{${TOTP_DIGITS}}$`
+      ).test(otp)
+    ) {
       return sendJson(
         res,
         400,
@@ -382,7 +485,7 @@ export default async function handler(
     }
 
     // -----------------------------------------------------
-    // CREATE ADMIN SESSION
+    // CREATE SIGNED ADMIN SESSION
     // -----------------------------------------------------
 
     const sessionToken =
@@ -391,13 +494,18 @@ export default async function handler(
       );
 
     // -----------------------------------------------------
-    // SECURE HTTP-ONLY COOKIE
+    // CREATE COOKIE
     // -----------------------------------------------------
 
     const cookie =
-      `${COOKIE_NAME}=${encodeURIComponent(
+      createAdminCookie(
+        req,
         sessionToken
-      )}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}`;
+      );
+
+    // -----------------------------------------------------
+    // SET ADMIN SESSION COOKIE
+    // -----------------------------------------------------
 
     res.setHeader(
       "Set-Cookie",
