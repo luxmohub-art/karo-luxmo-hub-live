@@ -1,44 +1,81 @@
 // api/admin-session.js
-// LUXMO HUB - Admin Session Verification + Logout API
+// LUXMO HUB - Admin Session Check + Logout API
+// Compatible with api/admin-verify-otp.js
 
 import crypto from "crypto";
 
 const COOKIE_NAME = "luxmo_admin_session";
 
 /* =========================================================
-   COOKIE
+   SEND JSON
+========================================================= */
+
+function sendJson(res, status, data) {
+  res.setHeader(
+    "Content-Type",
+    "application/json; charset=utf-8"
+  );
+
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+
+  res.setHeader(
+    "Pragma",
+    "no-cache"
+  );
+
+  res.setHeader(
+    "Expires",
+    "0"
+  );
+
+  return res.status(status).json(data);
+}
+
+/* =========================================================
+   READ COOKIE
 ========================================================= */
 
 function getCookie(req, name) {
-  const cookieHeader = req.headers?.cookie || "";
+  const header = String(
+    req.headers?.cookie || ""
+  );
 
-  if (!cookieHeader) {
+  if (!header) {
     return null;
   }
 
-  const cookies = cookieHeader.split(";");
+  const cookies = header.split(";");
 
-  for (const cookie of cookies) {
-    const index = cookie.indexOf("=");
+  for (const item of cookies) {
+    const separator = item.indexOf("=");
 
-    if (index === -1) {
+    if (separator === -1) {
       continue;
     }
 
-    const key = cookie
-      .slice(0, index)
+    const key = item
+      .slice(0, separator)
       .trim();
 
-    const value = cookie
-      .slice(index + 1)
+    if (key !== name) {
+      continue;
+    }
+
+    const rawValue = item
+      .slice(separator + 1)
       .trim();
 
-    if (key === name) {
-      try {
-        return decodeURIComponent(value);
-      } catch {
-        return value;
-      }
+    if (!rawValue) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
     }
   }
 
@@ -46,22 +83,21 @@ function getCookie(req, name) {
 }
 
 /* =========================================================
-   BASE64URL
+   BASE64URL DECODE
 ========================================================= */
 
-function base64UrlDecode(value) {
+function decodeBase64Url(value) {
   if (!value) {
     return null;
   }
 
   try {
-    return Buffer.from(
-      value,
-      "base64url"
-    ).toString("utf8");
+    return Buffer
+      .from(value, "base64url")
+      .toString("utf8");
   } catch (error) {
     console.error(
-      "Session payload decode failed:",
+      "Admin session payload decode error:",
       error
     );
 
@@ -70,19 +106,26 @@ function base64UrlDecode(value) {
 }
 
 /* =========================================================
-   SAFE STRING COMPARISON
+   CONSTANT-TIME STRING COMPARISON
 ========================================================= */
 
-function safeEqual(a, b) {
+function safeEqual(leftValue, rightValue) {
   if (
-    typeof a !== "string" ||
-    typeof b !== "string"
+    typeof leftValue !== "string" ||
+    typeof rightValue !== "string"
   ) {
     return false;
   }
 
-  const left = Buffer.from(a, "utf8");
-  const right = Buffer.from(b, "utf8");
+  const left = Buffer.from(
+    leftValue,
+    "utf8"
+  );
+
+  const right = Buffer.from(
+    rightValue,
+    "utf8"
+  );
 
   if (left.length !== right.length) {
     return false;
@@ -99,22 +142,21 @@ function safeEqual(a, b) {
 }
 
 /* =========================================================
-   VERIFY ADMIN TOKEN
+   VERIFY SESSION TOKEN
 ========================================================= */
 
-function verifySessionToken(
-  token,
-  secret
-) {
-  if (
-    !token ||
-    !secret
-  ) {
+function verifySessionToken(token, secret) {
+  if (!token || !secret) {
     return null;
   }
 
-  const parts =
-    String(token).split(".");
+  const parts = String(token).split(".");
+
+  /*
+    Expected format:
+
+    base64Payload.expiresAt.signature
+  */
 
   if (parts.length !== 3) {
     return null;
@@ -123,7 +165,7 @@ function verifySessionToken(
   const [
     encodedPayload,
     expiresAtText,
-    signature,
+    signature
   ] = parts;
 
   if (
@@ -135,8 +177,11 @@ function verifySessionToken(
   }
 
   /* -------------------------------------------------------
-     SIGNATURE
+     VERIFY SIGNATURE
   ------------------------------------------------------- */
+
+  const signingData =
+    `${encodedPayload}.${expiresAtText}`;
 
   const expectedSignature =
     crypto
@@ -144,9 +189,7 @@ function verifySessionToken(
         "sha256",
         secret
       )
-      .update(
-        `${encodedPayload}.${expiresAtText}`
-      )
+      .update(signingData)
       .digest("base64url");
 
   if (
@@ -159,7 +202,7 @@ function verifySessionToken(
   }
 
   /* -------------------------------------------------------
-     EXPIRY
+     VERIFY EXPIRATION
   ------------------------------------------------------- */
 
   const expiresAt =
@@ -172,16 +215,18 @@ function verifySessionToken(
     return null;
   }
 
-  if (Date.now() >= expiresAt) {
+  if (
+    Date.now() >= expiresAt
+  ) {
     return null;
   }
 
   /* -------------------------------------------------------
-     PAYLOAD
+     DECODE PAYLOAD
   ------------------------------------------------------- */
 
   const payloadText =
-    base64UrlDecode(
+    decodeBase64Url(
       encodedPayload
     );
 
@@ -189,48 +234,72 @@ function verifySessionToken(
     return null;
   }
 
+  /* -------------------------------------------------------
+     PARSE PAYLOAD
+  ------------------------------------------------------- */
+
+  let payload;
+
   try {
-    const payload =
-      JSON.parse(payloadText);
-
-    if (
-      !payload ||
-      payload.role !== "admin"
-    ) {
-      return null;
-    }
-
-    return {
-      payload,
-      expiresAt,
-    };
+    payload = JSON.parse(
+      payloadText
+    );
   } catch (error) {
     console.error(
-      "Admin session JSON parse failed:",
+      "Admin session JSON parse error:",
       error
     );
 
     return null;
   }
+
+  /* -------------------------------------------------------
+     VERIFY ADMIN ROLE
+  ------------------------------------------------------- */
+
+  if (
+    !payload ||
+    payload.role !== "admin"
+  ) {
+    return null;
+  }
+
+  /* -------------------------------------------------------
+     SUCCESS
+  ------------------------------------------------------- */
+
+  return {
+    payload,
+    expiresAt
+  };
 }
 
 /* =========================================================
-   JSON RESPONSE
+   CLEAR ADMIN COOKIE
 ========================================================= */
 
-function sendJson(
-  res,
-  status,
-  data
-) {
-  res.setHeader(
-    "Content-Type",
-    "application/json; charset=utf-8"
-  );
+function clearAdminCookie(res) {
+  /*
+    Must match the login cookie attributes:
 
-  return res
-    .status(status)
-    .json(data);
+    Path=/
+    HttpOnly
+    Secure
+    SameSite=Lax
+  */
+
+  const cookie =
+    `${COOKIE_NAME}=; ` +
+    `Path=/; ` +
+    `HttpOnly; ` +
+    `Secure; ` +
+    `SameSite=Lax; ` +
+    `Max-Age=0`;
+
+  res.setHeader(
+    "Set-Cookie",
+    cookie
+  );
 }
 
 /* =========================================================
@@ -238,17 +307,7 @@ function sendJson(
 ========================================================= */
 
 function logoutAdmin(res) {
-  res.setHeader(
-    "Set-Cookie",
-    [
-      `${COOKIE_NAME}=`,
-      "Path=/",
-      "HttpOnly",
-      "Secure",
-      "SameSite=Strict",
-      "Max-Age=0",
-    ].join("; ")
-  );
+  clearAdminCookie(res);
 
   return sendJson(
     res,
@@ -256,8 +315,40 @@ function logoutAdmin(res) {
     {
       success: true,
       authenticated: false,
+      loggedOut: true,
       message:
-        "Admin logged out successfully.",
+        "Admin logged out successfully."
+    }
+  );
+}
+
+/* =========================================================
+   UNAUTHENTICATED RESPONSE
+========================================================= */
+
+function notAuthenticated(res, reason) {
+  /*
+    IMPORTANT:
+
+    Return HTTP 200 instead of HTTP 401 for the
+    normal "not logged in" session check.
+
+    This prevents the browser console from showing
+    an unnecessary red 401 when the public site checks
+    whether an admin session exists.
+
+    Security is NOT bypassed:
+    authenticated remains false.
+  */
+
+  return sendJson(
+    res,
+    200,
+    {
+      success: false,
+      authenticated: false,
+      user: null,
+      error: reason
     }
   );
 }
@@ -266,30 +357,55 @@ function logoutAdmin(res) {
    MAIN HANDLER
 ========================================================= */
 
-export default function handler(
+export default async function handler(
   req,
   res
 ) {
-  /* -------------------------------------------------------
-     LOGOUT
-     
-     Supports:
-     /api/admin-session?logout=1
-  ------------------------------------------------------- */
+  try {
+    /* =====================================================
+       LOGOUT
+       /api/admin-session?logout=1
+    ===================================================== */
 
-  const logout =
-    String(
-      req.query?.logout || ""
-    ).trim() === "1";
+    const logout =
+      String(
+        req.query?.logout || ""
+      ).trim() === "1";
 
-  if (logout) {
-    if (
-      req.method !== "GET" &&
-      req.method !== "POST"
-    ) {
+    if (logout) {
+      if (
+        req.method !== "GET" &&
+        req.method !== "POST"
+      ) {
+        res.setHeader(
+          "Allow",
+          "GET, POST"
+        );
+
+        return sendJson(
+          res,
+          405,
+          {
+            success: false,
+            authenticated: false,
+            error:
+              "Method not allowed."
+          }
+        );
+      }
+
+      return logoutAdmin(res);
+    }
+
+    /* =====================================================
+       SESSION CHECK
+       GET ONLY
+    ===================================================== */
+
+    if (req.method !== "GET") {
       res.setHeader(
         "Allow",
-        "GET, POST"
+        "GET"
       );
 
       return sendJson(
@@ -299,50 +415,113 @@ export default function handler(
           success: false,
           authenticated: false,
           error:
-            "Method not allowed.",
+            "Method not allowed."
         }
       );
     }
 
-    return logoutAdmin(res);
-  }
+    /* =====================================================
+       SESSION SECRET
+    ===================================================== */
 
-  /* -------------------------------------------------------
-     SESSION CHECK
-     
-     Only GET allowed
-  ------------------------------------------------------- */
+    const secret =
+      String(
+        process.env.ADMIN_SESSION_SECRET || ""
+      ).trim();
 
-  if (req.method !== "GET") {
-    res.setHeader(
-      "Allow",
-      "GET"
-    );
+    if (!secret) {
+      console.error(
+        "ADMIN_SESSION_SECRET is missing."
+      );
+
+      return sendJson(
+        res,
+        500,
+        {
+          success: false,
+          authenticated: false,
+          error:
+            "Admin session configuration error."
+        }
+      );
+    }
+
+    /* =====================================================
+       READ ADMIN COOKIE
+    ===================================================== */
+
+    const token =
+      getCookie(
+        req,
+        COOKIE_NAME
+      );
+
+    /*
+      No cookie simply means:
+      user is not logged in.
+
+      Do NOT treat this as an authenticated request.
+    */
+
+    if (!token) {
+      return notAuthenticated(
+        res,
+        "Admin session cookie not found."
+      );
+    }
+
+    /* =====================================================
+       VERIFY TOKEN
+    ===================================================== */
+
+    const verified =
+      verifySessionToken(
+        token,
+        secret
+      );
+
+    /* =====================================================
+       INVALID / EXPIRED SESSION
+    ===================================================== */
+
+    if (!verified) {
+      /*
+        Clear bad cookie so browser doesn't keep
+        sending an expired/invalid session forever.
+      */
+
+      clearAdminCookie(res);
+
+      return notAuthenticated(
+        res,
+        "Invalid or expired admin session."
+      );
+    }
+
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
     return sendJson(
       res,
-      405,
+      200,
       {
-        success: false,
-        authenticated: false,
-        error:
-          "Method not allowed.",
+        success: true,
+        authenticated: true,
+
+        user: {
+          role: "admin"
+        },
+
+        expiresAt:
+          verified.expiresAt
       }
     );
-  }
 
-  /* -------------------------------------------------------
-     SECRET
-  ------------------------------------------------------- */
-
-  const secret =
-    String(
-      process.env.ADMIN_SESSION_SECRET || ""
-    ).trim();
-
-  if (!secret) {
+  } catch (error) {
     console.error(
-      "ADMIN_SESSION_SECRET is missing."
+      "Admin session API error:",
+      error
     );
 
     return sendJson(
@@ -352,74 +531,8 @@ export default function handler(
         success: false,
         authenticated: false,
         error:
-          "ADMIN_SESSION_SECRET is not configured on the server.",
+          "Internal server error."
       }
     );
   }
-
-  /* -------------------------------------------------------
-     COOKIE
-  ------------------------------------------------------- */
-
-  const token =
-    getCookie(
-      req,
-      COOKIE_NAME
-    );
-
-  if (!token) {
-    return sendJson(
-      res,
-      401,
-      {
-        success: false,
-        authenticated: false,
-        error:
-          "Admin session cookie not found.",
-      }
-    );
-  }
-
-  /* -------------------------------------------------------
-     VERIFY
-  ------------------------------------------------------- */
-
-  const verified =
-    verifySessionToken(
-      token,
-      secret
-    );
-
-  if (!verified) {
-    return sendJson(
-      res,
-      401,
-      {
-        success: false,
-        authenticated: false,
-        error:
-          "Invalid or expired admin session.",
-      }
-    );
-  }
-
-  /* -------------------------------------------------------
-     SUCCESS
-  ------------------------------------------------------- */
-
-  return sendJson(
-    res,
-    200,
-    {
-      success: true,
-      authenticated: true,
-
-      user: {
-        role: "admin",
-      },
-
-      expiresAt:
-        verified.expiresAt,
-    }
-  );
 }
