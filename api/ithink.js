@@ -1,134 +1,89 @@
 // api/ithink.js
-// LUXMO HUB — iThink Logistics Shipment API
-//
-// Supports:
-// 1. iThink Logistics authentication via access_token + secret_key
-// 2. Prepaid shipment creation
-// 3. Multiple products
-// 4. Customer address
-// 5. Shipping charges / discount
-// 6. Pickup warehouse
-// 7. AWB / waybill response
-// 8. Tracking URL
-// 9. Label / invoice URL extraction when returned by iThink
-//
-// IMPORTANT:
-// This API is called only AFTER Razorpay payment is verified.
-// Do not put iThink credentials in frontend code.
+// LUXMO HUB — iThink Logistics Shipment + AWB + Label
+
+const BASE =
+  "https://my.ithinklogistics.com/api_v3";
 
 function sendJson(res, status, data) {
   return res.status(status).json(data);
 }
 
-/* =========================================================
-   HELPERS
-========================================================= */
-
 function clean(value) {
   return String(value ?? "").trim();
 }
 
-function toNumber(value, fallback = 0) {
+function num(value, fallback = 0) {
   const n = Number(value);
-
   return Number.isFinite(n)
     ? n
     : fallback;
 }
 
-function positiveNumber(value, fallback) {
+function positive(
+  value,
+  fallback = 1
+) {
   const n = Number(value);
 
-  return Number.isFinite(n) && n > 0
+  return Number.isFinite(n) &&
+    n > 0
     ? n
     : fallback;
 }
 
-function normalizePhone(value) {
-  const digits = clean(value).replace(
-    /\D/g,
-    ""
-  );
+function phone(value) {
+  const digits =
+    clean(value).replace(
+      /\D/g,
+      ""
+    );
 
   return digits.length > 10
     ? digits.slice(-10)
     : digits;
 }
 
-function normalizePincode(value) {
+function pincode(value) {
   return clean(value)
     .replace(/\D/g, "")
     .slice(0, 6);
 }
 
-function normalizeEmail(value) {
-  return clean(value).toLowerCase();
+function email(value) {
+  return clean(value)
+    .toLowerCase();
 }
 
-function formatDate(value) {
-  const date = value
-    ? new Date(value)
-    : new Date();
+// =========================================================
+// CONFIG
+// =========================================================
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", " ");
-  }
+function getConfig() {
+  const accessToken =
+    clean(
+      process.env
+        .ITHINK_ACCESS_TOKEN ||
+        process.env
+          .ITHINK_ACCESS_KEY ||
+        process.env
+          .ITHINK_API_ACCESS_TOKEN
+    );
 
-  const pad = (n) =>
-    String(n).padStart(2, "0");
+  const secretKey =
+    clean(
+      process.env
+        .ITHINK_SECRET_KEY ||
+        process.env
+          .ITHINK_API_SECRET_KEY
+    );
 
-  return (
-    `${date.getFullYear()}-` +
-    `${pad(date.getMonth() + 1)}-` +
-    `${pad(date.getDate())} ` +
-    `${pad(date.getHours())}:` +
-    `${pad(date.getMinutes())}:` +
-    `${pad(date.getSeconds())}`
-  );
-}
-
-/* =========================================================
-   ENVIRONMENT
-========================================================= */
-
-function getIThinkConfig() {
-  const accessToken = clean(
-    process.env.ITHINK_ACCESS_TOKEN ||
-      process.env.ITHINK_ACCESS_KEY ||
-      process.env.ITHINK_API_ACCESS_TOKEN
-  );
-
-  const secretKey = clean(
-    process.env.ITHINK_SECRET_KEY ||
-      process.env.ITHINK_API_SECRET_KEY
-  );
-
-  const pickupAddressId = clean(
-    process.env.ITHINK_PICKUP_ADDRESS_ID ||
-      process.env.ITHINK_PICKUP_ADDRESS
-  );
-
-  const logistics = clean(
-    process.env.ITHINK_LOGISTICS ||
-      ""
-  );
-
-  const serviceType = clean(
-    process.env.ITHINK_SERVICE_TYPE ||
-      "ground"
-  );
-
-  const orderType = clean(
-    process.env.ITHINK_ORDER_TYPE ||
-      ""
-  );
+  const pickupAddressId =
+    clean(
+      process.env
+        .ITHINK_PICKUP_ADDRESS_ID ||
+        process.env
+          .ITHINK_PICKUP_ADDRESS
+    );
 
   if (!accessToken) {
     throw new Error(
@@ -144,7 +99,7 @@ function getIThinkConfig() {
 
   if (!pickupAddressId) {
     throw new Error(
-      "ITHINK_PICKUP_ADDRESS_ID is missing in Vercel Environment Variables."
+      "ITHINK_PICKUP_ADDRESS_ID is missing in Vercel Environment Variables. Add your iThink pickup/warehouse address ID."
     );
   }
 
@@ -152,109 +107,185 @@ function getIThinkConfig() {
     accessToken,
     secretKey,
     pickupAddressId,
-    logistics,
-    serviceType,
-    orderType,
+
+    logistics:
+      clean(
+        process.env
+          .ITHINK_LOGISTICS
+      ),
+
+    serviceType:
+      clean(
+        process.env
+          .ITHINK_SERVICE_TYPE ||
+          "ground"
+      ),
+
+    orderType:
+      clean(
+        process.env
+          .ITHINK_ORDER_TYPE
+      ),
   };
 }
 
-/* =========================================================
-   CUSTOMER ADDRESS
-========================================================= */
+// =========================================================
+// API REQUEST
+// =========================================================
 
-function getAddress(order) {
-  const shipping =
-    order?.shippingAddress &&
-    typeof order.shippingAddress ===
-      "object"
-      ? order.shippingAddress
-      : order?.address &&
-        typeof order.address ===
-          "object"
-      ? order.address
-      : {};
+async function request(
+  path,
+  body
+) {
+  const response =
+    await fetch(
+      `${BASE}${path}`,
+      {
+        method: "POST",
 
-  const customer =
-    order?.customer &&
-    typeof order.customer ===
-      "object"
-      ? order.customer
-      : {};
+        headers: {
+          Accept:
+            "application/json",
 
-  const name = clean(
-    shipping.name ||
-      customer.name ||
-      order?.customerName ||
-      order?.name
-  );
+          "Content-Type":
+            "application/json",
 
-  const phone = normalizePhone(
-    shipping.phone ||
-      customer.phone ||
-      order?.phone ||
-      order?.mobile
-  );
+          "Cache-Control":
+            "no-cache",
+        },
 
-  const email = normalizeEmail(
-    shipping.email ||
-      customer.email ||
-      order?.email ||
-      "support@luxmohub.in"
-  );
-
-  const address1 = clean(
-    shipping.line1 ||
-      shipping.address1 ||
-      shipping.address ||
-      order?.addressLine1 ||
-      order?.address
-  );
-
-  const address2 = clean(
-    shipping.line2 ||
-      shipping.address2 ||
-      order?.addressLine2 ||
-      ""
-  );
-
-  const city = clean(
-    shipping.city ||
-      order?.city
-  );
-
-  const state = clean(
-    shipping.state ||
-      shipping.stateName ||
-      order?.state
-  );
-
-  const pincode =
-    normalizePincode(
-      shipping.pincode ||
-        shipping.postalCode ||
-        shipping.zip ||
-        order?.pincode
+        body:
+          JSON.stringify(
+            body
+          ),
+      }
     );
 
+  const text =
+    await response.text();
+
+  let data = {};
+
+  try {
+    data = text
+      ? JSON.parse(text)
+      : {};
+  } catch {
+    data = {
+      raw: text,
+    };
+  }
+
+  if (!response.ok) {
+    const details =
+      data?.message ||
+      data?.error ||
+      data?.errors ||
+      data?.raw ||
+      data;
+
+    const error =
+      new Error(
+        typeof details ===
+          "string"
+          ? details
+          : JSON.stringify(
+              details
+            )
+      );
+
+    error.status =
+      response.status;
+
+    error.data = data;
+
+    throw error;
+  }
+
+  return data;
+}
+
+// =========================================================
+// ADDRESS
+// =========================================================
+
+function getAddress(order) {
+  const address =
+    order?.shippingAddress ||
+    order?.address ||
+    order?.deliveryAddress ||
+    {};
+
+  const customer =
+    order?.customer ||
+    {};
+
   return {
-    name,
-    phone,
-    email,
-    address1,
-    address2,
-    city,
-    state,
-    pincode,
+    name: clean(
+      address.name ||
+        customer.name ||
+        order?.customerName ||
+        order?.name
+    ),
+
+    phone: phone(
+      address.phone ||
+        customer.phone ||
+        order?.phone ||
+        order?.mobile
+    ),
+
+    email: email(
+      address.email ||
+        customer.email ||
+        order?.email ||
+        "support@luxmohub.in"
+    ),
+
+    line1: clean(
+      address.line1 ||
+        address.address1 ||
+        address.address ||
+        order?.addressLine1 ||
+        order?.address
+    ),
+
+    line2: clean(
+      address.line2 ||
+        address.address2 ||
+        order?.addressLine2 ||
+        ""
+    ),
+
+    city: clean(
+      address.city ||
+        order?.city
+    ),
+
+    state: clean(
+      address.state ||
+        address.stateName ||
+        order?.state
+    ),
+
+    pincode: pincode(
+      address.pincode ||
+        address.postalCode ||
+        address.zip ||
+        order?.pincode
+    ),
   };
 }
 
-/* =========================================================
-   ORDER ITEMS
-========================================================= */
+// =========================================================
+// ITEMS
+// =========================================================
 
 function getItems(order) {
-  const items =
-    Array.isArray(order?.items)
+  const source =
+    Array.isArray(
+      order?.items
+    )
       ? order.items
       : Array.isArray(
           order?.orderItems
@@ -266,155 +297,161 @@ function getItems(order) {
       ? order.products
       : [];
 
-  return items.map(
-    (item, index) => {
-      const quantity = Math.max(
-        1,
-        Math.floor(
-          positiveNumber(
-            item?.qty ??
-              item?.quantity ??
-              1,
-            1
+  return source.map(
+    (
+      item,
+      index
+    ) => ({
+      product_name:
+        clean(
+          item?.title ||
+            item?.name ||
+            item?.productName ||
+            `LUXMO HUB Product ${index + 1}`
+        ),
+
+      product_sku:
+        clean(
+          item?.sku ||
+            item?.productSku ||
+            item?.id ||
+            `LUXMO-${index + 1}`
+        ),
+
+      product_quantity:
+        String(
+          Math.max(
+            1,
+            Math.floor(
+              positive(
+                item?.qty ??
+                  item?.quantity ??
+                  1,
+                1
+              )
+            )
           )
-        )
-      );
+        ),
 
-      const price =
-        toNumber(
-          item?.price ??
-            item?.salePrice ??
-            item?.sellingPrice ??
-            item?.selling_price ??
-            item?.amount ??
-            0
-        );
-
-      const sku = clean(
-        item?.sku ||
-          item?.productSku ||
-          item?.id ||
-          `LUXMO-${index + 1}`
-      );
-
-      const title = clean(
-        item?.title ||
-          item?.name ||
-          item?.productName ||
-          `LUXMO HUB Product ${index + 1}`
-      );
-
-      return {
-        product_name:
-          title,
-
-        product_sku:
-          sku,
-
-        product_quantity:
-          String(quantity),
-
-        product_price:
-          String(
-            Math.max(
-              0,
-              price
+      product_price:
+        String(
+          Math.max(
+            0,
+            num(
+              item?.price ??
+                item?.salePrice ??
+                item?.sellingPrice ??
+                item?.selling_price ??
+                item?.amount,
+              0
             )
-          ),
+          )
+        ),
 
-        product_tax_rate:
-          String(
-            toNumber(
+      product_tax_rate:
+        String(
+          Math.max(
+            0,
+            num(
               item?.tax ??
-                item?.gstRate ??
-                0
+                item?.gstRate,
+              0
             )
-          ),
+          )
+        ),
 
-        product_hsn_code:
-          clean(
-            item?.hsn ||
-              item?.hsnCode ||
-              ""
-          ),
+      product_hsn_code:
+        clean(
+          item?.hsn ||
+            item?.hsnCode ||
+            ""
+        ),
 
-        product_discount:
-          String(
-            toNumber(
-              item?.discount ||
-                0
+      product_discount:
+        String(
+          Math.max(
+            0,
+            num(
+              item?.discount,
+              0
             )
-          ),
+          )
+        ),
 
-        product_img_url:
-          clean(
-            item?.image ||
-              item?.imageUrl ||
-              ""
-          ),
-      };
-    }
+      product_img_url:
+        clean(
+          item?.image ||
+            item?.imageUrl ||
+            ""
+        ),
+    })
   );
 }
 
-/* =========================================================
-   TOTALS
-========================================================= */
+// =========================================================
+// TOTALS
+// =========================================================
 
 function getTotals(
   order,
   items
 ) {
-  let subtotal = toNumber(
-    order?.subtotal,
-    NaN
-  );
+  let subtotal =
+    num(
+      order?.subtotal,
+      NaN
+    );
 
   if (
     !Number.isFinite(
       subtotal
     )
   ) {
-    subtotal = items.reduce(
-      (sum, item) =>
-        sum +
-        toNumber(
-          item.product_price
-        ) *
-          toNumber(
-            item.product_quantity,
-            1
-          ),
-      0
-    );
+    subtotal =
+      items.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          num(
+            item.product_price,
+            0
+          ) *
+            num(
+              item.product_quantity,
+              1
+            ),
+        0
+      );
   }
 
   const discount =
     Math.max(
       0,
-      toNumber(
-        order?.discount ||
-          order?.totalDiscount ||
-          order?.total_discount ||
-          0
+      num(
+        order?.discount ??
+          order?.totalDiscount ??
+          order?.total_discount,
+        0
       )
     );
 
   const shipping =
     Math.max(
       0,
-      toNumber(
+      num(
         order?.shippingFee ??
           order?.shippingCharges ??
-          order?.shippingCost ??
-          0
+          order?.shippingCost,
+        0
       )
     );
 
   const total =
     Math.max(
       0,
-      toNumber(
+      num(
         order?.total ??
           order?.grandTotal ??
           order?.amount,
@@ -432,50 +469,83 @@ function getTotals(
   };
 }
 
-/* =========================================================
-   PACKAGE
-========================================================= */
+// =========================================================
+// PACKAGE
+// =========================================================
 
 function getPackage(order) {
   return {
-    length: positiveNumber(
-      order?.length ||
-        order?.packageLength,
-      20
-    ),
+    length:
+      positive(
+        order?.length ||
+          order?.packageLength,
+        20
+      ),
 
-    width: positiveNumber(
-      order?.width ||
-        order?.breadth ||
-        order?.packageWidth,
-      15
-    ),
+    width:
+      positive(
+        order?.width ||
+          order?.breadth ||
+          order?.packageWidth,
+        15
+      ),
 
-    height: positiveNumber(
-      order?.height ||
-        order?.packageHeight,
-      10
-    ),
+    height:
+      positive(
+        order?.height ||
+          order?.packageHeight,
+        10
+      ),
 
-    weight: positiveNumber(
-      order?.weight ||
-        order?.packageWeight ||
-        order?.totalWeight,
-      0.5
-    ),
+    weight:
+      positive(
+        order?.weight ||
+          order?.packageWeight ||
+          order?.totalWeight,
+        0.5
+      ),
   };
 }
 
-/* =========================================================
-   BUILD iTHINK V3 PAYLOAD
-========================================================= */
+// =========================================================
+// COD
+// =========================================================
+
+function isCOD(order) {
+  const method =
+    clean(
+      order?.paymentMethod ||
+        order?.payment_method ||
+        order?.paymentMode ||
+        order?.payment_mode
+    ).toLowerCase();
+
+  return (
+    method === "cod" ||
+    method ===
+      "cash on delivery" ||
+    method ===
+      "cash_on_delivery" ||
+    method ===
+      "cash-on-delivery" ||
+    order?.isCOD === true ||
+    order?.isCod === true
+  );
+}
+
+// =========================================================
+// PAYLOAD
+// =========================================================
 
 function buildPayload(
   order,
-  config
+  cfg
 ) {
   const address =
     getAddress(order);
+
+  const items =
+    getItems(order);
 
   if (!address.name) {
     throw new Error(
@@ -484,8 +554,8 @@ function buildPayload(
   }
 
   if (
-    !address.phone ||
-    address.phone.length !== 10
+    address.phone.length !==
+    10
   ) {
     throw new Error(
       "Valid 10-digit customer mobile number is required."
@@ -493,8 +563,8 @@ function buildPayload(
   }
 
   if (
-    !address.pincode ||
-    address.pincode.length !== 6
+    address.pincode.length !==
+    6
   ) {
     throw new Error(
       "Valid 6-digit delivery pincode is required."
@@ -513,8 +583,11 @@ function buildPayload(
     );
   }
 
-  const items =
-    getItems(order);
+  if (!address.line1) {
+    throw new Error(
+      "Delivery address is missing."
+    );
+  }
 
   if (!items.length) {
     throw new Error(
@@ -528,14 +601,14 @@ function buildPayload(
       items
     );
 
-  const packageInfo =
+  const pkg =
     getPackage(order);
 
   const websiteOrderId =
     clean(
-      order.websiteOrderId ||
-        order.orderId ||
-        order.id
+      order?.websiteOrderId ||
+        order?.orderId ||
+        order?.id
     );
 
   if (!websiteOrderId) {
@@ -544,34 +617,50 @@ function buildPayload(
     );
   }
 
-  /*
-    iThink order number should be unique.
-  */
-  const orderNumber =
-    websiteOrderId
-      .replace(
-        /[^a-zA-Z0-9_-]/g,
-        "_"
-      )
-      .slice(0, 40);
+  const createdAt =
+    order?.createdAt
+      ? new Date(
+          order.createdAt
+        )
+      : new Date();
 
-  /*
-    Prepaid order:
-    COD amount MUST remain 0.
-  */
+  const orderDate =
+    Number.isNaN(
+      createdAt.getTime()
+    )
+      ? new Date()
+          .toISOString()
+          .slice(0, 19)
+          .replace(
+            "T",
+            " "
+          )
+      : createdAt
+          .toISOString()
+          .slice(0, 19)
+          .replace(
+            "T",
+            " "
+          );
+
+  const cod =
+    isCOD(order);
+
   const shipment = {
     waybill: "",
 
     order:
-      orderNumber,
+      websiteOrderId
+        .replace(
+          /[^a-zA-Z0-9_-]/g,
+          "_"
+        )
+        .slice(0, 40),
 
-    sub_order:
-      "",
+    sub_order: "",
 
     order_date:
-      formatDate(
-        order.createdAt
-      ),
+      orderDate,
 
     total_amount:
       String(
@@ -585,10 +674,10 @@ function buildPayload(
       "LUXMO HUB",
 
     add:
-      address.address1,
+      address.line1,
 
     add2:
-      address.address2,
+      address.line2,
 
     add3:
       "",
@@ -624,10 +713,10 @@ function buildPayload(
       "LUXMO HUB",
 
     billing_add:
-      address.address1,
+      address.line1,
 
     billing_add2:
-      address.address2,
+      address.line2,
 
     billing_add3:
       "",
@@ -658,22 +747,22 @@ function buildPayload(
 
     shipment_length:
       String(
-        packageInfo.length
+        pkg.length
       ),
 
     shipment_width:
       String(
-        packageInfo.width
+        pkg.width
       ),
 
     shipment_height:
       String(
-        packageInfo.height
+        pkg.height
       ),
 
     weight:
       String(
-        packageInfo.weight
+        pkg.weight
       ),
 
     shipping_charges:
@@ -695,29 +784,31 @@ function buildPayload(
     first_attemp_discount:
       "0",
 
-    /*
-      IMPORTANT:
-      This is a prepaid Razorpay order.
-    */
     cod_amount:
-      "0",
+      cod
+        ? String(
+            totals.total
+          )
+        : "0",
 
     payment_mode:
-      "Prepaid",
+      cod
+        ? "COD"
+        : "Prepaid",
 
     reseller_name:
       "LUXMO HUB",
 
     eway_bill_number:
       clean(
-        order.ewayBillNumber ||
+        order?.ewayBillNumber ||
           ""
       ),
 
     gst_number:
       clean(
-        order.gstin ||
-          order.customerGstin ||
+        order?.gstin ||
+          order?.customerGstin ||
           ""
       ),
 
@@ -725,7 +816,7 @@ function buildPayload(
       "",
 
     return_address_id:
-      config.pickupAddressId,
+      cfg.pickupAddressId,
   };
 
   return {
@@ -735,173 +826,272 @@ function buildPayload(
       ],
 
       pickup_address_id:
-        config.pickupAddressId,
+        cfg.pickupAddressId,
 
       access_token:
-        config.accessToken,
+        cfg.accessToken,
 
       secret_key:
-        config.secretKey,
+        cfg.secretKey,
 
-      /*
-        Optional logistics value.
-        If not configured, iThink can use its
-        configured/default routing.
-      */
-      ...(config.logistics
+      ...(cfg.logistics
         ? {
             logistics:
-              config.logistics,
+              cfg.logistics,
           }
         : {}),
 
       s_type:
-        config.serviceType,
+        cfg.serviceType,
 
       order_type:
-        config.orderType,
+        cfg.orderType,
     },
   };
 }
 
-/* =========================================================
-   RESPONSE EXTRACTION
-========================================================= */
+// =========================================================
+// DEEP FIND
+// =========================================================
 
-function extractResponse(
-  data
+function deepFind(
+  value,
+  keys,
+  depth = 0
 ) {
-  const root =
-    data?.data ||
-    data?.response ||
-    data ||
-    {};
+  if (
+    value == null ||
+    depth > 10 ||
+    typeof value !==
+      "object"
+  ) {
+    return null;
+  }
 
-  const shipments =
-    Array.isArray(
-      root?.shipments
-    )
-      ? root.shipments
-      : Array.isArray(
-          data?.shipments
-        )
-      ? data.shipments
-      : [];
+  if (
+    Array.isArray(value)
+  ) {
+    for (
+      const item of value
+    ) {
+      const found =
+        deepFind(
+          item,
+          keys,
+          depth + 1
+        );
 
-  const first =
-    shipments[0] ||
-    root?.shipment ||
-    {};
+      if (
+        found != null &&
+        String(found).trim()
+      ) {
+        return found;
+      }
+    }
 
-  const awb =
-    clean(
-      first?.waybill ||
-        first?.awb ||
-        first?.awb_number ||
-        first?.airway_bill_no ||
-        root?.waybill ||
-        root?.awb ||
-        root?.awb_number ||
-        root?.airway_bill_no ||
-        data?.waybill ||
-        data?.awb ||
-        data?.awb_number ||
-        data?.airway_bill_no
-    );
+    return null;
+  }
 
-  const orderId =
-    clean(
-      first?.order ||
-        first?.order_id ||
-        root?.order ||
-        root?.order_id ||
-        data?.order ||
-        data?.order_id
-    );
+  for (
+    const key of keys
+  ) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        value,
+        key
+      )
+    ) {
+      const candidate =
+        value[key];
 
-  const shipmentId =
-    clean(
-      first?.shipment_id ||
-        first?.shipmentId ||
-        root?.shipment_id ||
-        root?.shipmentId ||
-        data?.shipment_id ||
-        data?.shipmentId ||
-        awb
-    );
+      if (
+        candidate != null &&
+        String(candidate).trim()
+      ) {
+        return candidate;
+      }
+    }
+  }
 
-  const courier =
-    clean(
-      first?.logistics ||
-        first?.courier ||
-        first?.courier_name ||
-        root?.logistics ||
-        root?.courier ||
-        root?.courier_name ||
-        data?.logistics ||
-        data?.courier ||
-        data?.courier_name
-    );
+  for (
+    const child of
+      Object.values(value)
+  ) {
+    const found =
+      deepFind(
+        child,
+        keys,
+        depth + 1
+      );
 
-  const trackingUrl =
-    clean(
-      first?.tracking_url ||
-        first?.trackingUrl ||
-        root?.tracking_url ||
-        root?.trackingUrl ||
-        data?.tracking_url ||
-        data?.trackingUrl
-    );
+    if (
+      found != null &&
+      String(found).trim()
+    ) {
+      return found;
+    }
+  }
 
-  const labelUrl =
-    clean(
-      first?.label_url ||
-        first?.labelUrl ||
-        root?.label_url ||
-        root?.labelUrl ||
-        data?.label_url ||
-        data?.labelUrl
-    );
+  return null;
+}
 
-  const invoiceUrl =
-    clean(
-      first?.invoice_url ||
-        first?.invoiceUrl ||
-        root?.invoice_url ||
-        root?.invoiceUrl ||
-        data?.invoice_url ||
-        data?.invoiceUrl
-    );
+// =========================================================
+// EXTRACT
+// =========================================================
 
-  const status =
-    clean(
-      data?.status ||
-        root?.status ||
-        first?.status
-    );
-
+function extract(data) {
   return {
-    awb,
-    orderId,
-    shipmentId,
-    courier,
-    trackingUrl,
-    labelUrl,
-    invoiceUrl,
-    status,
+    awb:
+      deepFind(
+        data,
+        [
+          "waybill",
+          "awb",
+          "awb_number",
+          "airway_bill_no",
+          "airwaybill",
+        ]
+      ),
+
+    orderId:
+      deepFind(
+        data,
+        [
+          "order",
+          "order_id",
+          "orderId",
+        ]
+      ),
+
+    shipmentId:
+      deepFind(
+        data,
+        [
+          "shipment_id",
+          "shipmentId",
+        ]
+      ),
+
+    courier:
+      deepFind(
+        data,
+        [
+          "logistics",
+          "courier",
+          "courier_name",
+        ]
+      ),
+
+    trackingUrl:
+      deepFind(
+        data,
+        [
+          "tracking_url",
+          "trackingUrl",
+        ]
+      ),
+
+    labelUrl:
+      deepFind(
+        data,
+        [
+          "label_url",
+          "labelUrl",
+          "file_name",
+          "pdf_url",
+          "url",
+        ]
+      ),
+
+    status:
+      clean(
+        deepFind(
+          data,
+          ["status"]
+        ) || ""
+      ).toLowerCase(),
+
+    message:
+      deepFind(
+        data,
+        [
+          "message",
+          "error",
+          "errors",
+        ]
+      ),
   };
 }
 
-/* =========================================================
-   MAIN HANDLER
-========================================================= */
+// =========================================================
+// CREATE SHIPMENT
+// =========================================================
+
+async function createShipment(
+  order,
+  cfg
+) {
+  return request(
+    "/order/add.json",
+    buildPayload(
+      order,
+      cfg
+    )
+  );
+}
+
+// =========================================================
+// GENERATE LABEL
+// =========================================================
+
+async function generateLabel(
+  awb,
+  cfg
+) {
+  return request(
+    "/shipping/label.json",
+    {
+      data: {
+        access_token:
+          cfg.accessToken,
+
+        secret_key:
+          cfg.secretKey,
+
+        awb_numbers:
+          String(awb),
+
+        page_size:
+          clean(
+            process.env
+              .ITHINK_LABEL_PAGE_SIZE ||
+              "A4"
+          ),
+
+        display_cod_prepaid:
+          "1",
+
+        display_shipper_mobile:
+          "1",
+
+        display_shipper_address:
+          "1",
+      },
+    }
+  );
+}
+
+// =========================================================
+// MAIN
+// =========================================================
 
 export default async function handler(
   req,
   res
 ) {
   if (
-    req.method !== "POST"
+    req.method !==
+    "POST"
   ) {
     res.setHeader(
       "Allow",
@@ -946,10 +1136,6 @@ export default async function handler(
       );
     }
 
-    /* =====================================================
-       PAYMENT SECURITY
-    ===================================================== */
-
     if (
       order.paymentVerified !==
       true
@@ -982,10 +1168,6 @@ export default async function handler(
       );
     }
 
-    /* =====================================================
-       RAZORPAY IDs
-    ===================================================== */
-
     const razorpayOrderId =
       clean(
         order.razorpayOrderId ||
@@ -1013,155 +1195,167 @@ export default async function handler(
       );
     }
 
-    /* =====================================================
-       CONFIG
-    ===================================================== */
-
-    const config =
-      getIThinkConfig();
-
-    /* =====================================================
-       BUILD REQUEST
-    ===================================================== */
-
-    const payload =
-      buildPayload(
-        order,
-        config
-      );
-
-    /* =====================================================
-       PRODUCTION ENDPOINT
-       iThink Logistics V3
-    ===================================================== */
-
-    const response =
-      await fetch(
-        "https://my.ithinklogistics.com/api_v3/order/add.json",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            Accept:
-              "application/json",
-          },
-
-          body: JSON.stringify(
-            payload
-          ),
-        }
-      );
-
-    const data =
-      await response
-        .json()
-        .catch(() => ({}));
-
-    /* =====================================================
-       ERROR
-    ===================================================== */
-
-    if (!response.ok) {
-      return sendJson(
-        res,
-        502,
-        {
-          success: false,
-
-          provider:
-            "ithink",
-
-          error:
-            data?.message ||
-            data?.error ||
-            `iThink Logistics API returned HTTP ${response.status}.`,
-
-          details:
-            data || null,
-        }
-      );
-    }
-
-    const extracted =
-      extractResponse(data);
-
-    /* =====================================================
-       iTHINK ERROR RESPONSE
-    ===================================================== */
-
-    const apiStatus =
+    const websiteOrderId =
       clean(
-        extracted.status
-      ).toLowerCase();
+        order.websiteOrderId ||
+          order.orderId ||
+          order.id
+      );
 
-    if (
-      apiStatus ===
-        "error" ||
-      apiStatus ===
-        "failed" ||
-      apiStatus ===
-        "failure"
+    if (!websiteOrderId) {
+      return sendJson(
+        res,
+        400,
+        {
+          success: false,
+          error:
+            "Website order ID is missing.",
+        }
+      );
+    }
+
+    const cfg =
+      getConfig();
+
+    let createResponse;
+
+    try {
+      createResponse =
+        await createShipment(
+          order,
+          cfg
+        );
+    } catch (
+      createError
     ) {
+      return sendJson(
+        res,
+        Number(
+          createError?.status
+        ) || 502,
+        {
+          success: false,
+          provider:
+            "ithink",
+          stage:
+            "shipment_creation",
+          retryable: true,
+          error:
+            createError?.message ||
+            "iThink Logistics shipment creation failed.",
+          orderId:
+            websiteOrderId,
+          details:
+            createError?.data ||
+            null,
+        }
+      );
+    }
+
+    const info =
+      extract(
+        createResponse
+      );
+
+    if (!info.awb) {
       return sendJson(
         res,
         502,
         {
           success: false,
-
           provider:
             "ithink",
-
+          stage:
+            "awb_assignment",
+          retryable: true,
           error:
-            data?.message ||
-            data?.error ||
-            "iThink Logistics rejected the shipment.",
-
+            "iThink accepted the shipment/order but did not return an AWB. Label generation cannot continue until iThink provides an AWB.",
+          orderId:
+            websiteOrderId,
+          logisticsOrderId:
+            info.orderId ||
+            null,
+          shipmentId:
+            info.shipmentId ||
+            null,
           details:
-            data,
+            createResponse,
         }
       );
     }
 
-    /* =====================================================
-       TRACKING FALLBACK
-    ===================================================== */
+    let labelResponse =
+      {};
 
-    let trackingUrl =
-      extracted.trackingUrl ||
-      "";
+    let labelInfo =
+      {};
 
-    if (
-      !trackingUrl &&
-      extracted.awb
-    ) {
-      /*
-        iThink's tracking page URL can vary by account.
-        Allow an environment override instead of hard-coding
-        an account-specific URL.
-      */
-      const template =
-        clean(
-          process.env
-            .ITHINK_TRACKING_URL_TEMPLATE
+    try {
+      labelResponse =
+        await generateLabel(
+          info.awb,
+          cfg
         );
 
-      if (template) {
-        trackingUrl =
-          template.replace(
-            "{awb}",
-            encodeURIComponent(
-              extracted.awb
-            )
-          );
-      }
+      labelInfo =
+        extract(
+          labelResponse
+        );
+    } catch (
+      labelError
+    ) {
+      return sendJson(
+        res,
+        Number(
+          labelError?.status
+        ) || 502,
+        {
+          success: false,
+          provider:
+            "ithink",
+          stage:
+            "label_generation",
+          retryable: true,
+          error:
+            labelError?.message ||
+            "iThink shipping label generation failed.",
+          orderId:
+            websiteOrderId,
+          awb:
+            info.awb,
+          details:
+            labelError?.data ||
+            null,
+        }
+      );
     }
 
-    /* =====================================================
-       SUCCESS
-    ===================================================== */
+    const trackingTemplate =
+      clean(
+        process.env
+          .ITHINK_TRACKING_URL_TEMPLATE
+      );
+
+    const trackingUrl =
+      info.trackingUrl ||
+      (
+        trackingTemplate &&
+        info.awb
+          ? trackingTemplate.replace(
+              "{awb}",
+              encodeURIComponent(
+                String(
+                  info.awb
+                )
+              )
+            )
+          : null
+      );
+
+    const finalLabelUrl =
+      labelInfo.labelUrl ||
+      info.labelUrl ||
+      null;
 
     return sendJson(
       res,
@@ -1173,55 +1367,52 @@ export default async function handler(
           "ithink",
 
         orderId:
-          order.websiteOrderId ||
-          order.orderId ||
-          order.id ||
-          extracted.orderId ||
-          null,
+          websiteOrderId,
 
         logisticsOrderId:
-          extracted.orderId ||
+          info.orderId ||
           null,
 
         shipmentId:
-          extracted.shipmentId ||
+          info.shipmentId ||
           null,
 
         shipment_id:
-          extracted.shipmentId ||
+          info.shipmentId ||
           null,
 
         awb:
-          extracted.awb ||
-          null,
+          info.awb,
 
         awbCode:
-          extracted.awb ||
-          null,
+          info.awb,
 
         courier:
-          extracted.courier ||
+          info.courier ||
           null,
 
         courier_name:
-          extracted.courier ||
+          info.courier ||
           null,
 
-        trackingUrl:
-          trackingUrl ||
-          null,
+        trackingUrl,
 
         tracking_url:
-          trackingUrl ||
-          null,
+          trackingUrl,
 
         labelUrl:
-          extracted.labelUrl ||
-          null,
+          finalLabelUrl,
 
-        invoiceUrl:
-          extracted.invoiceUrl ||
-          null,
+        label_url:
+          finalLabelUrl,
+
+        labelReady:
+          Boolean(
+            finalLabelUrl
+          ),
+
+        shipmentReady:
+          true,
 
         paymentStatus:
           "Paid",
@@ -1234,15 +1425,22 @@ export default async function handler(
         razorpayPaymentId,
 
         message:
-          extracted.awb
-            ? "iThink Logistics shipment created successfully."
-            : "iThink Logistics accepted the order. AWB is pending.",
+          finalLabelUrl
+            ? "iThink shipment, AWB and shipping label generated successfully."
+            : "iThink shipment and AWB created, but label URL was not returned.",
 
-        raw:
-          data,
+        raw: {
+          create:
+            createResponse,
+
+          label:
+            labelResponse,
+        },
       }
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "LUXMO HUB iThink Logistics error:",
       error
@@ -1250,16 +1448,23 @@ export default async function handler(
 
     return sendJson(
       res,
-      500,
+      Number(
+        error?.status
+      ) >= 400
+        ? Number(
+            error.status
+          )
+        : 500,
       {
         success: false,
-
         provider:
           "ithink",
-
         error:
           error?.message ||
           "iThink Logistics shipment creation failed.",
+        details:
+          error?.data ||
+          null,
       }
     );
   }
