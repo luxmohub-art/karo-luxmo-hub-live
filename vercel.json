@@ -15,6 +15,10 @@
     {
       "source": "/api/check-serviceability",
       "destination": "/api/create-order?serviceability=1"
+    },
+    {
+      "source": "/api/customer-session",
+      "destination": "/api/orders?action=customer-session"
     }
   ]
 }
