@@ -1,8 +1,9 @@
 {
   "name": "Luxmo Hub",
   "short_name": "Luxmo Hub",
-  "description": "Luxmo Hub — Premium Phone Cases, Solar Inverters & Accessories",
+  "description": "Luxmo Hub - Quality Products, Trusted by You",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0b1020",
