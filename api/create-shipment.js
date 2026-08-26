@@ -1,5 +1,8 @@
 // api/create-shipment.js
-// LUXMO HUB — verified payment -> selected courier -> shipment -> AWB -> documents
+// LUXMO HUB — COD + PREPAID shipment creation
+// Finds Firebase order by document ID, websiteOrderId, orderId, id,
+// or Razorpay order ID.
+// COD orders do not require Razorpay verification.
 
 import { getFirestore } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "../lib/firebase-admin.js";
@@ -13,6 +16,7 @@ function first(...values) {
     const s = clean(v);
     if (s) return s;
   }
+
   return "";
 }
 
@@ -73,7 +77,7 @@ function getBaseUrl(req) {
 
   const host = clean(
     req.headers?.["x-forwarded-host"] ||
-    req.headers?.host
+      req.headers?.host
   );
 
   if (!host) {
@@ -95,6 +99,16 @@ function getBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+/**
+ * Find order in Firebase.
+ *
+ * Search order:
+ * 1. Firestore document ID
+ * 2. websiteOrderId
+ * 3. orderId
+ * 4. id
+ * 5. Razorpay order ID
+ */
 async function findOrder(
   db,
   suppliedOrderId,
@@ -102,13 +116,18 @@ async function findOrder(
 ) {
   const orders = db.collection("orders");
 
-  if (suppliedOrderId) {
-    const directRef = orders.doc(
-      suppliedOrderId
-    );
+  const ids = [
+    suppliedOrderId,
+  ]
+    .map(clean)
+    .filter(Boolean);
 
-    const directSnap =
-      await directRef.get();
+  // ---------------------------------------------------------
+  // 1. Direct Firestore document ID
+  // ---------------------------------------------------------
+  for (const id of ids) {
+    const directRef = orders.doc(id);
+    const directSnap = await directRef.get();
 
     if (directSnap.exists) {
       return {
@@ -118,16 +137,43 @@ async function findOrder(
     }
   }
 
-  if (razorpayOrderId) {
-    const query =
-      await orders
-        .where(
-          "razorpayOrderId",
-          "==",
-          razorpayOrderId
-        )
+  // ---------------------------------------------------------
+  // 2. Search by websiteOrderId / orderId / id
+  // ---------------------------------------------------------
+  for (const field of [
+    "websiteOrderId",
+    "orderId",
+    "id",
+  ]) {
+    for (const id of ids) {
+      const query = await orders
+        .where(field, "==", id)
         .limit(1)
         .get();
+
+      if (!query.empty) {
+        const doc = query.docs[0];
+
+        return {
+          ref: doc.ref,
+          data: doc.data() || {},
+        };
+      }
+    }
+  }
+
+  // ---------------------------------------------------------
+  // 3. Search by Razorpay Order ID
+  // ---------------------------------------------------------
+  if (razorpayOrderId) {
+    const query = await orders
+      .where(
+        "razorpayOrderId",
+        "==",
+        razorpayOrderId
+      )
+      .limit(1)
+      .get();
 
     if (!query.empty) {
       const doc = query.docs[0];
@@ -165,6 +211,9 @@ export default async function handler(
   try {
     const body = req.body || {};
 
+    // -------------------------------------------------------
+    // Read order object from request
+    // -------------------------------------------------------
     const suppliedOrder =
       body?.order &&
       typeof body.order === "object"
@@ -174,21 +223,57 @@ export default async function handler(
           ? body.orderData
           : {};
 
+    // -------------------------------------------------------
+    // Read Razorpay IDs if present
+    // COD does not need them.
+    // -------------------------------------------------------
     const razorpayOrderId =
       first(
         body.razorpay_order_id,
+        body.razorpayOrderId,
         suppliedOrder.razorpayOrderId
       );
 
     const razorpayPaymentId =
       first(
         body.razorpay_payment_id,
+        body.razorpayPaymentId,
         suppliedOrder.razorpayPaymentId
       );
 
+    // -------------------------------------------------------
+    // Determine payment method
+    // -------------------------------------------------------
+    const paymentMethod = first(
+      body.paymentMethod,
+      body.payment_method,
+      body.paymentMode,
+      body.payment_method_name,
+      suppliedOrder.paymentMethod,
+      suppliedOrder.payment_method,
+      suppliedOrder.paymentMode,
+      suppliedOrder.payment_method_name
+    ).toLowerCase();
+
+    const isCOD =
+      paymentMethod === "cod" ||
+      paymentMethod === "cash on delivery" ||
+      paymentMethod === "cash_on_delivery" ||
+      paymentMethod === "cash-on-delivery" ||
+      suppliedOrder.isCOD === true ||
+      suppliedOrder.isCod === true ||
+      body.isCOD === true ||
+      body.isCod === true;
+
+    // -------------------------------------------------------
+    // IMPORTANT:
+    // COD orders do NOT require Razorpay IDs.
+    // Prepaid orders still require both IDs.
+    // -------------------------------------------------------
     if (
-      !razorpayOrderId ||
-      !razorpayPaymentId
+      !isCOD &&
+      (!razorpayOrderId ||
+        !razorpayPaymentId)
     ) {
       return send(
         res,
@@ -196,24 +281,35 @@ export default async function handler(
         {
           success: false,
           error:
-            "Verified Razorpay order ID and payment ID are required.",
+            "Verified Razorpay order ID and payment ID are required for prepaid orders.",
         }
       );
     }
 
+    // -------------------------------------------------------
+    // Firebase
+    // -------------------------------------------------------
     const db =
       getFirestore(
         getFirebaseAdmin()
       );
 
+    // -------------------------------------------------------
+    // Get website order ID from all possible locations
+    // -------------------------------------------------------
     const suppliedOrderId =
       first(
         suppliedOrder.websiteOrderId,
         suppliedOrder.orderId,
         suppliedOrder.id,
-        body.orderId
+        body.websiteOrderId,
+        body.orderId,
+        body.id
       );
 
+    // -------------------------------------------------------
+    // Find Firebase order
+    // -------------------------------------------------------
     const found =
       await findOrder(
         db,
@@ -228,7 +324,13 @@ export default async function handler(
         {
           success: false,
           error:
-            "Verified payment order was not found in Firebase.",
+            "Order record was not found in Firebase.",
+          searchedOrderId:
+            suppliedOrderId || null,
+          razorpayOrderId:
+            razorpayOrderId || null,
+          paymentMethod:
+            isCOD ? "COD" : "PREPAID",
         }
       );
     }
@@ -236,82 +338,126 @@ export default async function handler(
     const order =
       found.data || {};
 
-    if (
-      order.paymentVerified !== true
-    ) {
-      return send(
-        res,
-        403,
-        {
-          success: false,
-          error:
-            "Payment is not verified. Shipment creation is blocked.",
-        }
-      );
+    // -------------------------------------------------------
+    // Determine actual payment method from Firebase order too
+    // -------------------------------------------------------
+    const actualPaymentMethod = first(
+      order.paymentMethod,
+      order.payment_method,
+      order.paymentMode,
+      order.payment_method_name,
+      paymentMethod
+    ).toLowerCase();
+
+    const actualCOD =
+      isCOD ||
+      actualPaymentMethod === "cod" ||
+      actualPaymentMethod === "cash on delivery" ||
+      actualPaymentMethod === "cash_on_delivery" ||
+      actualPaymentMethod === "cash-on-delivery" ||
+      order.isCOD === true ||
+      order.isCod === true;
+
+    // -------------------------------------------------------
+    // PREPAID VERIFICATION
+    // -------------------------------------------------------
+    if (!actualCOD) {
+      if (
+        order.paymentVerified !== true
+      ) {
+        return send(
+          res,
+          403,
+          {
+            success: false,
+            error:
+              "Payment is not verified. Shipment creation is blocked.",
+          }
+        );
+      }
+
+      if (
+        clean(
+          order.paymentStatus
+        ).toLowerCase() !== "paid"
+      ) {
+        return send(
+          res,
+          403,
+          {
+            success: false,
+            error:
+              "Order payment status is not Paid.",
+          }
+        );
+      }
+
+      if (
+        !razorpayOrderId
+      ) {
+        return send(
+          res,
+          400,
+          {
+            success: false,
+            error:
+              "Razorpay order ID is required for prepaid shipment.",
+          }
+        );
+      }
+
+      if (
+        clean(
+          order.razorpayOrderId
+        ) !== razorpayOrderId
+      ) {
+        return send(
+          res,
+          403,
+          {
+            success: false,
+            error:
+              "Razorpay order ID does not match the verified Firebase order.",
+          }
+        );
+      }
+
+      if (
+        clean(
+          order.razorpayPaymentId
+        ) &&
+        clean(
+          order.razorpayPaymentId
+        ) !== razorpayPaymentId
+      ) {
+        return send(
+          res,
+          403,
+          {
+            success: false,
+            error:
+              "Razorpay payment ID does not match the verified Firebase order.",
+          }
+        );
+      }
     }
 
-    if (
-      clean(
-        order.paymentStatus
-      ).toLowerCase() !== "paid"
-    ) {
-      return send(
-        res,
-        403,
-        {
-          success: false,
-          error:
-            "Order payment status is not Paid.",
-        }
-      );
-    }
-
-    if (
-      clean(
-        order.razorpayOrderId
-      ) !== razorpayOrderId
-    ) {
-      return send(
-        res,
-        403,
-        {
-          success: false,
-          error:
-            "Razorpay order ID does not match the verified Firebase order.",
-        }
-      );
-    }
-
-    if (
-      clean(
-        order.razorpayPaymentId
-      ) &&
-      clean(
-        order.razorpayPaymentId
-      ) !== razorpayPaymentId
-    ) {
-      return send(
-        res,
-        403,
-        {
-          success: false,
-          error:
-            "Razorpay payment ID does not match the verified Firebase order.",
-        }
-      );
-    }
-
+    // -------------------------------------------------------
+    // PROVIDER
+    // -------------------------------------------------------
     const provider =
       normalizeProvider(
         body.provider ||
-        order.provider ||
-        order.courierProvider ||
-        process.env
-          .DEFAULT_LOGISTICS_PROVIDER ||
-        "shiprocket"
+          order.provider ||
+          order.courierProvider ||
+          process.env
+            .DEFAULT_LOGISTICS_PROVIDER ||
+          "shiprocket"
       );
 
-    // Prevent duplicate shipment creation.
+    // -------------------------------------------------------
+    // Prevent duplicate shipment creation
+    // -------------------------------------------------------
     const existingShipmentId =
       first(
         order.shipmentId
@@ -325,6 +471,7 @@ export default async function handler(
           success: true,
           alreadyProcessed: true,
           provider,
+
           orderId:
             first(
               order.websiteOrderId,
@@ -332,55 +479,70 @@ export default async function handler(
               order.id,
               suppliedOrderId
             ),
+
           shipmentId:
             existingShipmentId,
+
           logisticsOrderId:
             first(
               order.logisticsOrderId,
               order.shiprocketOrderId
             ) || null,
+
           awb:
             first(
               order.awb
             ) || null,
+
           courier:
             first(
               order.courier
             ) || null,
+
           trackingUrl:
             first(
               order.trackingUrl
             ) || null,
+
           pickupStatus:
             first(
               order.pickupStatus
             ) || "Pending",
+
           pickupToken:
             first(
               order.pickupToken
             ) || "",
+
           labelUrl:
             first(
               order.labelUrl
             ) || null,
+
           invoiceUrl:
             first(
               order.invoiceUrl
             ) || null,
+
           combinedLabelInvoiceUrl:
             first(
               order.combinedLabelInvoiceUrl
             ) || null,
+
           documentError:
             first(
               order.documentError
             ) || "",
+
           message:
             "Shipment already exists. Existing shipment was not duplicated.",
         }
       );
     }
 
+    // -------------------------------------------------------
+    // Build trusted order for courier provider
+    // -------------------------------------------------------
     const trustedOrder = {
       ...order,
 
@@ -408,30 +570,56 @@ export default async function handler(
           suppliedOrderId
         ),
 
-      razorpayOrderId,
-      razorpayPaymentId,
-
-      paymentMethod:
-        order.paymentMethod ||
-        "Razorpay",
-
-      paymentStatus:
-        "Paid",
-
-      paymentVerified:
-        true,
-
       provider,
 
       courierProvider:
         provider,
+
+      // -----------------------------------------------------
+      // COD
+      // -----------------------------------------------------
+      ...(actualCOD
+        ? {
+            paymentMethod: "COD",
+
+            paymentStatus:
+              order.paymentStatus ||
+              "COD",
+
+            paymentVerified:
+              false,
+          }
+        : {
+            // -------------------------------------------------
+            // PREPAID
+            // -------------------------------------------------
+            razorpayOrderId,
+
+            razorpayPaymentId,
+
+            paymentMethod:
+              order.paymentMethod ||
+              "Razorpay",
+
+            paymentStatus:
+              "Paid",
+
+            paymentVerified:
+              true,
+          }),
     };
 
+    // -------------------------------------------------------
+    // Provider endpoint
+    // -------------------------------------------------------
     const endpoint =
       provider === "ithink"
         ? "/api/ithink"
         : "/api/shiprocket";
 
+    // -------------------------------------------------------
+    // Create shipment
+    // -------------------------------------------------------
     const providerResponse =
       await fetch(
         `${getBaseUrl(req)}${endpoint}`,
@@ -455,13 +643,26 @@ export default async function handler(
                 trustedOrder.orderId,
 
               paymentId:
-                razorpayPaymentId,
+                actualCOD
+                  ? ""
+                  : razorpayPaymentId,
 
               provider,
+
+              paymentMethod:
+                actualCOD
+                  ? "COD"
+                  : trustedOrder.paymentMethod,
+
+              isCOD:
+                actualCOD,
             }),
         }
       );
 
+    // -------------------------------------------------------
+    // Provider response
+    // -------------------------------------------------------
     const providerData =
       await parseResponse(
         providerResponse
@@ -506,14 +707,21 @@ export default async function handler(
           : 502,
         {
           success: false,
+
           provider,
-          error: message,
+
+          error:
+            message,
+
           details:
             providerData || null,
         }
       );
     }
 
+    // -------------------------------------------------------
+    // Extract provider response
+    // -------------------------------------------------------
     const shipmentId =
       first(
         providerData.shipmentId,
@@ -559,7 +767,8 @@ export default async function handler(
 
     const combinedLabelInvoiceUrl =
       first(
-        providerData.combinedLabelInvoiceUrl
+        providerData.combinedLabelInvoiceUrl,
+        providerData.combined_label_invoice_url
       );
 
     const pickupStatus =
@@ -578,6 +787,9 @@ export default async function handler(
         providerData.documentError
       );
 
+    // -------------------------------------------------------
+    // Provider must return shipment ID
+    // -------------------------------------------------------
     if (!shipmentId) {
       await found.ref.set(
         {
@@ -605,18 +817,27 @@ export default async function handler(
         502,
         {
           success: false,
+
           provider,
+
           stage:
             "shipment_creation",
-          retryable: true,
+
+          retryable:
+            true,
+
           error:
             `${provider} did not return a shipment ID.`,
+
           details:
             providerData,
         }
       );
     }
 
+    // -------------------------------------------------------
+    // Successful shipment
+    // -------------------------------------------------------
     const now =
       new Date().toISOString();
 
@@ -625,13 +846,30 @@ export default async function handler(
         ? "AWB Assigned"
         : "Shipment Created";
 
+    // -------------------------------------------------------
+    // Save shipment to Firebase
+    // -------------------------------------------------------
     await found.ref.set(
       {
-        paymentStatus:
-          "Paid",
+        ...(actualCOD
+          ? {
+              paymentMethod:
+                "COD",
 
-        paymentVerified:
-          true,
+              paymentStatus:
+                order.paymentStatus ||
+                "COD",
+
+              paymentVerified:
+                false,
+            }
+          : {
+              paymentStatus:
+                "Paid",
+
+              paymentVerified:
+                true,
+            }),
 
         shipmentStatus:
           finalStatus,
@@ -691,12 +929,19 @@ export default async function handler(
       }
     );
 
+    // -------------------------------------------------------
+    // Final response
+    // -------------------------------------------------------
     return send(
       res,
       200,
       {
-        success: true,
-        alreadyProcessed: false,
+        success:
+          true,
+
+        alreadyProcessed:
+          false,
+
         provider,
 
         orderId:
@@ -736,8 +981,16 @@ export default async function handler(
         documentError:
           documentError || "",
 
+        paymentMethod:
+          actualCOD
+            ? "COD"
+            : trustedOrder.paymentMethod,
+
         paymentStatus:
-          "Paid",
+          actualCOD
+            ? order.paymentStatus ||
+              "COD"
+            : "Paid",
 
         shipmentStatus:
           finalStatus,
@@ -760,6 +1013,7 @@ export default async function handler(
         : 500,
       {
         success: false,
+
         error:
           error?.message ||
           "Internal server error while creating shipment.",
