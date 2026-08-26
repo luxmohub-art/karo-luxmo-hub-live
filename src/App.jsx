@@ -102,101 +102,6 @@ async function createAuthoritativeShipment(payload) {
   return data;
 }
 
-function luxmoInvoiceValue(value) {
-  return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function luxmoEscapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function luxmoFormatInvoiceDate(value) {
-  const raw = value || "";
-  const date = raw ? new Date(raw) : new Date();
-  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  return new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-  }).format(safeDate) + " IST";
-}
-
-function luxmoBuildInvoiceHtml(order) {
-  const items = Array.isArray(order?.items) ? order.items : [];
-  const address = order?.shippingAddress || order?.address || {};
-  const customer = order?.customer || {};
-  const subtotal = Number(order?.subtotal ?? order?.pricing?.subtotal ?? 0);
-  const discount = Number(order?.discount ?? order?.pricing?.discount ?? 0);
-  const shipping = Number(order?.shippingFee ?? order?.pricing?.shippingFee ?? 0);
-  const total = Number(order?.total ?? order?.pricing?.total ?? order?.amount ?? 0);
-  const invoiceDate = luxmoFormatInvoiceDate(order?.paidAt || order?.verifiedAt || order?.createdAt);
-  const invoicePaymentStatus = order?.paymentVerified === true || String(order?.paymentStatus || "").toLowerCase() === "paid" ? "Paid" : (order?.paymentStatus || "Pending");
-  const rows = items.map((item, index) => {
-    const qty = Math.max(1, Number(item?.qty ?? item?.quantity ?? 1));
-    const lineTotal = Number(item?.price ?? item?.salePrice ?? item?.sellingPrice ?? 0) * qty;
-    const gstRate = Number(item?.gstRate ?? item?.taxRate ?? 18);
-    const taxable = gstRate > 0 ? lineTotal / (1 + gstRate / 100) : lineTotal;
-    const tax = lineTotal - taxable;
-    const hsn = item?.hsn || item?.hsnCode || "";
-    return `<tr><td>${index + 1}</td><td>${luxmoEscapeHtml(item?.title || item?.name || "Product")}<br><small>${luxmoEscapeHtml(item?.model || "")} ${luxmoEscapeHtml(item?.colour || item?.color || "")}</small></td><td>${luxmoEscapeHtml(hsn)}</td><td>${qty}</td><td>${gstRate}%</td><td>₹${luxmoInvoiceValue(taxable)}</td><td>₹${luxmoInvoiceValue(tax)}</td><td>₹${luxmoInvoiceValue(lineTotal)}</td></tr>`;
-  }).join("");
-  const state = String(address?.state || "").trim().toLowerCase();
-  const isIntraState = !state || state === "uttar pradesh" || state === "up";
-  const totalTax = Math.max(0, total - shipping - (subtotal - discount));
-  const cgst = isIntraState ? totalTax / 2 : 0;
-  const sgst = isIntraState ? totalTax / 2 : 0;
-  const igst = isIntraState ? 0 : totalTax;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</title><style>body{font-family:Arial,sans-serif;color:#111827;padding:28px;max-width:1000px;margin:auto}h1{margin:0;font-size:28px}h2{margin:0 0 8px}small{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px;vertical-align:top}th{background:#f1f5f9}.row{display:flex;justify-content:space-between;gap:24px;margin-top:18px}.box{border:1px solid #cbd5e1;border-radius:10px;padding:14px;flex:1}.totals{margin-left:auto;width:360px;margin-top:18px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{font-size:18px;font-weight:800;border-top:2px solid #0f172a;margin-top:6px;padding-top:10px}.print{margin:20px 0;padding:10px 16px;border:0;border-radius:8px;background:#0f172a;color:#fff;font-weight:700}@media print{.print{display:none}body{padding:0}}</style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><div class="row"><div><h1>LUXMO HUB</h1><div>GSTIN: ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.gstin)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.businessAddress)}</div><div>${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportEmail)} · ${luxmoEscapeHtml(PUBLIC_BUSINESS_INFO.supportPhone)}</div></div><div><h2>TAX INVOICE</h2><div><b>Invoice / Order ID:</b> ${luxmoEscapeHtml(order?.id || order?.orderId || "")}</div><div><b>Date:</b> ${luxmoEscapeHtml(invoiceDate)}</div><div><b>Payment:</b> ${luxmoEscapeHtml(invoicePaymentStatus)}</div></div></div><div class="row"><div class="box"><b>Bill To / Ship To</b><br>${luxmoEscapeHtml(customer?.name || address?.name || "")}<br>${luxmoEscapeHtml(address?.line1 || address?.address || "")}${address?.line2 ? `<br>${luxmoEscapeHtml(address.line2)}` : ""}<br>${luxmoEscapeHtml(address?.city || "")}, ${luxmoEscapeHtml(address?.state || "")} - ${luxmoEscapeHtml(address?.pincode || "")}<br>Mobile: ${luxmoEscapeHtml(customer?.phone || customer?.mobile || address?.phone || "")}<br>Email: ${luxmoEscapeHtml(customer?.email || address?.email || "")}</div></div><table><thead><tr><th>#</th><th>Product</th><th>HSN</th><th>Qty</th><th>GST</th><th>Taxable</th><th>Tax</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="totals"><div><span>Subtotal</span><b>₹${luxmoInvoiceValue(subtotal)}</b></div><div><span>Discount</span><b>-₹${luxmoInvoiceValue(discount)}</b></div><div><span>Shipping</span><b>₹${luxmoInvoiceValue(shipping)}</b></div>${cgst ? `<div><span>CGST</span><b>₹${luxmoInvoiceValue(cgst)}</b></div><div><span>SGST</span><b>₹${luxmoInvoiceValue(sgst)}</b></div>` : `<div><span>IGST</span><b>₹${luxmoInvoiceValue(igst)}</b></div>`}<div class="grand"><span>Grand Total</span><b>₹${luxmoInvoiceValue(total)}</b></div></div><p style="margin-top:28px;font-size:12px;color:#475569">This invoice is generated for the Luxmo Hub order shown above. Please retain it for your records.</p></body></html>`;
-}
-
-function luxmoPrintInvoice(order) {
-  const w = window.open("", "_blank", "width=1000,height=900");
-  if (!w) { alert("Please allow pop-ups to download/print the invoice."); return; }
-  w.document.open();
-  w.document.write(luxmoBuildInvoiceHtml(order));
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 250);
-}
-
-async function luxmoCreateOrRefreshShipment(order) {
-  // Shiprocket is the production default. Legacy iThink selections are
-  // intentionally migrated to Shiprocket until iThink pickup configuration
-  // is present server-side. This prevents paid orders from getting stuck.
-  const provider = "shiprocket";
-  const payload = {
-    razorpay_order_id: order?.razorpayOrderId || "",
-    razorpay_payment_id: order?.razorpayPaymentId || "",
-    provider,
-    order: { ...order, provider, courierProvider: provider },
-    orderData: { ...order, provider, courierProvider: provider }
-  };
-  if (!payload.razorpay_order_id || !payload.razorpay_payment_id) {
-    throw new Error("Verified Razorpay order/payment IDs are missing. This order cannot be shipped safely.");
-  }
-  return createAuthoritativeShipment(payload);
-}
-
-function luxmoRememberPaidOrder(order, response) {
-  try {
-    const orderId = order?.websiteOrderId || order?.orderId || order?.id || response?.razorpay_order_id || "";
-    const mobile = String(order?.customer?.phone || order?.customer?.mobile || order?.shippingAddress?.phone || order?.address?.phone || "").replace(/\D/g, "").slice(-10);
-    if (orderId && mobile) {
-      localStorage.setItem("luxmo_last_paid_order_lookup", JSON.stringify({ orderId, mobile, savedAt: Date.now() }));
-    }
-  } catch {}
-}
-
 /*
  * LUXMO HUB — VERIFIED PRODUCT VIDEO BUILD
  * Product-level YouTube + direct MP4 URL support is enabled for catalogue listings,
@@ -2267,7 +2172,6 @@ function LuxmoCheckout({
       addresses[0] || {
         name: customer?.name || "",
         phone: customer?.phone || "",
-        email: customer?.email || "",
         line1: "",
         line2: "",
         city: "",
@@ -2463,25 +2367,15 @@ function LuxmoCheckout({
   };
 
   const submit = () => {
-    const customerEmail = String(
-      draft.email || ""
-    ).trim().toLowerCase();
-
-    const validEmail =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        customerEmail
-      );
-
     if (
       !draft.name.trim() ||
       !luxmoValidateIndianMobile(draft.phone) ||
-      !validEmail ||
       !draft.line1.trim() ||
       !draft.city.trim() ||
       !luxmoValidatePincode(draft.pincode)
     ) {
       return alert(
-        "Please enter a valid name, mobile number, email address, complete address and 6-digit pincode."
+        "Please complete valid delivery details."
       );
     }
 
@@ -2513,22 +2407,6 @@ function LuxmoCheckout({
           : "Confirmed",
 
       paymentMethod: payment,
-
-      email: String(
-        draft.email || ""
-      ).trim().toLowerCase(),
-
-      customer: {
-        name: String(
-          draft.name || ""
-        ).trim(),
-        phone: String(
-          draft.phone || ""
-        ).trim(),
-        email: String(
-          draft.email || ""
-        ).trim().toLowerCase(),
-      },
 
       paymentStatus:
         payment === "razorpay"
@@ -2624,11 +2502,6 @@ function LuxmoCheckout({
                     if (address) {
                       setDraft({
                         ...address,
-                        email:
-                          address.email ||
-                          draft.email ||
-                          customer?.email ||
-                          "",
                         pincode:
                           luxmoNormalizePincode(
                             address.pincode
@@ -2659,7 +2532,6 @@ function LuxmoCheckout({
                 {[
                   ["name", "Full name"],
                   ["phone", "Mobile"],
-                  ["email", "Email address"],
                   ["line1", "Address"],
                   ["line2", "Address line 2"],
                   ["city", "City"],
@@ -2667,16 +2539,6 @@ function LuxmoCheckout({
                 ].map(([key, label]) => (
                   <input
                     key={key}
-                    type={key === "email" ? "email" : "text"}
-                    autoComplete={
-                      key === "email"
-                        ? "email"
-                        : key === "name"
-                          ? "name"
-                          : key === "phone"
-                            ? "tel"
-                            : "off"
-                    }
                     value={draft[key] || ""}
                     onChange={e =>
                       setDraft({
@@ -3011,97 +2873,10 @@ function LuxmoCheckout({
 function LuxmoOrderCenter({ orders, setOrders }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
-  const [busyId, setBusyId] = useState("");
-  const [message, setMessage] = useState("");
   const filtered = orders.filter(o => !query || `${o.id} ${o.status} ${o.awb || ""}`.toLowerCase().includes(query.toLowerCase()));
-
-  const updateStatus = (id, status) => {
-    const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o);
-    setOrders(next);
-    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
-  };
-
-  const mergeOrder = (id, shipmentData) => {
-    const next = orders.map(o => o.id === id ? {
-      ...o,
-      paymentStatus: shipmentData.paymentStatus || o.paymentStatus || "Paid",
-      shipmentStatus: shipmentData.shipmentStatus || o.shipmentStatus || "Pending",
-      status: shipmentData.shipmentStatus || o.status,
-      courierProvider: shipmentData.provider || o.courierProvider,
-      provider: shipmentData.provider || o.provider,
-      courier: shipmentData.courier || o.courier,
-      shipmentId: shipmentData.shipmentId || o.shipmentId,
-      logisticsOrderId: shipmentData.logisticsOrderId || o.logisticsOrderId,
-      awb: shipmentData.awb || o.awb,
-      trackingUrl: shipmentData.trackingUrl || o.trackingUrl,
-      pickupStatus: shipmentData.pickupStatus || o.pickupStatus || "Pending",
-      pickupToken: shipmentData.pickupToken || o.pickupToken || "",
-      labelUrl: shipmentData.labelUrl || o.labelUrl || "",
-      invoiceUrl: shipmentData.invoiceUrl || o.invoiceUrl || "",
-      combinedLabelInvoiceUrl: shipmentData.combinedLabelInvoiceUrl || o.combinedLabelInvoiceUrl || "",
-      documentError: shipmentData.documentError || o.documentError || "",
-      updatedAt: new Date().toISOString()
-    } : o);
-    setOrders(next);
-    safeWriteJSON(LUXMO_PRO_STORAGE.orders, next);
-    return next.find(o => o.id === id) || null;
-  };
-
-  const handleShipment = async (order) => {
-    setBusyId(order.id);
-    setMessage("");
-    try {
-      const data = await luxmoCreateOrRefreshShipment(order);
-      mergeOrder(order.id, data);
-      const docText = data.documentError ? `
-Document note: ${data.documentError}` : "";
-      alert(`Shipment processing successful.
-
-Courier: ${data.courier || data.provider || "Pending"}
-AWB: ${data.awb || "Not assigned yet"}
-Shipment: ${data.shipmentStatus || "Created"}${docText}`);
-    } catch (error) {
-      setMessage(`${order.id}: ${error?.message || "Shipment creation failed."}`);
-      alert(`Shipment could not be completed.
-
-${error?.message || "Please check courier settings."}`);
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  const printInvoice = order => luxmoPrintInvoice(order);
-
-  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-    <LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="Create shipment, save AWB/tracking, generate courier documents and print GST invoices."/>
-    <div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>
-    {message && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 p-3 text-xs font-semibold">{message}</div>}
-    {filtered.length===0 ? <div className="text-sm text-slate-500 py-8 text-center">No orders found.</div> : <div className="space-y-3">{filtered.map(o=>{
-      const hasShipment = Boolean(o.shipmentId || o.awb);
-      const hasLabel = Boolean(o.labelUrl);
-      const hasInvoice = Boolean(o.invoiceUrl);
-      return <div key={o.id} className="border rounded-2xl p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div><div className="text-xs mt-1">Courier: <b>{o.courierProvider || o.provider || "Pending"}</b> · AWB: <b>{o.awb || "Not assigned"}</b></div></div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={o.status || "Order Placed"} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select>
-            <button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button>
-            <button disabled={busyId===o.id} onClick={()=>handleShipment(o)} className="bg-blue-600 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 text-xs font-bold">{busyId===o.id ? "Processing..." : hasShipment ? "Refresh Shipment" : "Create Shipment"}</button>
-            <button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Generate Invoice</button>
-            {hasLabel && <a href={o.labelUrl} target="_blank" rel="noopener noreferrer" className="bg-amber-500 text-slate-950 rounded-lg px-3 py-1.5 text-xs font-bold">Shipping Label</a>}
-            {hasInvoice && <a href={o.invoiceUrl} target="_blank" rel="noopener noreferrer" className="bg-emerald-600 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Courier Invoice</a>}
-            {o.combinedLabelInvoiceUrl && <a href={o.combinedLabelInvoiceUrl} target="_blank" rel="noopener noreferrer" className="border border-slate-300 text-slate-900 rounded-lg px-3 py-1.5 text-xs font-bold">Label + Invoice</a>}
-          </div>
-        </div>
-        {selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty || i.quantity || 1}<br/>{i.model} {i.colour}</div>)}</div>
-          <div><b>Delivery</b><div className="mt-1">{o.address?.name || o.shippingAddress?.name}<br/>{o.address?.line1 || o.shippingAddress?.line1}<br/>{o.address?.city || o.shippingAddress?.city}, {o.address?.state || o.shippingAddress?.state} - {o.address?.pincode || o.shippingAddress?.pincode}<br/>{o.address?.phone || o.shippingAddress?.phone}</div></div>
-          <div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || o.provider || "Pending"}<br/>Shipment ID: {o.shipmentId || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.shipmentStatus || o.status || "Pending"}<br/>Tracking: {o.trackingUrl ? "Available" : "Pending"}</div></div>
-          {o.documentError && <div className="md:col-span-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 p-3"><b>Document/Courier note:</b> {o.documentError}</div>}
-        </div>}
-      </div>;
-    })}</div>}
-  </div>;
+  const updateStatus = (id, status) => { const next = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o); setOrders(next); safeWriteJSON(LUXMO_PRO_STORAGE.orders, next); };
+  const printInvoice = order => { const w = window.open("", "_blank", "width=900,height=900"); if (!w) return; w.document.write(`<html><head><title>${order.id} Invoice</title><style>body{font-family:Arial;padding:40px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:10px;text-align:left}</style></head><body><h1>LUXMO HUB</h1><p>Order: ${order.id}<br/>Date: ${luxmoDate(order.createdAt)}</p><p>${order.address?.name || ""}<br/>${order.address?.line1 || ""}, ${order.address?.city || ""}, ${order.address?.state || ""} - ${order.address?.pincode || ""}</p><table><tr><th>Product</th><th>Qty</th><th>Price</th></tr>${order.items.map(i=>`<tr><td>${i.title} ${i.model||""} ${i.colour||""}</td><td>${i.qty}</td><td>${luxmoMoney(i.price*i.qty)}</td></tr>`).join("")}<tr><th colspan="2">Total</th><th>${luxmoMoney(order.total)}</th></tr></table><p>Payment: ${order.paymentMethod}</p></body></html>`); w.document.close(); w.focus(); w.print(); };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><LuxmoSectionTitle eyebrow="Orders" title="Order Center" description="View order status, payment state, courier assignment and invoice print views."/><div className="flex gap-2 mb-4"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order ID / AWB / status" className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/></div>{filtered.length===0?<div className="text-sm text-slate-500 py-8 text-center">No orders found.</div>:<div className="space-y-3">{filtered.map(o=><div key={o.id} className="border rounded-2xl p-4"><div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><div className="font-black text-sm">{o.id}</div><div className="text-xs text-slate-500">{luxmoDate(o.createdAt)} · {o.paymentMethod}</div></div><div className="flex items-center gap-2"><select value={o.status} onChange={e=>updateStatus(o.id,e.target.value)} className="border rounded-lg px-2 py-1.5 text-xs">{LUXMO_ORDER_STATUSES.map(s=><option key={s}>{s}</option>)}</select><button onClick={()=>setSelected(selected===o.id?null:o.id)} className="border rounded-lg px-3 py-1.5 text-xs font-bold">Details</button><button onClick={()=>printInvoice(o)} className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-bold">Invoice</button></div></div>{selected===o.id&&<div className="mt-4 bg-slate-50 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-3 gap-4"><div><b>Items</b>{o.items?.map((i,idx)=><div key={idx} className="mt-1">{i.title} × {i.qty}<br/>{i.model} {i.colour}</div>)}</div><div><b>Delivery</b><div className="mt-1">{o.address?.name}<br/>{o.address?.line1}<br/>{o.address?.city}, {o.address?.state} - {o.address?.pincode}<br/>{o.address?.phone}</div></div><div><b>Shipment</b><div className="mt-1">Provider: {o.courierProvider || "Pending"}<br/>AWB: {o.awb || "Pending"}<br/>Status: {o.status}</div></div></div>}</div>)}</div>}</div>;
 }
 
 function LuxmoReviewCenter({ products, reviews, setReviews }) {
@@ -3245,9 +3020,6 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
     const next=[order,...orders];
     setOrders(next);
     safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
-    if(order.paymentMethod === "razorpay"){
-      try { localStorage.setItem("luxmo_pending_payment_order_id", String(order.id || "")); } catch {}
-    }
     setCheckout(false);
 
     // Online orders continue directly into the existing Razorpay flow.
@@ -4060,26 +3832,6 @@ function LuxmoCustomerMyOrders({ onBack }) {
   const [error, setError] = React.useState("");
   const [order, setOrder] = React.useState(null);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    try {
-      const saved = JSON.parse(localStorage.getItem("luxmo_last_paid_order_lookup") || "null");
-      if (saved?.orderId && saved?.mobile) {
-        setOrderId(String(saved.orderId));
-        setMobile(String(saved.mobile));
-        (async () => {
-          try {
-            const data = await fetchCustomerOrder(saved.orderId, saved.mobile);
-            if (!cancelled && data?.order) setOrder(data.order);
-          } catch (e) {
-            console.warn("Automatic My Orders load skipped:", e?.message || e);
-          }
-        })();
-      }
-    } catch {}
-    return () => { cancelled = true; };
-  }, []);
-
   const searchOrder = async (event) => {
     event.preventDefault();
     setError("");
@@ -4122,16 +3874,42 @@ function LuxmoCustomerMyOrders({ onBack }) {
         <p className="text-sm text-slate-300 mt-2">Enter your Order ID and mobile number to securely view your order.</p>
       </div>
 
-      <form onSubmit={searchOrder} className="bg-white border rounded-2xl p-5 shadow-sm">
+      <form onSubmit={searchOrder} autoComplete="off" className="bg-white border rounded-2xl p-5 shadow-sm">
         <h2 className="font-black text-lg">Find Your Order</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           <div>
             <label className="block text-xs font-bold mb-1">Order ID</label>
-            <input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="e.g. LUX..." className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
+            <input
+              name="luxmo-order-lookup-id"
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              placeholder="e.g. LUX..."
+              autoComplete="new-password"
+              readOnly
+              onFocus={(e) => { e.currentTarget.readOnly = false; }}
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm"
+            />
           </div>
           <div>
             <label className="block text-xs font-bold mb-1">Mobile Number</label>
-            <input value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" maxLength={10} placeholder="10-digit mobile number" className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
+            <input
+              name="luxmo-order-lookup-mobile"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="10-digit mobile number"
+              autoComplete="new-password"
+              readOnly
+              onFocus={(e) => { e.currentTarget.readOnly = false; }}
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm"
+            />
           </div>
         </div>
         {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 text-red-700 p-3 text-xs font-semibold">{error}</div>}
@@ -4175,11 +3953,10 @@ function LuxmoCustomerMyOrders({ onBack }) {
               <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">AWB / Tracking Number</div><div className="font-black mt-1 break-all">{shipment.awb || order.awb || "Not assigned yet"}</div></div>
               <div className="rounded-xl bg-slate-50 border p-4"><div className="text-xs text-slate-500">Tracking</div><div className="font-black mt-1">{shipment.trackingUrl || order.trackingUrl ? "Available" : "Pending"}</div></div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
               {(shipment.trackingUrl || order.trackingUrl) && <a href={shipment.trackingUrl || order.trackingUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-blue-600 text-white text-center py-3 text-xs font-black">🚚 Track Shipment</a>}
               {(shipment.labelUrl || order.labelUrl) && <a href={shipment.labelUrl || order.labelUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-slate-950 text-white text-center py-3 text-xs font-black">🏷️ Shipping Label</a>}
-              {(shipment.invoiceUrl || order.invoiceUrl) && <a href={shipment.invoiceUrl || order.invoiceUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-emerald-600 text-white text-center py-3 text-xs font-black">🧾 Download Invoice</a>}
-              <button type="button" onClick={() => luxmoPrintInvoice({ ...order, paymentStatus: payment.status, subtotal: pricing.subtotal, discount: pricing.discount, shippingFee: pricing.shippingFee, total: pricing.total })} className="rounded-xl border border-slate-300 text-slate-900 text-center py-3 text-xs font-black hover:bg-slate-50">🧾 Generate GST Invoice</button>
+              {(shipment.invoiceUrl || order.invoiceUrl) && <a href={shipment.invoiceUrl || order.invoiceUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-emerald-600 text-white text-center py-3 text-xs font-black">🧾 Invoice</a>}
             </div>
             {(shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl) && <a href={shipment.combinedLabelInvoiceUrl || order.combinedLabelInvoiceUrl} target="_blank" rel="noopener noreferrer" className="block mt-3 rounded-xl border border-slate-300 text-slate-900 text-center py-3 text-xs font-black hover:bg-slate-50">📄 Download Label + Invoice</a>}
           </div>
@@ -4226,9 +4003,6 @@ export default function LuxmoHubApp() {
   }, []);
 
   const [cart, setCart] = useState([]);
-  // Buy Now is intentionally isolated from the persistent shopping cart.
-  // It represents a temporary, single-checkout item and never mutates cart.
-  const [buyNowItem, setBuyNowItem] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedModelFilter, setSelectedModelFilter] = useState("All");
   const [selectedMainCategory, setSelectedMainCategory] = useState("All");
@@ -4411,18 +4185,6 @@ export default function LuxmoHubApp() {
   // The browser sends only the current 6-digit code to the server API.
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminSessionChecking, setAdminSessionChecking] = useState(true);
-
-  // Public storefront: admin controls are visible only on /admin or
-  // ?admin=1 AND after the secure admin session has been authenticated.
-  const adminRouteActive = (() => {
-    if (typeof window === "undefined") return false;
-    const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
-    const params = new URLSearchParams(window.location.search);
-    return pathname === "/admin" || params.get("admin") === "1";
-  })();
-
-  const adminUiVisible = adminRouteActive && isAdminLoggedIn;
-
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminOtp, setAdminOtp] = useState("");
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
@@ -4881,7 +4643,7 @@ export default function LuxmoHubApp() {
     }
   };
 
-  const buildCartItem = (product, variant = null, qty = 1) => {
+  const addToCart = (product, variant = null) => {
     const item = variant ? {
       ...product,
       model: variant.model,
@@ -4893,24 +4655,11 @@ export default function LuxmoHubApp() {
       images: variant.images?.length ? variant.images : product.images
     } : product;
     const cartKey = variant ? `${product.id}::${variant.key}` : product.id;
-    return { ...item, cartKey, qty: Math.max(1, Number(qty || 1)) };
-  };
-
-  const addToCart = (product, variant = null) => {
-    const item = buildCartItem(product, variant);
-    const cartKey = item.cartKey;
     setCart(prev => {
       const exists = prev.find(x => x.cartKey === cartKey);
       if (exists) return prev.map(x => x.cartKey === cartKey ? { ...x, qty: Math.min(x.qty + 1, Number(x.stock || 999999)) } : x);
-      return [...prev, item];
+      return [...prev, { ...item, cartKey, qty: 1 }];
     });
-  };
-
-  // Buy Now creates a temporary checkout snapshot. Existing cart items stay untouched.
-  const startBuyNow = (product, variant = null) => {
-    const item = buildCartItem(product, variant);
-    setBuyNowItem(item);
-    setShowCheckoutModal(true);
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.salePrice || item.price) * item.qty, 0);
@@ -4929,10 +4678,7 @@ export default function LuxmoHubApp() {
       return;
     }
 
-    const checkoutItems = buyNowItem ? [buyNowItem] : cart;
-    const wasBuyNowCheckout = Boolean(buyNowItem);
-
-    if (!checkoutItems || checkoutItems.length === 0) {
+    if (!cart || cart.length === 0) {
       alert("Your cart is empty.");
       return;
     }
@@ -4968,19 +4714,12 @@ export default function LuxmoHubApp() {
         console.warn("Could not read Luxmo orders:", e);
       }
 
-      let pendingPaymentOrderId = "";
-      try {
-        pendingPaymentOrderId = String(localStorage.getItem("luxmo_pending_payment_order_id") || "").trim();
-      } catch {}
-
-      // IMPORTANT: Never fall back to an unrelated old pending Razorpay order.
-      // Payment must always be attached to the exact website order created by
-      // this checkout session.
-      const pendingOrder = pendingPaymentOrderId
-        ? storedOrders.find(
-            (order) => String(order?.id || "") === pendingPaymentOrderId
-          )
-        : null;
+      const pendingOrder = storedOrders.find(
+        (order) =>
+          order &&
+          order.paymentMethod === "razorpay" &&
+          (order.paymentStatus === "Pending" || order.status === "Pending Payment")
+      );
 
       if (!pendingOrder) {
         alert("Please complete the delivery address and place the online order from Checkout first.");
@@ -5013,7 +4752,7 @@ export default function LuxmoHubApp() {
       const total = Number(
         pendingOrder.total ??
         pendingOrder.grandTotal ??
-        (checkoutItems.reduce((sum, item) => sum + luxmoProductPrice(item) * Number(item.qty || 1), 0)) ??
+        cartTotal ??
         0
       );
 
@@ -5068,6 +4807,7 @@ export default function LuxmoHubApp() {
         couponCode: String(
           pendingOrder.couponCode ||
           pendingOrder.coupon ||
+          coupon ||
           ""
         ).trim().toUpperCase(),
         shippingMode:
@@ -5078,12 +4818,7 @@ export default function LuxmoHubApp() {
         customer: {
           name: address.name,
           phone: address.phone,
-          email: String(
-            pendingOrder.email ||
-            address.email ||
-            pendingOrder.customer?.email ||
-            ""
-          ).trim().toLowerCase()
+          email: pendingOrder.email || address.email || ""
         },
         shippingAddress: {
           name: address.name,
@@ -5096,91 +4831,21 @@ export default function LuxmoHubApp() {
         }
       });
 
-      const razorpayOrder = orderData?.order || {};
-
-      const razorpayOrderId = String(
-        razorpayOrder?.id || ""
-      ).trim();
-
-      const razorpayAmount = Number(
-        razorpayOrder?.amount || 0
-      );
-
-      const razorpayCurrency = String(
-        razorpayOrder?.currency || "INR"
-      ).trim();
-
-      const serverTotal = Number(
-        orderData?.pricing?.total || 0
-      );
-
       if (
-        !razorpayOrderId ||
-        !Number.isInteger(razorpayAmount) ||
-        razorpayAmount < 100 ||
-        !Number.isFinite(serverTotal) ||
-        serverTotal <= 0
+        !orderData?.orderId ||
+        !Number(orderData?.amount)
       ) {
-        console.error(
-          "Invalid Razorpay order response:",
-          orderData
-        );
-
         throw new Error(
           "Server returned an invalid Razorpay order."
         );
       }
-
-      const expectedAmountPaise = Math.round(
-        serverTotal * 100
-      );
-
-      if (
-        razorpayAmount !== expectedAmountPaise
-      ) {
-        console.error(
-          "Razorpay amount mismatch:",
-          {
-            websiteTotal: serverTotal,
-            expectedAmountPaise,
-            razorpayAmount
-          }
-        );
-
-        throw new Error(
-          `Payment amount mismatch. Website total ₹${serverTotal.toFixed(
-            2
-          )} but Razorpay order amount is ₹${(
-            razorpayAmount / 100
-          ).toFixed(2)}.`
-        );
-      }
-
-      // Keep the order payload synchronized with the
-      // server-authoritative pricing returned by create-order.
-      orderPayload.total = serverTotal;
-      orderPayload.subtotal = Number(
-        orderData?.pricing?.subtotal ??
-        orderPayload.subtotal ??
-        0
-      );
-      orderPayload.discount = Number(
-        orderData?.pricing?.discount ??
-        orderPayload.discount ??
-        0
-      );
-      orderPayload.shippingFee = Number(
-        orderData?.pricing?.shippingFee ??
-        orderPayload.shippingFee ??
-        0
-      );
 
       try {
         localStorage.setItem(
           shipmentLockKey,
           JSON.stringify({
             status: "processing",
-            razorpayOrderId: razorpayOrderId,
+            razorpayOrderId: orderData.orderId,
             websiteOrderId: pendingOrder.id,
             timestamp: Date.now()
           })
@@ -5191,11 +4856,11 @@ export default function LuxmoHubApp() {
 
       const options = {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: razorpayAmount,
-        currency: razorpayCurrency,
+        amount: orderData.amount,
+        currency: orderData.currency,
         name: PUBLIC_BUSINESS_INFO.tradeName,
         description: "Luxmo Hub Order",
-        order_id: razorpayOrderId,
+        order_id: orderData.orderId,
 
         handler: async function (response) {
           try {
@@ -5230,13 +4895,35 @@ export default function LuxmoHubApp() {
             // change payment status to failed.
             console.log("Razorpay payment verified:", response.razorpay_payment_id);
 
-            // STEP 2: Shiprocket is the production checkout provider.
-            // Old iThink/localStorage selections are migrated automatically so
-            // a paid order cannot get stuck because ITHINK_PICKUP_ADDRESS_ID is missing.
-            const provider = "shiprocket";
-            try {
-              localStorage.setItem("luxmo_selected_courier", provider);
-            } catch {}
+            // STEP 2: Select iThink / Shiprocket.
+            let provider = String(
+              orderPayload.courierProvider || ""
+            ).trim().toLowerCase();
+
+            if (
+              !provider ||
+              provider === "pending" ||
+              provider === "pending assignment"
+            ) {
+              let savedProvider = "";
+              try {
+                savedProvider = String(
+                  localStorage.getItem("luxmo_selected_courier") || ""
+                ).trim().toLowerCase();
+              } catch {}
+
+              if (savedProvider === "ithink" || savedProvider === "shiprocket") {
+                provider = savedProvider;
+              } else {
+                const useIThink = window.confirm(
+                  "Choose Shipping Partner:\n\nOK = iThink Logistics\nCancel = Shiprocket"
+                );
+                provider = useIThink ? "ithink" : "shiprocket";
+                try {
+                  localStorage.setItem("luxmo_selected_courier", provider);
+                } catch {}
+              }
+            }
 
             // STEP 3: Do not create the same shipment twice.
             const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
@@ -5251,11 +4938,7 @@ export default function LuxmoHubApp() {
                 `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nAWB: ${existingShipment.awb || "Already created"}`
               );
               localStorage.removeItem(shipmentLockKey);
-              luxmoRememberPaidOrder(orderPayload, response);
-              if (!wasBuyNowCheckout) setCart([]);
-              setBuyNowItem(null);
-              setShowCheckoutModal(false);
-              try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
+              setCart([]);
               setActiveTab("my-orders");
               return;
             }
@@ -5292,51 +4975,7 @@ export default function LuxmoHubApp() {
             }
 
             // PAYMENT SUCCESS + SHIPMENT FAILURE = payment remains PAID.
-            // If a stale client somehow sent iThink, retry once through Shiprocket
-            // before marking the shipment as pending. Never ask the customer to pay again.
-            if ((!shipmentResponse.ok || !shipmentData.success) && provider !== "shiprocket") {
-              try {
-                const retryResponse = await fetch("/api/create-shipment", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    razorpay_order_id: response.razorpay_order_id,
-                    razorpay_payment_id: response.razorpay_payment_id,
-                    razorpay_signature: response.razorpay_signature,
-                    provider: "shiprocket",
-                    order: { ...orderPayload, provider: "shiprocket", courierProvider: "shiprocket", razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, paymentStatus: "Paid", paymentVerified: true },
-                    orderData: { ...orderPayload, provider: "shiprocket", courierProvider: "shiprocket", razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, paymentStatus: "Paid", paymentVerified: true }
-                  })
-                });
-                const retryData = await retryResponse.json().catch(() => ({}));
-                if (retryResponse.ok && retryData?.success) {
-                  shipmentData = retryData;
-                }
-              } catch (retryError) {
-                console.error("Shiprocket fallback after courier failure:", retryError);
-              }
-            }
-
-            const rawShipment = shipmentData?.shipment || shipmentData || {};
-            const returnedShipmentId =
-              rawShipment?.shipmentId ||
-              rawShipment?.shipment_id ||
-              rawShipment?.id ||
-              "";
-            const returnedAwb =
-              rawShipment?.awb ||
-              rawShipment?.awb_code ||
-              rawShipment?.waybill ||
-              rawShipment?.tracking_number ||
-              "";
-
-            // Do not treat a courier response as a completed shipment unless
-            // it returned a real shipment identifier or AWB.
-            if (
-              !shipmentResponse.ok ||
-              !shipmentData.success ||
-              (!returnedShipmentId && !returnedAwb)
-            ) {
+            if (!shipmentResponse.ok || !shipmentData.success) {
               console.error(
                 "Shipment failed after successful payment:",
                 shipmentData
@@ -5348,8 +4987,6 @@ export default function LuxmoHubApp() {
                 razorpayPaymentId: response.razorpay_payment_id,
                 paymentStatus: "Paid",
                 paymentVerified: true,
-                paidAt: orderPayload.paidAt || new Date().toISOString(),
-                verifiedAt: orderPayload.verifiedAt || new Date().toISOString(),
                 status: "Payment Confirmed - Shipment Pending",
                 courierProvider: provider,
                 shipmentStatus: "Pending",
@@ -5373,11 +5010,7 @@ export default function LuxmoHubApp() {
               }
 
               localStorage.removeItem(shipmentLockKey);
-              luxmoRememberPaidOrder(pendingShipmentOrder, response);
-              if (!wasBuyNowCheckout) setCart([]);
-              setBuyNowItem(null);
-              setShowCheckoutModal(false);
-              try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
+              setCart([]);
               setActiveTab("my-orders");
 
               alert(
@@ -5405,35 +5038,7 @@ export default function LuxmoHubApp() {
             const shipmentId =
               shipment?.shipmentId ||
               shipment?.shipment_id ||
-              shipment?.id ||
-              returnedShipmentId ||
               "";
-
-            const labelUrl =
-              shipment?.labelUrl ||
-              shipment?.label_url ||
-              "";
-
-            const invoiceUrl =
-              shipment?.invoiceUrl ||
-              shipment?.invoice_url ||
-              "";
-
-            const combinedLabelInvoiceUrl =
-              shipment?.combinedLabelInvoiceUrl ||
-              shipment?.combined_label_invoice_url ||
-              shipment?.label_invoice_url ||
-              "";
-
-            const pickupStatus =
-              shipment?.pickupStatus ||
-              shipment?.pickup_status ||
-              "";
-
-            const shipmentStatus =
-              shipment?.shipmentStatus ||
-              shipment?.status ||
-              "Created";
 
             const shipmentRecord = {
               success: true,
@@ -5444,11 +5049,6 @@ export default function LuxmoHubApp() {
               shipmentId,
               awb,
               trackingUrl,
-              labelUrl,
-              invoiceUrl,
-              combinedLabelInvoiceUrl,
-              pickupStatus,
-              shipmentStatus,
               createdAt: new Date().toISOString()
             };
 
@@ -5466,11 +5066,7 @@ export default function LuxmoHubApp() {
               shipmentId,
               awb,
               trackingUrl,
-              labelUrl,
-              invoiceUrl,
-              combinedLabelInvoiceUrl,
-              pickupStatus,
-              shipmentStatus,
+              shipmentStatus: "Created",
               updatedAt: new Date().toISOString()
             };
 
@@ -5494,11 +5090,7 @@ export default function LuxmoHubApp() {
               `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nCourier: ${courier}\nAWB: ${awb || "Will be assigned shortly"}\n\nYour order has been confirmed for shipment.`
             );
 
-            luxmoRememberPaidOrder(completedOrder, response);
-            if (!wasBuyNowCheckout) setCart([]);
-            setBuyNowItem(null);
-            setShowCheckoutModal(false);
-            try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
+            setCart([]);
             setActiveTab("my-orders");
           } catch (error) {
             // Never report a post-payment processing error as "payment failed".
@@ -5564,7 +5156,7 @@ export default function LuxmoHubApp() {
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 sm:gap-4 min-w-0">
           <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab("home")} aria-label="LUXMO HUB Home">
             <img
-              src="/luxmo-hub-logo.png?v=20260822-final"
+              src="/luxmo-hub-logo.png?v=20260826-final"
               alt="LUXMO HUB"
               className="w-[250px] max-w-[calc(100vw-24px)] h-auto sm:w-[300px] sm:max-w-[300px] object-contain shrink-0 block"
               loading="eager"
@@ -5599,7 +5191,7 @@ export default function LuxmoHubApp() {
             <button onClick={() => setActiveTab("catalog")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'catalog' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Products</button>
             <button onClick={() => setActiveTab("my-orders")} className={`px-2 py-2 rounded-lg whitespace-nowrap ${activeTab === 'my-orders' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>My Orders</button>
             <button onClick={() => setActiveTab("policies")} className={`px-2 py-2 rounded-lg whitespace-nowrap shrink-0 ${activeTab === 'policies' ? 'text-blue-600 bg-blue-50 font-black' : 'text-slate-600'}`}>Policies</button>
-            {adminUiVisible && (
+            {isAdminLoggedIn && (
               <button onClick={() => setShowStoreTools(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-2.5 sm:px-3 py-2 rounded-xl whitespace-nowrap shadow-sm">Store Tools</button>
             )}
 
@@ -5623,7 +5215,7 @@ export default function LuxmoHubApp() {
               <Menu className="w-6 h-6" />
             </button>
 
-            {adminUiVisible && (
+            {isAdminLoggedIn && (
               <>
                 <LuxmoLowStockBadge
                   products={products}
@@ -5646,6 +5238,7 @@ export default function LuxmoHubApp() {
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-4">
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide py-2">
+            <button type="button" onClick={() => setActiveTab("home")} className="nav-row-link">Home</button>
             <button type="button" onClick={() => { setSelectedMainCategory("Mobile"); setSelectedSubCategory("All"); setSelectedCategory("Mobile Back Case"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Mobile Phone Cases</button>
             <button type="button" onClick={() => { setSelectedCategory("All"); setSearchQuery("mobile phone accessories"); setActiveTab("catalog"); }} className="nav-row-link">Mobile Phone Accessories</button>
             <button type="button" onClick={() => { setSelectedCategory("Hybrid Solar Inverter"); setSearchQuery(""); setActiveTab("catalog"); }} className="nav-row-link">Hybrid Solar Inverter</button>
@@ -5890,7 +5483,7 @@ export default function LuxmoHubApp() {
                 <span>Blog</span><ChevronRight className="w-4 h-4" />
               </button>
 
-              {adminUiVisible && (
+              {isAdminLoggedIn && (
                 <div className="pt-3 mt-2 border-t border-slate-200">
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase px-4 pb-2">Admin</div>
                   <button type="button" onClick={() => { setShowMobileNav(false); setActiveTab("admin"); }} className="w-full text-left rounded-xl px-4 py-3.5 font-black hover:bg-slate-50">Dashboard</button>
@@ -6320,16 +5913,7 @@ export default function LuxmoHubApp() {
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
                     onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
                     onAddToCart={addToCart}
-                    onBuyNow={(p) => {
-                      if (p.variants?.length) {
-                        setSelectedProduct(p);
-                        setSelectedVariantKey(p.variants?.[0]?.key || "");
-                        setActiveImageIndex(0);
-                        setActiveTab("product");
-                      } else {
-                        startBuyNow(p);
-                      }
-                    }}
+                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); setShowCheckoutModal(true); } }}
                   />)}
                 </div>
                 {!filteredProducts.length && <div className="bg-white border rounded-2xl p-10 text-center text-slate-500 font-bold">No products match the selected filters. <button type="button" onClick={clearAllFilters} className="text-blue-600">Clear filters</button></div>}
@@ -6826,22 +6410,12 @@ export default function LuxmoHubApp() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(displayedProduct.mobileSpecs).filter(([,v])=>String(v||"").trim()).map(([k,v])=><div key={k} className="rounded-xl bg-white border p-2"><span className="block text-[10px] uppercase text-slate-500">{k.replace(/([A-Z])/g," $1")}</span><strong>{v}</strong></div>)}</div>
               </div>}
 
-              <div className="grid grid-cols-1 gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => addToCart(selectedProduct, activeVariant)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl text-sm transition shadow-sm"
-                >
-                  🛒 Add to Cart
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startBuyNow(selectedProduct, activeVariant)}
-                  className="w-full bg-slate-950 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl text-sm transition shadow-sm"
-                >
-                  ⚡ BUY NOW
-                </button>
-              </div>
+              <button
+                onClick={() => addToCart(selectedProduct, activeVariant)}
+                className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm"
+              >
+                Add to Cart
+              </button>
             </div>
           </div>
           </>
@@ -6867,7 +6441,7 @@ export default function LuxmoHubApp() {
                   <span className="text-blue-600">₹{cartTotal}</span>
                 </div>
                 <button
-                  onClick={() => { setBuyNowItem(null); setShowCheckoutModal(true); }}
+                  onClick={() => setShowCheckoutModal(true)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
                 >
                   Proceed to Secure Checkout
@@ -6881,7 +6455,7 @@ export default function LuxmoHubApp() {
         )}
 
         {/* ADMIN DASHBOARD VIEW */}
-        {activeTab === "admin" && adminUiVisible && (
+        {activeTab === "admin" && isAdminLoggedIn && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b pb-4">
               <div>
@@ -7224,7 +6798,7 @@ export default function LuxmoHubApp() {
     </div>
   )}
 
-        {showStoreTools && adminUiVisible && (
+        {showStoreTools && isAdminLoggedIn && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm p-2 md:p-5 overflow-auto" role="dialog" aria-modal="true" aria-label="LUXMO HUB Store Tools">
             <div className="max-w-7xl mx-auto my-2 md:my-5">
               <div className="flex justify-end mb-2">
@@ -7258,7 +6832,7 @@ export default function LuxmoHubApp() {
                 <div className="flex justify-end mb-2">
                   <button
                     type="button"
-                    onClick={() => { setShowCheckoutModal(false); setBuyNowItem(null); }}
+                    onClick={() => setShowCheckoutModal(false)}
                     className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg"
                   >
                     Close Checkout ×
@@ -7266,7 +6840,7 @@ export default function LuxmoHubApp() {
                 </div>
                 <LuxmoProSuite
                   products={products}
-                  cart={buyNowItem ? [buyNowItem] : cart}
+                  cart={cart}
                   addToCart={addToCart}
                   onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowCheckoutModal(false); }}
                   isAdminLoggedIn={false}
@@ -7274,7 +6848,7 @@ export default function LuxmoHubApp() {
                   siteTheme={siteTheme}
                   setSiteTheme={setSiteTheme}
                   checkoutOnly={true}
-                  onCheckoutClose={() => { setShowCheckoutModal(false); setBuyNowItem(null); }}
+                  onCheckoutClose={() => setShowCheckoutModal(false)}
                 />
               </div>
             </div>
@@ -7669,29 +7243,24 @@ export default function LuxmoHubApp() {
 const DEFAULT_HOMEPAGE_CONFIG = {
   hero: {
     enabled: true,
-    badge: "LUXMO HUB · Solar + Mobile",
-    title: "Power Your Home. Protect Your Phone.",
-    description: "Shop hybrid solar inverters, ACDB, DCDB, Wi-Fi modules and solar accessories — plus premium mobile back cases and accessories. Easy shopping, secure payment and reliable support.",
-    primaryText: "☀️ Shop Solar",
+    badge: "LUXMO HUB · Premium Store",
+    title: "Smart Solar Solutions & Premium Mobile Protection",
+    description: "Reliable hybrid solar inverters and premium protective cases for modern homes, businesses and smartphones.",
+    primaryText: "Shop Solar Inverters",
     primaryLink: "Hybrid Solar Inverter",
-    secondaryText: "📱 Shop Mobile Cases",
+    secondaryText: "Shop Mobile Cases",
     secondaryLink: "Mobile Back Case",
     desktopImage: "",
     mobileImage: ""
   },
   categories: [
-    { id: "cat-solar", icon: "☀️", title: "Hybrid Solar Inverters", description: "Reliable hybrid inverter solutions for home and business power systems.", buttonText: "Shop Solar", link: "Hybrid Solar Inverter", enabled: true, order: 1 },
-    { id: "cat-accessories", icon: "🔋", title: "Solar Accessories", description: "ACDB, DCDB, Wi-Fi modules and accessories for your solar setup.", buttonText: "Shop Accessories", link: "Solar Accessories", enabled: true, order: 2 },
-    { id: "cat-mobile", icon: "📱", title: "Mobile Cases & Accessories", description: "Protect your smartphone with premium back cases and useful accessories.", buttonText: "Shop Mobile", link: "Mobile Back Case", enabled: true, order: 3 }
+    { id: "cat-solar", icon: "☀️", title: "Hybrid Solar Inverters", description: "24V and 48V hybrid inverter solutions.", buttonText: "Shop Inverters", link: "Hybrid Solar Inverter", enabled: true, order: 1 },
+    { id: "cat-accessories", icon: "🔋", title: "Solar Accessories", description: "Accessories for solar installation and monitoring.", buttonText: "Shop Accessories", link: "Solar Accessories", enabled: true, order: 2 },
+    { id: "cat-mobile", icon: "📱", title: "Premium Mobile Cases", description: "Premium protection for modern smartphones.", buttonText: "Shop Cases", link: "Mobile Back Case", enabled: true, order: 3 }
   ],
-  // Conversion-first homepage order:
-  // Hero → Categories → Featured Deals → Solar → Accessories → Mobile →
-  // Calculator → Materials → Trust → Support → Reviews → FAQ → CTA
-  // Existing section controls remain compatible with Admin Homepage Management.
   sections: [
-    "hero", "categories", "promotions", "solar", "accessories",
-    "mobile", "calculator", "materials", "trust", "support",
-    "reviews", "faq", "cta", "footer"
+    "hero", "promotions", "categories", "solar", "accessories", "calculator",
+    "mobile", "materials", "trust", "support", "reviews", "faq", "cta", "footer"
   ],
   sectionEnabled: {
     hero: true, promotions: true, categories: true, solar: true, accessories: true,
@@ -7831,64 +7400,15 @@ function LuxmoControlledHomepageSections({
     </section>
   );
 
-  const renderHero = () => <section key="hero" className="relative overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-2xl border border-slate-800">
-    {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 hidden md:block w-full h-full object-cover opacity-30" />}
-    {cfg.hero.mobileImage && <img src={cfg.hero.mobileImage} alt="LUXMO HUB" className="absolute inset-0 md:hidden w-full h-full object-cover opacity-25" />}
-    <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-950/95 to-blue-950/80" />
-    <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full bg-amber-400/10 blur-3xl" />
-    <div className="absolute -left-28 -bottom-28 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
-    <div className="relative grid lg:grid-cols-[1.2fr_.8fr] gap-8 items-center px-5 py-8 sm:px-8 sm:py-10 md:px-12 md:py-14">
-      <div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">
-          {cfg.hero.badge}
-        </div>
-        <h1 className="mt-5 max-w-3xl text-3xl sm:text-4xl md:text-6xl font-black leading-[1.03] tracking-tight">
-          {cfg.hero.title}
-        </h1>
-        <p className="mt-5 max-w-2xl text-sm sm:text-base md:text-lg leading-relaxed text-slate-300">
-          {cfg.hero.description}
-        </p>
-        <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-          <button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-amber-300 transition">
-            {cfg.hero.primaryText}
-          </button>
-          <button onClick={() => goCategory(cfg.hero.secondaryLink || "Mobile Back Case")} className="rounded-xl bg-white px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-slate-100 transition">
-            {cfg.hero.secondaryText}
-          </button>
-        </div>
-        <div className="mt-6 flex flex-wrap gap-2 text-[11px] sm:text-xs font-bold text-slate-300">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🔒 Secure Payment</span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🚚 Delivery Support</span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🛡️ Warranty Support</span>
-        </div>
-      </div>
-      <div className="hidden lg:block">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Shop by need</div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button onClick={() => goCategory("Hybrid Solar Inverter")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
-              <div className="text-3xl">☀️</div>
-              <div className="mt-2 font-black text-sm">Solar Power</div>
-              <div className="mt-1 text-[11px] text-slate-300">Inverters & solutions</div>
-            </button>
-            <button onClick={() => goCategory("Solar Accessories")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
-              <div className="text-3xl">🔋</div>
-              <div className="mt-2 font-black text-sm">Solar Accessories</div>
-              <div className="mt-1 text-[11px] text-slate-300">ACDB, DCDB, Wi-Fi & more</div>
-            </button>
-            <button onClick={() => goCategory("Mobile Back Case")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
-              <div className="text-3xl">📱</div>
-              <div className="mt-2 font-black text-sm">Mobile Cases</div>
-              <div className="mt-1 text-[11px] text-slate-300">Premium phone protection</div>
-            </button>
-            <button onClick={() => setShowWhatsAppModal(true)} className="rounded-2xl bg-amber-400 p-4 text-left text-slate-950 hover:bg-amber-300 transition">
-              <div className="text-3xl">💬</div>
-              <div className="mt-2 font-black text-sm">Need Help?</div>
-              <div className="mt-1 text-[11px] text-slate-700">Talk to Luxmo Hub</div>
-            </button>
-          </div>
-        </div>
-      </div>
+  const renderHero = () => <section key="hero" className="relative overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-2xl">
+    {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 hidden md:block w-full h-full object-cover opacity-35" />}
+    {cfg.hero.mobileImage && <img src={cfg.hero.mobileImage} alt="LUXMO HUB" className="absolute inset-0 md:hidden w-full h-full object-cover opacity-35" />}
+    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-950/75 to-slate-950/40" />
+    <div className="relative px-5 py-8 sm:py-10 md:px-12 md:py-14 max-w-4xl">
+      <div className="inline-flex rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-amber-300">{cfg.hero.badge}</div>
+      <h1 className="mt-5 text-3xl sm:text-4xl md:text-6xl font-black leading-tight tracking-tight">{cfg.hero.title}</h1>
+      <p className="mt-5 text-slate-300 text-base md:text-lg leading-relaxed max-w-2xl">{cfg.hero.description}</p>
+      <div className="mt-7 flex flex-col sm:flex-row gap-3"><button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="w-full sm:w-auto rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-amber-300 transition">{cfg.hero.primaryText}</button><button onClick={() => goCategory(cfg.hero.secondaryLink || "Mobile Back Case")} className="w-full sm:w-auto rounded-xl bg-white px-5 py-3.5 font-black text-slate-950 shadow-sm hover:bg-slate-100 transition">{cfg.hero.secondaryText}</button></div>
     </div>
   </section>;
 
@@ -7897,42 +7417,24 @@ function LuxmoControlledHomepageSections({
       .filter(c => c && c.enabled !== false)
       .sort((a,b) => Number(a.order || 0) - Number(b.order || 0));
     return <section key="categories">
-      <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Shop by Category</p>
-          <h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">Find What You Need</h2>
-          <p className="mt-1 text-sm text-slate-500">Start with a category and get to the right products faster.</p>
-        </div>
+      <div className="text-center mb-6">
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Explore LUXMO HUB</p>
+        <h2 className="mt-1 text-2xl md:text-3xl font-black">Choose Your Category</h2>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         {cats.map((c, i) => (
-          <button key={c.id || i} onClick={() => goCategory(c.link || "All")} className={`group text-left rounded-3xl border p-5 sm:p-6 transition hover:-translate-y-0.5 hover:shadow-xl ${i % 3 === 0 ? "border-amber-200 bg-gradient-to-br from-amber-50 to-white" : i % 3 === 1 ? "border-blue-200 bg-gradient-to-br from-blue-50 to-white" : "border-slate-200 bg-gradient-to-br from-slate-50 to-white"}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm border text-2xl">{c.icon || "🛍️"}</div>
-              <span className="text-xs font-black text-slate-400 group-hover:text-slate-900">SHOP →</span>
-            </div>
-            <h3 className="mt-4 text-xl font-black text-slate-950">{c.title || "Category"}</h3>
-            <p className="mt-2 min-h-[42px] text-sm leading-relaxed text-slate-600">{c.description || ""}</p>
-            <span className="inline-flex mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">{c.buttonText || "Shop Now"} →</span>
+          <button key={c.id || i} onClick={() => goCategory(c.link || "All")} className={`text-left rounded-3xl border p-6 hover:shadow-lg ${i % 3 === 0 ? "border-amber-200 bg-amber-50" : i % 3 === 1 ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
+            <div className="text-4xl">{c.icon || "🛍️"}</div>
+            <h3 className="mt-3 text-xl font-black">{c.title || "Category"}</h3>
+            <p className="mt-1 text-sm text-slate-600">{c.description || ""}</p>
+            <span className="inline-block mt-4 text-xs font-black text-blue-700">{c.buttonText || "Shop Now"} →</span>
           </button>
         ))}
       </div>
     </section>;
   };
 
-  const productGrid = (list, title, category, key) => <section key={key}>
-    <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p>
-        <h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">{title}</h2>
-        <p className="mt-1 text-sm text-slate-500">Choose a product, add it to your cart or buy it directly.</p>
-      </div>
-      <button onClick={() => goCategory(category)} className="self-start sm:self-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-900 hover:shadow-sm">View All →</button>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}
-    </div>
-  </section>;
+  const productGrid = (list, title, category, key) => <section key={key}><div className="flex items-end justify-between gap-3 mb-5"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p><h2 className="text-2xl md:text-3xl font-black">{title}</h2></div><button onClick={() => goCategory(category)} className="text-sm font-black text-blue-600">View All →</button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}</div></section>;
 
   const renderSection = (key) => {
     if (enabled[key] === false) return null;
@@ -7942,30 +7444,11 @@ function LuxmoControlledHomepageSections({
     if (key === "solar") return productGrid(solarProducts, "⚡ Hybrid Solar Inverters", "Hybrid Solar Inverter", "solar");
     if (key === "accessories") return productGrid(accessories, "🔋 Solar Accessories", "Solar Accessories", "accessories");
     if (key === "mobile") return productGrid(mobileProducts, "📱 Premium Mobile Phone Cases", "Mobile Back Case", "mobile");
-    if (key === "calculator") return <section key="calculator" className="rounded-3xl bg-gradient-to-r from-amber-50 via-white to-blue-50 border border-amber-200 p-7 md:p-10 flex flex-col lg:flex-row justify-between gap-6 items-center"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Smart Decision Tool</p><h2 className="mt-1 text-2xl md:text-3xl font-black">☀️ Find the Right Solar Inverter</h2><p className="mt-2 text-slate-600">Estimate connected load, battery capacity and approximate solar requirement before choosing your inverter.</p></div><button onClick={() => setShowSolarCalculator(true)} className="rounded-2xl bg-slate-950 text-white px-6 py-4 font-black">Calculate My Solar Requirement →</button></section>;
+    if (key === "calculator") return <section key="calculator" className="rounded-3xl bg-gradient-to-r from-amber-50 via-white to-blue-50 border border-amber-200 p-7 md:p-10 flex flex-col lg:flex-row justify-between gap-6 items-center"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Smart Decision Tool</p><h2 className="mt-1 text-2xl md:text-3xl font-black">☀️ Find the Right Solar Inverter</h2><p className="mt-2 text-slate-600">Estimate connected load, battery capacity and approximate solar requirement.</p></div><button onClick={() => setShowSolarCalculator(true)} className="rounded-2xl bg-slate-950 text-white px-6 py-4 font-black">Calculate My Solar Requirement →</button></section>;
     if (key === "materials") return <section key="materials"><div className="text-center mb-6"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">Premium Materials</p><h2 className="text-2xl md:text-3xl font-black">✨ Choose Your Material</h2></div><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{["Genuine Leather","PU Leather","TPU","Polycarbonate (PC)","TPU + PC Hybrid","MagSafe","Carbon Fiber","Silicone","Clear TPU"].map(x => <button key={x} onClick={() => goCategory("Mobile Back Case")} className="text-left rounded-2xl border bg-white p-4 hover:shadow-lg"><div className="text-xl">✨</div><div className="mt-2 font-black text-sm">{x}</div></button>)}</div></section>;
     if (key === "trust") return <section key="trust" className="rounded-3xl bg-slate-950 text-white p-7 md:p-9"><div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">{["✓ Quality Products","🔒 Secure Payments","🚚 Fast Delivery","🛡️ Warranty Support","↩️ Easy Returns","💬 Customer Support"].map(x => <div key={x} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center font-black text-sm">{x}</div>)}</div></section>;
     if (key === "support") return <section key="support" className="grid md:grid-cols-3 gap-4"><button onClick={() => setShowWarrantyModal(true)} className="text-left rounded-2xl border border-emerald-200 bg-emerald-50 p-6"><div className="text-3xl">🛡️</div><h3 className="mt-3 font-black">Register Warranty</h3><p className="mt-1 text-sm text-slate-600">Register serial number and installation details.</p></button><button onClick={() => setShowTrackingModal(true)} className="text-left rounded-2xl border border-blue-200 bg-blue-50 p-6"><div className="text-3xl">📦</div><h3 className="mt-3 font-black">Track Your Order</h3><p className="mt-1 text-sm text-slate-600">Check status using Order ID and mobile.</p></button><button onClick={() => setShowWhatsAppModal(true)} className="text-left rounded-2xl border border-green-200 bg-green-50 p-6"><div className="text-3xl">💬</div><h3 className="mt-3 font-black">WhatsApp Support</h3><p className="mt-1 text-sm text-slate-600">Solar, bulk order and product help.</p></button></section>;
-    if (key === "reviews") {
-      const publishedReviews = (cfg.reviews || []).filter(r => r.show !== false && r.status !== "Pending" && r.status !== "Rejected");
-      const reviewCount = publishedReviews.length;
-      const ratingTotal = publishedReviews.reduce((sum, r) => sum + Math.max(1, Math.min(5, Number(r.rating || 0))), 0);
-      const averageRating = reviewCount ? (ratingTotal / reviewCount).toFixed(1) : "0.0";
-      const ratingCounts = [5,4,3,2,1].map(star => ({ star, count: publishedReviews.filter(r => Number(r.rating) === star).length }));
-      return <section key="reviews" className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-          <div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Real Customer Feedback</p><h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">⭐ Customer Reviews & Ratings</h2><p className="mt-2 text-sm text-slate-500">See genuine customer feedback before you buy. Only published reviews are shown here.</p></div>
-          {reviewCount > 0 && <div className="flex items-center gap-3 rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3"><div className="text-3xl font-black text-slate-950">{averageRating}</div><div><div className="text-amber-500 text-lg leading-none">{"★".repeat(Math.round(Number(averageRating)))}{"☆".repeat(5 - Math.round(Number(averageRating)))}</div><div className="mt-1 text-xs font-bold text-slate-500">Based on {reviewCount} published review{reviewCount === 1 ? "" : "s"}</div></div></div>}
-        </div>
-        {reviewCount > 0 ? <div className="mt-6 grid lg:grid-cols-[280px_1fr] gap-5">
-          <div className="rounded-2xl bg-slate-50 border border-slate-200 p-5">
-            <div className="text-sm font-black text-slate-900">Rating summary</div>
-            <div className="mt-4 space-y-2">{ratingCounts.map(({star,count}) => <div key={star} className="flex items-center gap-2 text-xs"><span className="w-8 font-bold">{star} ★</span><div className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-amber-400" style={{width:`${reviewCount ? Math.round(count / reviewCount * 100) : 0}%`}} /></div><span className="w-6 text-right text-slate-500">{count}</span></div>)}</div>
-          </div>
-          <div className="grid md:grid-cols-2 gap-3">{publishedReviews.slice(0, 6).map(r => <article key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-black text-slate-900">{r.name || "Customer"}</div><div className="mt-1 text-xs text-amber-500">{"★".repeat(Math.max(1, Math.min(5, Number(r.rating || 1))))}{"☆".repeat(5 - Math.max(1, Math.min(5, Number(r.rating || 1))))}</div></div>{r.verifiedPurchase && <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1 text-[10px] font-black">✓ Verified Purchase</span>}</div><p className="mt-3 text-sm leading-6 text-slate-600">{r.text}</p></article>)}</div>
-        </div> : <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center"><div className="text-3xl">⭐</div><h3 className="mt-2 font-black text-slate-900">Be the first to review</h3><p className="mt-1 text-sm text-slate-500">Customer ratings will appear here after reviews are published from the Admin Panel.</p></div>}
-      </section>;
-    }
+    if (key === "reviews") return <section key="reviews" className="rounded-3xl border bg-white p-6"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Social Proof</p><h2 className="mt-1 text-2xl font-black">⭐ Customer Reviews</h2><div className="mt-4 grid md:grid-cols-2 gap-3">{(cfg.reviews || []).filter(r => r.show !== false).map(r => <div key={r.id} className="rounded-2xl bg-amber-50 p-4"><div className="font-black">{r.name || "Customer"} · {"★".repeat(Math.max(1, Math.min(5, Number(r.rating || 5))))}</div><p className="mt-2 text-sm text-slate-600">{r.text}</p></div>)}{!(cfg.reviews || []).some(r => r.show !== false) && <p className="text-sm text-slate-500">Customer reviews will appear here after they are added and published from Admin Panel.</p>}</div></section>;
     if (key === "faq") return <section key="faq" className="rounded-3xl border bg-white p-6"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">Help Center</p><h2 className="mt-1 text-2xl font-black">❓ Frequently Asked Questions</h2><div className="mt-4 grid md:grid-cols-2 gap-2">{(cfg.faqs || []).map(q => <details key={q.id} className="rounded-xl bg-slate-50 px-4 py-3"><summary className="font-bold cursor-pointer">{q.question}</summary><p className="mt-2 text-sm text-slate-600">{q.answer}</p></details>)}</div></section>;
     if (key === "cta") return <section key="cta" className="rounded-[2rem] bg-slate-950 text-white p-8 md:p-12 text-center shadow-2xl"><p className="text-amber-300 text-[11px] font-black uppercase tracking-[0.25em]">LUXMO HUB</p><h2 className="mt-2 text-3xl md:text-5xl font-black">Choose Better. Power Smarter. Protect Better.</h2><div className="mt-7 flex flex-wrap justify-center gap-3"><button onClick={() => goCategory("Hybrid Solar Inverter")} className="rounded-xl bg-amber-400 text-slate-950 px-6 py-3.5 font-black">☀️ Shop Solar →</button><button onClick={() => goCategory("Mobile Back Case")} className="rounded-xl bg-white text-slate-950 px-6 py-3.5 font-black">📱 Shop Mobile Cases →</button></div></section>;
     if (key === "footer") return null;
@@ -8817,20 +8300,20 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
         </div>
 
         <div className="p-4 pt-0 relative">
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
             <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 if (product.variants?.length) onSelect(product);
                 else onAddToCart(product);
               }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black py-2.5 rounded-lg transition">
-              {product.variants?.length ? "Select Options" : "🛒 Add to Cart"}
+              className="min-w-0 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black py-2.5 rounded-lg transition">
+              Add to Cart
             </button>
 
             <button type="button" onClick={handleBuyNow}
-              className="w-full bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-black py-2.5 rounded-lg transition">
-              ⚡ Buy Now
+              className="min-w-0 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-black py-2.5 rounded-lg transition">
+              Buy Now
             </button>
 
             <button type="button" aria-label="More product options" title="More options"
