@@ -170,10 +170,25 @@ function luxmoPrintInvoice(order) {
 }
 
 async function luxmoCreateOrRefreshShipment(order) {
-  // Shiprocket is the production default. Legacy iThink selections are
-  // intentionally migrated to Shiprocket until iThink pickup configuration
-  // is present server-side. This prevents paid orders from getting stuck.
+  // Shiprocket is the production provider for both prepaid and COD orders.
+  // COD orders do not have Razorpay IDs, so only prepaid orders require them.
   const provider = "shiprocket";
+  const paymentMethod = String(
+    order?.paymentMethod ||
+    order?.payment_method ||
+    order?.paymentMode ||
+    order?.payment_mode ||
+    ""
+  ).trim().toLowerCase();
+  const isCOD = (
+    paymentMethod === "cod" ||
+    paymentMethod === "cash on delivery" ||
+    paymentMethod === "cash_on_delivery" ||
+    paymentMethod === "cash-on-delivery" ||
+    order?.isCOD === true ||
+    order?.isCod === true
+  );
+
   const payload = {
     razorpay_order_id: order?.razorpayOrderId || "",
     razorpay_payment_id: order?.razorpayPaymentId || "",
@@ -181,9 +196,11 @@ async function luxmoCreateOrRefreshShipment(order) {
     order: { ...order, provider, courierProvider: provider },
     orderData: { ...order, provider, courierProvider: provider }
   };
-  if (!payload.razorpay_order_id || !payload.razorpay_payment_id) {
+
+  if (!isCOD && (!payload.razorpay_order_id || !payload.razorpay_payment_id)) {
     throw new Error("Verified Razorpay order/payment IDs are missing. This order cannot be shipped safely.");
   }
+
   return createAuthoritativeShipment(payload);
 }
 
@@ -3280,8 +3297,6 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
           })),
           couponCode: String(order.couponCode || order.coupon || "").trim().toUpperCase(),
           shippingMode: order.shippingMode || "standard",
-          // Keep the server pricing in sync with the checkout-selected delivery fee.
-          shippingFee: Number(order.shippingFee || 0),
           paymentMethod: "cod",
           customer: {
             name: order.customer?.name || order.address?.name || "",
@@ -3311,8 +3326,13 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
         const next=[finalOrder,...orders];
         setOrders(next);
         safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
-        setCheckout(false);
-        alert(`Order ${finalOrder.id} created successfully. Use this Order ID and your mobile number in My Orders.`);
+        luxmoRememberPaidOrder(finalOrder, null);
+        alert(`Order ${finalOrder.id} created successfully. Opening My Orders now.`);
+        if (typeof onCheckoutClose === "function") {
+          onCheckoutClose();
+        } else {
+          setCheckout(false);
+        }
       } catch(error){
         console.error("COD order creation failed:", error);
         alert(error?.message || "COD order could not be created. Please try again.");
@@ -4126,15 +4146,46 @@ function LuxmoCustomerMyOrders({ onBack }) {
   const [order, setOrder] = React.useState(null);
 
   React.useEffect(() => {
-    // Never prefill a previous customer's Order ID/mobile on the public
-    // My Orders screen. The customer must enter the current order details.
-    try {
-      localStorage.removeItem("luxmo_last_paid_order_lookup");
-    } catch {}
-    setOrderId("");
-    setMobile("");
-    setOrder(null);
-    setError("");
+    let cancelled = false;
+
+    const loadRememberedOrder = async () => {
+      try {
+        const raw = localStorage.getItem("luxmo_last_paid_order_lookup");
+        const remembered = raw ? JSON.parse(raw) : null;
+        const rememberedId = String(remembered?.orderId || "").trim();
+        const rememberedMobile = String(remembered?.mobile || "").replace(/\D/g, "").slice(-10);
+
+        if (!rememberedId || !/^[6-9]\d{9}$/.test(rememberedMobile)) {
+          setOrderId("");
+          setMobile("");
+          setOrder(null);
+          return;
+        }
+
+        setOrderId(rememberedId);
+        setMobile(rememberedMobile);
+        setLoading(true);
+        const data = await fetchCustomerOrder(rememberedId, rememberedMobile);
+
+        if (!cancelled && data?.order) {
+          setOrder(data.order);
+          setError("");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOrder(null);
+          setError("");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadRememberedOrder();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const searchOrder = async (event) => {
@@ -7353,7 +7404,7 @@ export default function LuxmoHubApp() {
                   siteTheme={siteTheme}
                   setSiteTheme={setSiteTheme}
                   checkoutOnly={true}
-                  onCheckoutClose={() => { setShowCheckoutModal(false); setBuyNowItem(null); }}
+                  onCheckoutClose={() => { setShowCheckoutModal(false); setBuyNowItem(null); setActiveTab("my-orders"); }}
                 />
               </div>
             </div>
