@@ -3280,6 +3280,8 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
           })),
           couponCode: String(order.couponCode || order.coupon || "").trim().toUpperCase(),
           shippingMode: order.shippingMode || "standard",
+          // Keep the server pricing in sync with the checkout-selected delivery fee.
+          shippingFee: Number(order.shippingFee || 0),
           paymentMethod: "cod",
           customer: {
             name: order.customer?.name || order.address?.name || "",
