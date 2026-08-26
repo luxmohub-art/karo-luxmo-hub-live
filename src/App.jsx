@@ -12,50 +12,6 @@ const LUXMO_SECURITY_KEYS = Object.freeze({
   orders: "luxmo_pro_orders",
 });
 
-
-/* ============================================================================
-   LUXMO HUB - REQUESTED PROFESSIONAL HOMEPAGE ORDER
-   IMPORTANT: This is additive only. Existing application features, APIs,
-   checkout, payment, orders, admin, shipping, reviews, wishlist and catalogue
-   code are preserved.
-   ============================================================================ */
-const LUXMO_HOME_SECTION_ORDER = [
-  "header",
-  "hero",
-  "shop-by-category",
-  "featured-best-sellers",
-  "hybrid-solar-inverters",
-  "solar-accessories",
-  "mobile-cases-accessories",
-  "materials-protection",
-  "trust-delivery-support",
-  "solar-calculator",
-  "reviews",
-  "faq",
-  "final-shop-cta",
-  "footer",
-];
-
-const LUXMO_HOME_TRUST_ITEMS = [
-  { icon: "🛡️", title: "Warranty Support", text: "Warranty and after-sales support for eligible products." },
-  { icon: "📦", title: "Order Tracking", text: "Track orders and shipment status from My Orders." },
-  { icon: "💬", title: "WhatsApp Support", text: "Get product and order assistance quickly." },
-  { icon: "🔒", title: "Secure Payment", text: "Secure online payment through the existing checkout." },
-  { icon: "🚚", title: "Fast Delivery", text: "Delivery options are calculated during checkout." },
-  { icon: "↩️", title: "Easy Returns", text: "Returns remain subject to the existing store policy." },
-];
-
-const LUXMO_HOME_SOLAR_ACCESSORIES = [
-  "ACDB",
-  "DCDB",
-  "Wi-Fi Modules",
-  "Solar Accessories",
-];
-
-/* ============================================================================
-   END ADDITIVE HOMEPAGE CONFIGURATION
-   ============================================================================ */
-
 function luxmoSecurityFetch(url, options = {}) {
   return fetch(url, {
     credentials: "include",
@@ -4105,23 +4061,15 @@ function LuxmoCustomerMyOrders({ onBack }) {
   const [order, setOrder] = React.useState(null);
 
   React.useEffect(() => {
-    let cancelled = false;
+    // Never prefill a previous customer's Order ID/mobile on the public
+    // My Orders screen. The customer must enter the current order details.
     try {
-      const saved = JSON.parse(localStorage.getItem("luxmo_last_paid_order_lookup") || "null");
-      if (saved?.orderId && saved?.mobile) {
-        setOrderId(String(saved.orderId));
-        setMobile(String(saved.mobile));
-        (async () => {
-          try {
-            const data = await fetchCustomerOrder(saved.orderId, saved.mobile);
-            if (!cancelled && data?.order) setOrder(data.order);
-          } catch (e) {
-            console.warn("Automatic My Orders load skipped:", e?.message || e);
-          }
-        })();
-      }
+      localStorage.removeItem("luxmo_last_paid_order_lookup");
     } catch {}
-    return () => { cancelled = true; };
+    setOrderId("");
+    setMobile("");
+    setOrder(null);
+    setError("");
   }, []);
 
   const searchOrder = async (event) => {
@@ -4171,11 +4119,11 @@ function LuxmoCustomerMyOrders({ onBack }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           <div>
             <label className="block text-xs font-bold mb-1">Order ID</label>
-            <input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="e.g. LUX..." className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
+            <input autoComplete="off" name="luxmo-order-id" value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="e.g. LUX..." className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
           </div>
           <div>
             <label className="block text-xs font-bold mb-1">Mobile Number</label>
-            <input value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" maxLength={10} placeholder="10-digit mobile number" className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
+            <input autoComplete="off" name="luxmo-order-mobile" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" maxLength={10} placeholder="10-digit mobile number" className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm" />
           </div>
         </div>
         {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 text-red-700 p-3 text-xs font-semibold">{error}</div>}
@@ -4327,7 +4275,7 @@ export default function LuxmoHubApp() {
       return saved ? { ...luxmoClone(DEFAULT_HOMEPAGE_CONFIG), ...JSON.parse(saved) } : luxmoClone(DEFAULT_HOMEPAGE_CONFIG);
     } catch { return luxmoClone(DEFAULT_HOMEPAGE_CONFIG); }
   });
-  const [homepagePublished, setHomepagePublished] = useState(luxmoClone(DEFAULT_HOMEPAGE_CONFIG));
+  const [homepagePublished, setHomepagePublished] = useState(normalizeLuxmoHomepageConfig(DEFAULT_HOMEPAGE_CONFIG));
   const [homepagePreview, setHomepagePreview] = useState(false);
   const [homepageInitialized, setHomepageInitialized] = useState(false);
   const [homepageLoading, setHomepageLoading] = useState(true);
@@ -4360,7 +4308,7 @@ export default function LuxmoHubApp() {
         const data = await r.json().catch(() => ({}));
         if (!r.ok || !data.success) throw new Error(luxmoApiErrorMessage(data.error, "Unable to load homepage from database."));
         if (!cancelled) {
-          const config = { ...luxmoClone(DEFAULT_HOMEPAGE_CONFIG), ...(data.config || {}) };
+          const config = normalizeLuxmoHomepageConfig(data.config);
           setHomepagePublished(config);
           setHomepageDraft(config);
           setHomepageInitialized(true);
@@ -4369,7 +4317,7 @@ export default function LuxmoHubApp() {
       } catch (e) {
         if (!cancelled) {
           setHomepageError(e?.message || "Unable to load homepage.");
-          setHomepagePublished(luxmoClone(DEFAULT_HOMEPAGE_CONFIG));
+          setHomepagePublished(normalizeLuxmoHomepageConfig(DEFAULT_HOMEPAGE_CONFIG));
         }
       } finally {
         if (!cancelled) setHomepageLoading(false);
@@ -4387,6 +4335,18 @@ export default function LuxmoHubApp() {
   useEffect(() => {
     const seo = homepagePublished?.seo || {};
     if (seo.title) document.title = seo.title;
+
+    const ensureLink = (rel, href, type = "") => {
+      let link = document.querySelector(`link[rel="${rel}"]`);
+      if (!link) { link = document.createElement("link"); link.rel = rel; document.head.appendChild(link); }
+      link.href = href;
+      if (type) link.type = type;
+      return link;
+    };
+    ensureLink("icon", "/luxmo-hub-favicon.png?v=20260826", "image/png");
+    ensureLink("shortcut icon", "/luxmo-hub-favicon.png?v=20260826", "image/png");
+    ensureLink("apple-touch-icon", "/luxmo-hub-favicon.png?v=20260826", "image/png");
+    ensureLink("manifest", "/manifest.json?v=20260826", "application/manifest+json");
     if (seo.description) {
       let meta = document.querySelector('meta[name="description"]');
       if (!meta) { meta = document.createElement("meta"); meta.name = "description"; document.head.appendChild(meta); }
@@ -4401,6 +4361,15 @@ export default function LuxmoHubApp() {
 
   useEffect(() => {
     const seo = homepagePublished?.seo || {};
+    const setMeta = (selector, attr, value) => {
+      if (!value) return;
+      let node = document.querySelector(selector);
+      if (!node) { node = document.createElement("meta"); node.setAttribute(attr, selector.includes("property=") ? selector.split('"')[1] : selector.split('"')[1]); document.head.appendChild(node); }
+      node.content = value;
+    };
+    setMeta('meta[property="og:title"]', "property", seo.title || "LUXMO HUB | Hybrid Solar Inverters & Premium Mobile Cases");
+    setMeta('meta[property="og:description"]', "property", seo.description || "Shop hybrid solar inverters, ACDB, DCDB, Wi-Fi modules, solar accessories and premium mobile phone back cases.");
+    setMeta('meta[property="og:image"]', "property", seo.ogImage || "/luxmo-hub-og.png?v=20260826");
     if (seo.ogImage) {
       let og = document.querySelector('meta[property="og:image"]');
       if (!og) { og = document.createElement("meta"); og.setAttribute("property", "og:image"); document.head.appendChild(og); }
@@ -5969,6 +5938,7 @@ export default function LuxmoHubApp() {
               setShowWhatsAppModal={setShowWhatsAppModal}
               onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p?.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
               onAddToCart={addToCart}
+              onBuyNow={startBuyNow}
             />
 
             {/* ORIGINAL HOME CONTENT — PRESERVED IN SOURCE, NOT SHOWN ON THE PREMIUM HOME */}
@@ -7762,6 +7732,29 @@ const luxmoClone = (value) => {
   try { return JSON.parse(JSON.stringify(value)); } catch { return value; }
 };
 
+function normalizeLuxmoHomepageConfig(raw) {
+  const base = luxmoClone(DEFAULT_HOMEPAGE_CONFIG);
+  const incoming = raw && typeof raw === "object" ? raw : {};
+  const requested = [
+    "hero", "categories", "promotions", "solar", "accessories", "mobile",
+    "materials", "trust", "support", "calculator", "reviews", "faq", "cta", "footer"
+  ];
+  const existingOrder = Array.isArray(incoming.sections) ? incoming.sections : [];
+  const sections = [...existingOrder, ...requested.filter(key => !existingOrder.includes(key))];
+  return {
+    ...base,
+    ...incoming,
+    hero: { ...base.hero, ...(incoming.hero || {}) },
+    categories: Array.isArray(incoming.categories) && incoming.categories.length ? incoming.categories : base.categories,
+    sections,
+    sectionEnabled: { ...base.sectionEnabled, ...(incoming.sectionEnabled || {}) },
+    promos: Array.isArray(incoming.promos) ? incoming.promos : [],
+    reviews: Array.isArray(incoming.reviews) ? incoming.reviews : [],
+    faqs: Array.isArray(incoming.faqs) && incoming.faqs.length ? incoming.faqs : base.faqs,
+    seo: { ...base.seo, ...(incoming.seo || {}) },
+  };
+}
+
 const luxmoApiErrorMessage = (value, fallback = "Something went wrong.") => {
   if (typeof value === "string" && value.trim()) return value;
   if (value && typeof value === "object") {
@@ -7786,7 +7779,7 @@ const luxmoDiscount = (mrp, salePrice) => {
 function LuxmoControlledHomepageSections({
   products = [], homepageConfig = DEFAULT_HOMEPAGE_CONFIG, setSelectedCategory, setActiveTab,
   setShowSolarCalculator, setShowTrackingModal, setShowWarrantyModal, setShowWhatsAppModal,
-  onSelectProduct, onAddToCart = () => {}
+  onSelectProduct, onAddToCart = () => {}, onBuyNow = () => {}
 }) {
   const [promoIndex, setPromoIndex] = React.useState(0);
   const [promoVideo, setPromoVideo] = React.useState(null);
@@ -7794,10 +7787,18 @@ function LuxmoControlledHomepageSections({
   const enabled = cfg.sectionEnabled || DEFAULT_HOMEPAGE_CONFIG.sectionEnabled;
   const publishedProducts = products.filter(p => p.published !== false);
   const getProduct = (id) => products.find(p => String(p.id) === String(id));
-  const promos = (cfg.promos || [])
+  const configuredPromos = (cfg.promos || [])
     .filter(x => x && x.show !== false)
     .sort((a,b) => Number(a.order || 0) - Number(b.order || 0))
     .slice(0, 12);
+  const promos = configuredPromos.length ? configuredPromos : publishedProducts
+    .slice()
+    .sort((a,b) => {
+      const score = (p) => (p.bestSeller ? 1000 : 0) + (p.hotDeal ? 500 : 0) + Number(p.discount || 0);
+      return score(b) - score(a);
+    })
+    .slice(0, 6)
+    .map((p, i) => ({ id: `fallback-featured-${p.id || i}`, productId: p.id, show: true, order: i + 1, badge: p.bestSeller ? "BEST SELLER" : (p.hotDeal ? "HOT DEAL" : "FEATURED") }));
 
   const goCategory = (category) => { setSelectedCategory(category); setActiveTab("catalog"); };
   const visibleSections = (cfg.sections || DEFAULT_HOMEPAGE_CONFIG.sections).filter(key => enabled[key] !== false);
@@ -7964,19 +7965,44 @@ function LuxmoControlledHomepageSections({
     </section>;
   };
 
-  const productGrid = (list, title, category, key) => <section key={key}>
-    <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p>
-        <h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">{title}</h2>
-        <p className="mt-1 text-sm text-slate-500">Choose a product, add it to your cart or buy it directly.</p>
+  const productGrid = (list, title, category, key) => {
+    const accessoryFallback = [
+      ["ACDB", "☀️", "AC Distribution Box", "AC-side solar protection and isolation solutions."],
+      ["DCDB", "⚡", "DC Distribution Box", "DC-side solar protection and isolation solutions."],
+      ["Wi-Fi Modules", "📶", "Wi-Fi Monitoring Module", "Smart monitoring accessories for compatible inverters."],
+      ["Solar Accessories", "🔌", "Solar Installation Accessories", "Essential accessories for a reliable solar setup."],
+    ];
+    const fallback = key === "accessories" ? accessoryFallback : [];
+    return <section key={key}>
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p>
+          <h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">{title}</h2>
+          <p className="mt-1 text-sm text-slate-500">Choose a product, add it to your cart or buy it directly.</p>
+        </div>
+        <button onClick={() => goCategory(category)} className="self-start sm:self-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-900 hover:shadow-sm">View All →</button>
       </div>
-      <button onClick={() => goCategory(category)} className="self-start sm:self-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-900 hover:shadow-sm">View All →</button>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}
-    </div>
-  </section>;
+      {list.length ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} onBuyNow={onBuyNow} />)}
+        </div>
+      ) : fallback.length ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {fallback.map(([label, icon, heading, desc]) => (
+            <button type="button" key={label} onClick={() => goCategory(category)} className="text-left rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:-translate-y-0.5 hover:shadow-lg transition">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-2xl">{icon}</div>
+              <div className="mt-4 text-[10px] font-black uppercase tracking-wider text-blue-600">{label}</div>
+              <h3 className="mt-1 font-black text-slate-900">{heading}</h3>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{desc}</p>
+              <span className="inline-flex mt-4 rounded-xl bg-slate-950 text-white px-3 py-2 text-[11px] font-black">Shop {label} →</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">Products will appear here when published from Admin Panel.</div>
+      )}
+    </section>;
+  };
 
   const renderSection = (key) => {
     if (enabled[key] === false) return null;
@@ -8064,7 +8090,7 @@ function LuxmoHomepageAdmin({ products, homepageDraft, setHomepageDraft, onSaveD
 
   return <div className="space-y-5">
     <div className="flex flex-col lg:flex-row gap-2 justify-between items-start lg:items-center"><div><h2 className="text-xl font-black">🏠 Homepage Management</h2><p className="text-xs text-slate-500">Control hero, sections, up to 12 promotional products, reviews, FAQ and SEO.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => setPreviewMode(!previewMode)} className="rounded-xl border px-3 py-2 text-xs font-black">{previewMode ? "Close Preview" : "Preview Homepage"}</button><button onClick={onSaveDraft} className="rounded-xl bg-slate-900 text-white px-3 py-2 text-xs font-black">Save Draft</button><button onClick={onPublish} className="rounded-xl bg-emerald-600 text-white px-3 py-2 text-xs font-black">Publish</button></div></div>
-    {previewMode ? <div className="rounded-2xl border bg-slate-50 p-4"><LuxmoControlledHomepageSections products={products} homepageConfig={cfg} setSelectedCategory={()=>{}} setActiveTab={()=>{}} setShowSolarCalculator={()=>{}} setShowTrackingModal={()=>{}} setShowWarrantyModal={()=>{}} setShowWhatsAppModal={()=>{}} onSelectProduct={()=>{}} /></div> : <div className="grid lg:grid-cols-[220px_1fr] gap-5">
+    {previewMode ? <div className="rounded-2xl border bg-slate-50 p-4"><LuxmoControlledHomepageSections products={products} homepageConfig={cfg} setSelectedCategory={()=>{}} setActiveTab={()=>{}} setShowSolarCalculator={()=>{}} setShowTrackingModal={()=>{}} setShowWarrantyModal={()=>{}} setShowWhatsAppModal={()=>{}} onSelectProduct={()=>{}} onBuyNow={()=>{}} /></div> : <div className="grid lg:grid-cols-[220px_1fr] gap-5">
       <div className="bg-white border rounded-2xl p-2 sm:p-3 w-full min-w-0 max-w-full flex flex-nowrap lg:flex-col gap-2 overflow-x-auto overflow-y-hidden touch-pan-x overscroll-x-contain scrollbar-thin lg:overflow-visible lg:sticky lg:top-24" role="tablist" aria-label="Homepage Management sections">
          <div className="lg:hidden shrink-0 px-1 pb-1 text-[10px] font-bold text-slate-400">← Swipe tabs horizontally →</div>
         {["hero","promotions","categories","sections","reviews","faq","seo"].map(x => <button key={x} onClick={()=>setActive(x)} className={`shrink-0 lg:w-full flex-none text-left rounded-xl px-3 py-2.5 text-xs font-black whitespace-nowrap select-none ${active===x?'bg-slate-950 text-white':'hover:bg-slate-100'}`} role="tab" aria-selected={active===x}>{x === "hero" ? "🔥 Hero" : x === "promotions" ? "🛍️ Promotional Products" : x === "categories" ? "🧩 Categories" : x === "sections" ? "🧩 Sections ON/OFF & Order" : x === "reviews" ? "⭐ Reviews" : x === "faq" ? "❓ FAQ" : "🔎 SEO"}</button>)}
@@ -8869,7 +8895,7 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
                 else onAddToCart(product);
               }}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black py-2.5 rounded-lg transition">
-              {product.variants?.length ? "Select Options" : "🛒 Add to Cart"}
+              🛒 Add to Cart
             </button>
 
             <button type="button" onClick={handleBuyNow}
