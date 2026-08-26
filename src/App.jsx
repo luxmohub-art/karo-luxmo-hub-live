@@ -2295,6 +2295,16 @@ function LuxmoCheckout({
   const [couponError, setCouponError] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
 
+  useEffect(() => {
+    try {
+      const pendingCoupon = String(localStorage.getItem("luxmo_pending_coupon_code") || "").trim().toUpperCase();
+      if (pendingCoupon) {
+        setCoupon(pendingCoupon);
+        localStorage.removeItem("luxmo_pending_coupon_code");
+      }
+    } catch {}
+  }, []);
+
   const managedPaymentMethods =
     safeReadJSON("luxmo_master_admin_settings_v2", {
       paymentMethods: LUXMO_PAYMENT_METHODS,
@@ -7685,7 +7695,7 @@ const DEFAULT_HOMEPAGE_CONFIG = {
     enabled: true,
     badge: "LUXMO HUB · Solar + Mobile",
     title: "Power Your Home. Protect Your Phone.",
-    description: "Shop hybrid solar inverters, ACDB, DCDB, Wi-Fi modules and solar accessories — plus premium mobile back cases and accessories. Easy shopping, secure payment and reliable support.",
+    description: "Shop hybrid solar inverters, solar accessories & premium mobile cases. Secure payment, fast delivery and reliable support.",
     primaryText: "☀️ Shop Solar",
     primaryLink: "Hybrid Solar Inverter",
     secondaryText: "📱 Shop Mobile Cases",
@@ -7828,6 +7838,39 @@ function LuxmoControlledHomepageSections({
         <div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Special Offers</p><h2 className="text-2xl md:text-3xl font-black text-slate-900">🔥 Featured Deals</h2></div>
         <span className="text-xs font-bold text-slate-500">{promoCards.length}/12 featured</span>
       </div>
+
+      {/* CUSTOMER OFFERS — visible on the public homepage.
+          Tapping an offer saves only the coupon code for checkout prefill;
+          the server still validates the coupon and calculates the discount. */}
+      <div className="mb-5 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-amber-50 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Customer Offers</p>
+            <h3 className="mt-1 text-lg sm:text-xl font-black text-slate-950">🎁 Save More on Your Order</h3>
+            <p className="mt-1 text-xs sm:text-sm text-slate-600">Tap a coupon to pre-fill it automatically at checkout.</p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {LUXMO_COUPONS.map(c => (
+            <button
+              key={c.code}
+              type="button"
+              onClick={() => {
+                try { localStorage.setItem("luxmo_pending_coupon_code", c.code); } catch {}
+              }}
+              className="text-left rounded-xl border border-white bg-white px-3.5 py-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
+              title={`Use ${c.code} at checkout`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-black text-sm text-slate-950">{c.code}</span>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-700">OFFER</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-slate-600">{c.label}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {promoCards.length ? (
         <div className="relative">
           {(() => {
@@ -7877,23 +7920,23 @@ function LuxmoControlledHomepageSections({
   );
 
   const renderHero = () => <section key="hero" className="relative overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-2xl border border-slate-800">
-    {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 hidden md:block w-full h-full object-cover opacity-30" />}
-    {cfg.hero.mobileImage && <img src={cfg.hero.mobileImage} alt="LUXMO HUB" className="absolute inset-0 md:hidden w-full h-full object-cover opacity-25" />}
+    {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
     <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-950/95 to-blue-950/80" />
     <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full bg-amber-400/10 blur-3xl" />
     <div className="absolute -left-28 -bottom-28 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
-    <div className="relative grid lg:grid-cols-[1.2fr_.8fr] gap-8 items-center px-5 py-8 sm:px-8 sm:py-10 md:px-12 md:py-14">
+    {/* SAME DESKTOP HERO COMPOSITION ON ALL SCREEN SIZES — compacted, never removes Shop-by-Need */}
+    <div className="relative grid grid-cols-[minmax(0,1.2fr)_minmax(136px,.8fr)] gap-3 sm:gap-4 md:gap-8 items-center px-2.5 py-4 sm:px-5 sm:py-7 md:px-12 md:py-14">
       <div>
         <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">
           {cfg.hero.badge}
         </div>
-        <h1 className="mt-5 max-w-3xl text-3xl sm:text-4xl md:text-6xl font-black leading-[1.03] tracking-tight">
+        <h1 className="mt-3 sm:mt-5 max-w-3xl text-[clamp(1.25rem,5.2vw,3.75rem)] font-black leading-[1.03] tracking-tight">
           {cfg.hero.title}
         </h1>
-        <p className="mt-5 max-w-2xl text-sm sm:text-base md:text-lg leading-relaxed text-slate-300">
+        <p className="mt-3 sm:mt-5 max-w-2xl text-[clamp(.62rem,2.1vw,1.125rem)] leading-relaxed text-slate-300">
           {cfg.hero.description}
         </p>
-        <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+        <div className="mt-4 sm:mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-w-xl">
           <button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-amber-300 transition">
             {cfg.hero.primaryText}
           </button>
@@ -7901,35 +7944,35 @@ function LuxmoControlledHomepageSections({
             {cfg.hero.secondaryText}
           </button>
         </div>
-        <div className="mt-6 flex flex-wrap gap-2 text-[11px] sm:text-xs font-bold text-slate-300">
+        <div className="mt-3 sm:mt-6 flex flex-wrap gap-1.5 sm:gap-2 text-[8px] sm:text-[11px] font-bold text-slate-300">
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🔒 Secure Payment</span>
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🚚 Delivery Support</span>
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🛡️ Warranty Support</span>
         </div>
       </div>
-      <div className="hidden lg:block">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Shop by need</div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button onClick={() => goCategory("Hybrid Solar Inverter")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
-              <div className="text-3xl">☀️</div>
-              <div className="mt-2 font-black text-sm">Solar Power</div>
-              <div className="mt-1 text-[11px] text-slate-300">Inverters & solutions</div>
+      <div className="min-w-0">
+        <div className="rounded-2xl sm:rounded-3xl border border-white/10 bg-white/5 p-2.5 sm:p-5 backdrop-blur-sm">
+          <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] sm:tracking-[0.2em] text-amber-300">Shop by need</div>
+          <div className="mt-2 sm:mt-4 grid grid-cols-2 gap-1.5 sm:gap-3">
+            <button onClick={() => goCategory("Hybrid Solar Inverter")} className="rounded-xl sm:rounded-2xl bg-white/10 p-2 sm:p-4 text-left hover:bg-white/15 transition">
+              <div className="text-base sm:text-3xl">☀️</div>
+              <div className="mt-1 sm:mt-2 font-black text-[9px] sm:text-sm">Solar Power</div>
+              <div className="mt-0.5 sm:mt-1 text-[7px] sm:text-[11px] text-slate-300 leading-tight">Inverters & solutions</div>
             </button>
-            <button onClick={() => goCategory("Solar Accessories")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
-              <div className="text-3xl">🔋</div>
-              <div className="mt-2 font-black text-sm">Solar Accessories</div>
-              <div className="mt-1 text-[11px] text-slate-300">ACDB, DCDB, Wi-Fi & more</div>
+            <button onClick={() => goCategory("Solar Accessories")} className="rounded-xl sm:rounded-2xl bg-white/10 p-2 sm:p-4 text-left hover:bg-white/15 transition">
+              <div className="text-base sm:text-3xl">🔋</div>
+              <div className="mt-1 sm:mt-2 font-black text-[8px] sm:text-sm">Solar Accessories</div>
+              <div className="mt-0.5 sm:mt-1 text-[7px] sm:text-[11px] text-slate-300 leading-tight">ACDB, DCDB, Wi-Fi & more</div>
             </button>
-            <button onClick={() => goCategory("Mobile Back Case")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
-              <div className="text-3xl">📱</div>
-              <div className="mt-2 font-black text-sm">Mobile Cases</div>
-              <div className="mt-1 text-[11px] text-slate-300">Premium phone protection</div>
+            <button onClick={() => goCategory("Mobile Back Case")} className="rounded-xl sm:rounded-2xl bg-white/10 p-2 sm:p-4 text-left hover:bg-white/15 transition">
+              <div className="text-base sm:text-3xl">📱</div>
+              <div className="mt-1 sm:mt-2 font-black text-[8px] sm:text-sm">Mobile Cases</div>
+              <div className="mt-0.5 sm:mt-1 text-[6px] sm:text-[11px] text-slate-300 leading-tight">Premium phone protection</div>
             </button>
-            <button onClick={() => setShowWhatsAppModal(true)} className="rounded-2xl bg-amber-400 p-4 text-left text-slate-950 hover:bg-amber-300 transition">
-              <div className="text-3xl">💬</div>
-              <div className="mt-2 font-black text-sm">Need Help?</div>
-              <div className="mt-1 text-[11px] text-slate-700">Talk to Luxmo Hub</div>
+            <button onClick={() => setShowWhatsAppModal(true)} className="rounded-xl sm:rounded-2xl bg-amber-400 p-2 sm:p-4 text-left text-slate-950 hover:bg-amber-300 transition">
+              <div className="text-base sm:text-3xl">💬</div>
+              <div className="mt-1 sm:mt-2 font-black text-[8px] sm:text-sm">Need Help?</div>
+              <div className="mt-0.5 sm:mt-1 text-[7px] sm:text-[11px] text-slate-700 leading-tight">Talk to Luxmo Hub</div>
             </button>
           </div>
         </div>
