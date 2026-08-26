@@ -3251,25 +3251,78 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
   const [checkout,setCheckout]=useState(Boolean(checkoutOnly));
   const subtotal=cart.reduce((s,item)=>s+luxmoProductPrice(item)*Number(item.qty||1),0);
   const selectProduct=p=>{setRecent(prev=>{const next=[p.id,...prev.filter(id=>id!==p.id)].slice(0,12);safeWriteJSON(LUXMO_PRO_STORAGE.recentlyViewed,next);return next;});onSelectProduct(p);};
-  const createOrder=order=>{
-    const next=[order,...orders];
-    setOrders(next);
-    safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
+  const createOrder=async(order)=>{
+    // Razorpay keeps the existing payment flow.
     if(order.paymentMethod === "razorpay"){
+      const next=[order,...orders];
+      setOrders(next);
+      safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
       try { localStorage.setItem("luxmo_pending_payment_order_id", String(order.id || "")); } catch {}
-    }
-    setCheckout(false);
-
-    // Online orders continue directly into the existing Razorpay flow.
-    // This removes the old duplicate cart-payment path and keeps the
-    // delivery address/order data collected by Secure Checkout.
-    if(order.paymentMethod === "razorpay"){
+      setCheckout(false);
       setTimeout(()=>{
         if (typeof onPay === "function") onPay();
       },0);
-    }else{
-      alert(`Order ${order.id} created successfully.`);
+      return;
     }
+
+    // COD MUST be persisted server-side before showing success.
+    // The customer My Orders page reads /api/orders from Firestore, so a
+    // localStorage-only COD order is not a real customer order.
+    if(order.paymentMethod === "cod"){
+      try {
+        const response = await createAuthoritativeOrder({
+          action: "create",
+          websiteOrderId: String(order.id || "").trim(),
+          items: (Array.isArray(order.items) ? order.items : []).map(item => ({
+            id: item.id,
+            sku: item.sku || "",
+            qty: Number(item.qty || item.quantity || 1)
+          })),
+          couponCode: String(order.couponCode || order.coupon || "").trim().toUpperCase(),
+          shippingMode: order.shippingMode || "standard",
+          paymentMethod: "cod",
+          customer: {
+            name: order.customer?.name || order.address?.name || "",
+            phone: order.customer?.phone || order.address?.phone || "",
+            email: order.customer?.email || order.email || ""
+          },
+          shippingAddress: {
+            name: order.address?.name || order.customer?.name || "",
+            phone: order.address?.phone || order.customer?.phone || "",
+            line1: order.address?.line1 || "",
+            line2: order.address?.line2 || "",
+            city: order.address?.city || "",
+            state: order.address?.state || "",
+            pincode: order.address?.pincode || ""
+          }
+        });
+
+        const serverOrder = response?.order || {};
+        const finalOrder = {
+          ...order,
+          ...serverOrder,
+          id: response?.orderId || serverOrder?.orderId || serverOrder?.websiteOrderId || order.id,
+          websiteOrderId: response?.orderId || serverOrder?.websiteOrderId || serverOrder?.orderId || order.id,
+          paymentMethod: "cod"
+        };
+
+        const next=[finalOrder,...orders];
+        setOrders(next);
+        safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
+        setCheckout(false);
+        alert(`Order ${finalOrder.id} created successfully. Use this Order ID and your mobile number in My Orders.`);
+      } catch(error){
+        console.error("COD order creation failed:", error);
+        alert(error?.message || "COD order could not be created. Please try again.");
+      }
+      return;
+    }
+
+    const next=[order,...orders];
+    setOrders(next);
+    safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
+    setCheckout(false);
+    alert(`Order ${order.id} created successfully.`);
   };
   const tabs=[
     ["overview","Overview"],["profile","Profile"],["wishlist","Wishlist"],["compare","Compare"],["orders","Orders"],["reviews","Reviews"],["alerts","Stock Alerts"],["support","Support"],["faq","FAQ"],["shipping","Shipping"],["seo","SEO"]
@@ -7818,6 +7871,7 @@ function LuxmoControlledHomepageSections({
     return {
       ...slot, ...p,
       id: slot.id || p?.id,
+      productId: slot.productId || p?.id,
       title: slot.title || p?.title || "LUXMO HUB Product",
       image: slot.image || p?.images?.[0] || p?.image || "",
       mrp: Number(slot.mrp ?? p?.price ?? 0),
@@ -7894,7 +7948,7 @@ function LuxmoControlledHomepageSections({
                     {p.discount > 0 && <div className="mt-1 text-xs font-black text-emerald-700">🔥 {p.discount}% OFF</div>}
                   </div>
                 </div>
-                <div className="p-3 pt-0 grid grid-cols-2 gap-2"><button type="button" onClick={() => { if (p.detailsUrl) { window.location.href = p.detailsUrl; return; } if (p.id && getProduct(p.id) && onSelectProduct) onSelectProduct(getProduct(p.id)); }} className="rounded-xl border border-slate-300 py-2 text-[11px] font-black">View Details</button><button type="button" onClick={() => { if (p.buyNowUrl) { window.location.href = p.buyNowUrl; return; } if (p.id && getProduct(p.id)) { setActiveTab("catalog"); if (onSelectProduct) onSelectProduct(getProduct(p.id)); } }} className="rounded-xl bg-slate-950 text-white py-2 text-[11px] font-black">Buy Now</button></div>
+                <div className="p-3 pt-0 grid grid-cols-2 gap-2"><button type="button" onClick={() => { if (p.detailsUrl) { window.location.href = p.detailsUrl; return; } const product = getProduct(p.productId || p.id); if (product && onSelectProduct) onSelectProduct(product); }} className="rounded-xl border border-slate-300 py-2 text-[11px] font-black">View Details</button><button type="button" onClick={() => { if (p.buyNowUrl) { window.location.href = p.buyNowUrl; return; } const product = getProduct(p.productId || p.id); if (product) { onBuyNow(product); } }} className="rounded-xl bg-slate-950 text-white py-2 text-[11px] font-black">Buy Now</button></div>
               </article>;
             };
             const desktopCards = promoCards.length <= 5 ? promoCards : Array.from({length: 5}, (_, offset) => promoCards[(promoIndex + offset) % promoCards.length]);
