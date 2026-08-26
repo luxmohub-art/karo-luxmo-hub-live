@@ -3245,6 +3245,9 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
     const next=[order,...orders];
     setOrders(next);
     safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
+    if(order.paymentMethod === "razorpay"){
+      try { localStorage.setItem("luxmo_pending_payment_order_id", String(order.id || "")); } catch {}
+    }
     setCheckout(false);
 
     // Online orders continue directly into the existing Razorpay flow.
@@ -4223,6 +4226,9 @@ export default function LuxmoHubApp() {
   }, []);
 
   const [cart, setCart] = useState([]);
+  // Buy Now is intentionally isolated from the persistent shopping cart.
+  // It represents a temporary, single-checkout item and never mutates cart.
+  const [buyNowItem, setBuyNowItem] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedModelFilter, setSelectedModelFilter] = useState("All");
   const [selectedMainCategory, setSelectedMainCategory] = useState("All");
@@ -4875,7 +4881,7 @@ export default function LuxmoHubApp() {
     }
   };
 
-  const addToCart = (product, variant = null) => {
+  const buildCartItem = (product, variant = null, qty = 1) => {
     const item = variant ? {
       ...product,
       model: variant.model,
@@ -4887,11 +4893,24 @@ export default function LuxmoHubApp() {
       images: variant.images?.length ? variant.images : product.images
     } : product;
     const cartKey = variant ? `${product.id}::${variant.key}` : product.id;
+    return { ...item, cartKey, qty: Math.max(1, Number(qty || 1)) };
+  };
+
+  const addToCart = (product, variant = null) => {
+    const item = buildCartItem(product, variant);
+    const cartKey = item.cartKey;
     setCart(prev => {
       const exists = prev.find(x => x.cartKey === cartKey);
       if (exists) return prev.map(x => x.cartKey === cartKey ? { ...x, qty: Math.min(x.qty + 1, Number(x.stock || 999999)) } : x);
-      return [...prev, { ...item, cartKey, qty: 1 }];
+      return [...prev, item];
     });
+  };
+
+  // Buy Now creates a temporary checkout snapshot. Existing cart items stay untouched.
+  const startBuyNow = (product, variant = null) => {
+    const item = buildCartItem(product, variant);
+    setBuyNowItem(item);
+    setShowCheckoutModal(true);
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.salePrice || item.price) * item.qty, 0);
@@ -4910,7 +4929,10 @@ export default function LuxmoHubApp() {
       return;
     }
 
-    if (!cart || cart.length === 0) {
+    const checkoutItems = buyNowItem ? [buyNowItem] : cart;
+    const wasBuyNowCheckout = Boolean(buyNowItem);
+
+    if (!checkoutItems || checkoutItems.length === 0) {
       alert("Your cart is empty.");
       return;
     }
@@ -4946,12 +4968,19 @@ export default function LuxmoHubApp() {
         console.warn("Could not read Luxmo orders:", e);
       }
 
-      const pendingOrder = storedOrders.find(
-        (order) =>
-          order &&
-          order.paymentMethod === "razorpay" &&
-          (order.paymentStatus === "Pending" || order.status === "Pending Payment")
-      );
+      let pendingPaymentOrderId = "";
+      try {
+        pendingPaymentOrderId = String(localStorage.getItem("luxmo_pending_payment_order_id") || "").trim();
+      } catch {}
+
+      // IMPORTANT: Never fall back to an unrelated old pending Razorpay order.
+      // Payment must always be attached to the exact website order created by
+      // this checkout session.
+      const pendingOrder = pendingPaymentOrderId
+        ? storedOrders.find(
+            (order) => String(order?.id || "") === pendingPaymentOrderId
+          )
+        : null;
 
       if (!pendingOrder) {
         alert("Please complete the delivery address and place the online order from Checkout first.");
@@ -4984,7 +5013,7 @@ export default function LuxmoHubApp() {
       const total = Number(
         pendingOrder.total ??
         pendingOrder.grandTotal ??
-        cartTotal ??
+        (checkoutItems.reduce((sum, item) => sum + luxmoProductPrice(item) * Number(item.qty || 1), 0)) ??
         0
       );
 
@@ -5223,7 +5252,10 @@ export default function LuxmoHubApp() {
               );
               localStorage.removeItem(shipmentLockKey);
               luxmoRememberPaidOrder(orderPayload, response);
-              setCart([]);
+              if (!wasBuyNowCheckout) setCart([]);
+              setBuyNowItem(null);
+              setShowCheckoutModal(false);
+              try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
               setActiveTab("my-orders");
               return;
             }
@@ -5342,7 +5374,10 @@ export default function LuxmoHubApp() {
 
               localStorage.removeItem(shipmentLockKey);
               luxmoRememberPaidOrder(pendingShipmentOrder, response);
-              setCart([]);
+              if (!wasBuyNowCheckout) setCart([]);
+              setBuyNowItem(null);
+              setShowCheckoutModal(false);
+              try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
               setActiveTab("my-orders");
 
               alert(
@@ -5460,7 +5495,10 @@ export default function LuxmoHubApp() {
             );
 
             luxmoRememberPaidOrder(completedOrder, response);
-            setCart([]);
+            if (!wasBuyNowCheckout) setCart([]);
+            setBuyNowItem(null);
+            setShowCheckoutModal(false);
+            try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
             setActiveTab("my-orders");
           } catch (error) {
             // Never report a post-payment processing error as "payment failed".
@@ -6282,7 +6320,16 @@ export default function LuxmoHubApp() {
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
                     onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
                     onAddToCart={addToCart}
-                    onBuyNow={(p) => { if (p.variants?.length) { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); } else { addToCart(p); setActiveTab("cart"); setShowCheckoutModal(true); } }}
+                    onBuyNow={(p) => {
+                      if (p.variants?.length) {
+                        setSelectedProduct(p);
+                        setSelectedVariantKey(p.variants?.[0]?.key || "");
+                        setActiveImageIndex(0);
+                        setActiveTab("product");
+                      } else {
+                        startBuyNow(p);
+                      }
+                    }}
                   />)}
                 </div>
                 {!filteredProducts.length && <div className="bg-white border rounded-2xl p-10 text-center text-slate-500 font-bold">No products match the selected filters. <button type="button" onClick={clearAllFilters} className="text-blue-600">Clear filters</button></div>}
@@ -6779,12 +6826,22 @@ export default function LuxmoHubApp() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(displayedProduct.mobileSpecs).filter(([,v])=>String(v||"").trim()).map(([k,v])=><div key={k} className="rounded-xl bg-white border p-2"><span className="block text-[10px] uppercase text-slate-500">{k.replace(/([A-Z])/g," $1")}</span><strong>{v}</strong></div>)}</div>
               </div>}
 
-              <button
-                onClick={() => addToCart(selectedProduct, activeVariant)}
-                className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg text-sm"
-              >
-                Add to Cart
-              </button>
+              <div className="grid grid-cols-1 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => addToCart(selectedProduct, activeVariant)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl text-sm transition shadow-sm"
+                >
+                  🛒 Add to Cart
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startBuyNow(selectedProduct, activeVariant)}
+                  className="w-full bg-slate-950 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl text-sm transition shadow-sm"
+                >
+                  ⚡ BUY NOW
+                </button>
+              </div>
             </div>
           </div>
           </>
@@ -6810,7 +6867,7 @@ export default function LuxmoHubApp() {
                   <span className="text-blue-600">₹{cartTotal}</span>
                 </div>
                 <button
-                  onClick={() => setShowCheckoutModal(true)}
+                  onClick={() => { setBuyNowItem(null); setShowCheckoutModal(true); }}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
                 >
                   Proceed to Secure Checkout
@@ -7201,7 +7258,7 @@ export default function LuxmoHubApp() {
                 <div className="flex justify-end mb-2">
                   <button
                     type="button"
-                    onClick={() => setShowCheckoutModal(false)}
+                    onClick={() => { setShowCheckoutModal(false); setBuyNowItem(null); }}
                     className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg"
                   >
                     Close Checkout ×
@@ -7209,7 +7266,7 @@ export default function LuxmoHubApp() {
                 </div>
                 <LuxmoProSuite
                   products={products}
-                  cart={cart}
+                  cart={buyNowItem ? [buyNowItem] : cart}
                   addToCart={addToCart}
                   onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowCheckoutModal(false); }}
                   isAdminLoggedIn={false}
@@ -7217,7 +7274,7 @@ export default function LuxmoHubApp() {
                   siteTheme={siteTheme}
                   setSiteTheme={setSiteTheme}
                   checkoutOnly={true}
-                  onCheckoutClose={() => setShowCheckoutModal(false)}
+                  onCheckoutClose={() => { setShowCheckoutModal(false); setBuyNowItem(null); }}
                 />
               </div>
             </div>
@@ -7612,24 +7669,29 @@ export default function LuxmoHubApp() {
 const DEFAULT_HOMEPAGE_CONFIG = {
   hero: {
     enabled: true,
-    badge: "LUXMO HUB · Premium Store",
-    title: "Smart Solar Solutions & Premium Mobile Protection",
-    description: "Reliable hybrid solar inverters and premium protective cases for modern homes, businesses and smartphones.",
-    primaryText: "Shop Solar Inverters",
+    badge: "LUXMO HUB · Solar + Mobile",
+    title: "Power Your Home. Protect Your Phone.",
+    description: "Shop hybrid solar inverters, ACDB, DCDB, Wi-Fi modules and solar accessories — plus premium mobile back cases and accessories. Easy shopping, secure payment and reliable support.",
+    primaryText: "☀️ Shop Solar",
     primaryLink: "Hybrid Solar Inverter",
-    secondaryText: "Shop Mobile Cases",
+    secondaryText: "📱 Shop Mobile Cases",
     secondaryLink: "Mobile Back Case",
     desktopImage: "",
     mobileImage: ""
   },
   categories: [
-    { id: "cat-solar", icon: "☀️", title: "Hybrid Solar Inverters", description: "24V and 48V hybrid inverter solutions.", buttonText: "Shop Inverters", link: "Hybrid Solar Inverter", enabled: true, order: 1 },
-    { id: "cat-accessories", icon: "🔋", title: "Solar Accessories", description: "Accessories for solar installation and monitoring.", buttonText: "Shop Accessories", link: "Solar Accessories", enabled: true, order: 2 },
-    { id: "cat-mobile", icon: "📱", title: "Premium Mobile Cases", description: "Premium protection for modern smartphones.", buttonText: "Shop Cases", link: "Mobile Back Case", enabled: true, order: 3 }
+    { id: "cat-solar", icon: "☀️", title: "Hybrid Solar Inverters", description: "Reliable hybrid inverter solutions for home and business power systems.", buttonText: "Shop Solar", link: "Hybrid Solar Inverter", enabled: true, order: 1 },
+    { id: "cat-accessories", icon: "🔋", title: "Solar Accessories", description: "ACDB, DCDB, Wi-Fi modules and accessories for your solar setup.", buttonText: "Shop Accessories", link: "Solar Accessories", enabled: true, order: 2 },
+    { id: "cat-mobile", icon: "📱", title: "Mobile Cases & Accessories", description: "Protect your smartphone with premium back cases and useful accessories.", buttonText: "Shop Mobile", link: "Mobile Back Case", enabled: true, order: 3 }
   ],
+  // Conversion-first homepage order:
+  // Hero → Categories → Featured Deals → Solar → Accessories → Mobile →
+  // Calculator → Materials → Trust → Support → Reviews → FAQ → CTA
+  // Existing section controls remain compatible with Admin Homepage Management.
   sections: [
-    "hero", "promotions", "categories", "solar", "accessories", "calculator",
-    "mobile", "materials", "trust", "support", "reviews", "faq", "cta", "footer"
+    "hero", "categories", "promotions", "solar", "accessories",
+    "mobile", "calculator", "materials", "trust", "support",
+    "reviews", "faq", "cta", "footer"
   ],
   sectionEnabled: {
     hero: true, promotions: true, categories: true, solar: true, accessories: true,
@@ -7769,15 +7831,64 @@ function LuxmoControlledHomepageSections({
     </section>
   );
 
-  const renderHero = () => <section key="hero" className="relative overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-2xl">
-    {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 hidden md:block w-full h-full object-cover opacity-35" />}
-    {cfg.hero.mobileImage && <img src={cfg.hero.mobileImage} alt="LUXMO HUB" className="absolute inset-0 md:hidden w-full h-full object-cover opacity-35" />}
-    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-950/75 to-slate-950/40" />
-    <div className="relative px-5 py-8 sm:py-10 md:px-12 md:py-14 max-w-4xl">
-      <div className="inline-flex rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-amber-300">{cfg.hero.badge}</div>
-      <h1 className="mt-5 text-3xl sm:text-4xl md:text-6xl font-black leading-tight tracking-tight">{cfg.hero.title}</h1>
-      <p className="mt-5 text-slate-300 text-base md:text-lg leading-relaxed max-w-2xl">{cfg.hero.description}</p>
-      <div className="mt-7 flex flex-col sm:flex-row gap-3"><button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="w-full sm:w-auto rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-amber-300 transition">{cfg.hero.primaryText}</button><button onClick={() => goCategory(cfg.hero.secondaryLink || "Mobile Back Case")} className="w-full sm:w-auto rounded-xl bg-white px-5 py-3.5 font-black text-slate-950 shadow-sm hover:bg-slate-100 transition">{cfg.hero.secondaryText}</button></div>
+  const renderHero = () => <section key="hero" className="relative overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-2xl border border-slate-800">
+    {cfg.hero.desktopImage && <img src={cfg.hero.desktopImage} alt="LUXMO HUB" className="absolute inset-0 hidden md:block w-full h-full object-cover opacity-30" />}
+    {cfg.hero.mobileImage && <img src={cfg.hero.mobileImage} alt="LUXMO HUB" className="absolute inset-0 md:hidden w-full h-full object-cover opacity-25" />}
+    <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-950/95 to-blue-950/80" />
+    <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full bg-amber-400/10 blur-3xl" />
+    <div className="absolute -left-28 -bottom-28 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
+    <div className="relative grid lg:grid-cols-[1.2fr_.8fr] gap-8 items-center px-5 py-8 sm:px-8 sm:py-10 md:px-12 md:py-14">
+      <div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">
+          {cfg.hero.badge}
+        </div>
+        <h1 className="mt-5 max-w-3xl text-3xl sm:text-4xl md:text-6xl font-black leading-[1.03] tracking-tight">
+          {cfg.hero.title}
+        </h1>
+        <p className="mt-5 max-w-2xl text-sm sm:text-base md:text-lg leading-relaxed text-slate-300">
+          {cfg.hero.description}
+        </p>
+        <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+          <button onClick={() => goCategory(cfg.hero.primaryLink || "Hybrid Solar Inverter")} className="rounded-xl bg-amber-400 px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-amber-300 transition">
+            {cfg.hero.primaryText}
+          </button>
+          <button onClick={() => goCategory(cfg.hero.secondaryLink || "Mobile Back Case")} className="rounded-xl bg-white px-5 py-3.5 font-black text-slate-950 shadow-lg hover:bg-slate-100 transition">
+            {cfg.hero.secondaryText}
+          </button>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-2 text-[11px] sm:text-xs font-bold text-slate-300">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🔒 Secure Payment</span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🚚 Delivery Support</span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">🛡️ Warranty Support</span>
+        </div>
+      </div>
+      <div className="hidden lg:block">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Shop by need</div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button onClick={() => goCategory("Hybrid Solar Inverter")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
+              <div className="text-3xl">☀️</div>
+              <div className="mt-2 font-black text-sm">Solar Power</div>
+              <div className="mt-1 text-[11px] text-slate-300">Inverters & solutions</div>
+            </button>
+            <button onClick={() => goCategory("Solar Accessories")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
+              <div className="text-3xl">🔋</div>
+              <div className="mt-2 font-black text-sm">Solar Accessories</div>
+              <div className="mt-1 text-[11px] text-slate-300">ACDB, DCDB, Wi-Fi & more</div>
+            </button>
+            <button onClick={() => goCategory("Mobile Back Case")} className="rounded-2xl bg-white/10 p-4 text-left hover:bg-white/15 transition">
+              <div className="text-3xl">📱</div>
+              <div className="mt-2 font-black text-sm">Mobile Cases</div>
+              <div className="mt-1 text-[11px] text-slate-300">Premium phone protection</div>
+            </button>
+            <button onClick={() => setShowWhatsAppModal(true)} className="rounded-2xl bg-amber-400 p-4 text-left text-slate-950 hover:bg-amber-300 transition">
+              <div className="text-3xl">💬</div>
+              <div className="mt-2 font-black text-sm">Need Help?</div>
+              <div className="mt-1 text-[11px] text-slate-700">Talk to Luxmo Hub</div>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </section>;
 
@@ -7786,24 +7897,42 @@ function LuxmoControlledHomepageSections({
       .filter(c => c && c.enabled !== false)
       .sort((a,b) => Number(a.order || 0) - Number(b.order || 0));
     return <section key="categories">
-      <div className="text-center mb-6">
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Explore LUXMO HUB</p>
-        <h2 className="mt-1 text-2xl md:text-3xl font-black">Choose Your Category</h2>
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Shop by Category</p>
+          <h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">Find What You Need</h2>
+          <p className="mt-1 text-sm text-slate-500">Start with a category and get to the right products faster.</p>
+        </div>
       </div>
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {cats.map((c, i) => (
-          <button key={c.id || i} onClick={() => goCategory(c.link || "All")} className={`text-left rounded-3xl border p-6 hover:shadow-lg ${i % 3 === 0 ? "border-amber-200 bg-amber-50" : i % 3 === 1 ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
-            <div className="text-4xl">{c.icon || "🛍️"}</div>
-            <h3 className="mt-3 text-xl font-black">{c.title || "Category"}</h3>
-            <p className="mt-1 text-sm text-slate-600">{c.description || ""}</p>
-            <span className="inline-block mt-4 text-xs font-black text-blue-700">{c.buttonText || "Shop Now"} →</span>
+          <button key={c.id || i} onClick={() => goCategory(c.link || "All")} className={`group text-left rounded-3xl border p-5 sm:p-6 transition hover:-translate-y-0.5 hover:shadow-xl ${i % 3 === 0 ? "border-amber-200 bg-gradient-to-br from-amber-50 to-white" : i % 3 === 1 ? "border-blue-200 bg-gradient-to-br from-blue-50 to-white" : "border-slate-200 bg-gradient-to-br from-slate-50 to-white"}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm border text-2xl">{c.icon || "🛍️"}</div>
+              <span className="text-xs font-black text-slate-400 group-hover:text-slate-900">SHOP →</span>
+            </div>
+            <h3 className="mt-4 text-xl font-black text-slate-950">{c.title || "Category"}</h3>
+            <p className="mt-2 min-h-[42px] text-sm leading-relaxed text-slate-600">{c.description || ""}</p>
+            <span className="inline-flex mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">{c.buttonText || "Shop Now"} →</span>
           </button>
         ))}
       </div>
     </section>;
   };
 
-  const productGrid = (list, title, category, key) => <section key={key}><div className="flex items-end justify-between gap-3 mb-5"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p><h2 className="text-2xl md:text-3xl font-black">{title}</h2></div><button onClick={() => goCategory(category)} className="text-sm font-black text-blue-600">View All →</button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}</div></section>;
+  const productGrid = (list, title, category, key) => <section key={key}>
+    <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">LUXMO HUB Collection</p>
+        <h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">{title}</h2>
+        <p className="mt-1 text-sm text-slate-500">Choose a product, add it to your cart or buy it directly.</p>
+      </div>
+      <button onClick={() => goCategory(category)} className="self-start sm:self-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-900 hover:shadow-sm">View All →</button>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {list.length ? list.map(p => <ProductCard key={p.id} product={p} onSelect={onSelectProduct} onAddToCart={onAddToCart} />) : <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">No published products in this section yet.</div>}
+    </div>
+  </section>;
 
   const renderSection = (key) => {
     if (enabled[key] === false) return null;
@@ -7813,11 +7942,30 @@ function LuxmoControlledHomepageSections({
     if (key === "solar") return productGrid(solarProducts, "⚡ Hybrid Solar Inverters", "Hybrid Solar Inverter", "solar");
     if (key === "accessories") return productGrid(accessories, "🔋 Solar Accessories", "Solar Accessories", "accessories");
     if (key === "mobile") return productGrid(mobileProducts, "📱 Premium Mobile Phone Cases", "Mobile Back Case", "mobile");
-    if (key === "calculator") return <section key="calculator" className="rounded-3xl bg-gradient-to-r from-amber-50 via-white to-blue-50 border border-amber-200 p-7 md:p-10 flex flex-col lg:flex-row justify-between gap-6 items-center"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Smart Decision Tool</p><h2 className="mt-1 text-2xl md:text-3xl font-black">☀️ Find the Right Solar Inverter</h2><p className="mt-2 text-slate-600">Estimate connected load, battery capacity and approximate solar requirement.</p></div><button onClick={() => setShowSolarCalculator(true)} className="rounded-2xl bg-slate-950 text-white px-6 py-4 font-black">Calculate My Solar Requirement →</button></section>;
+    if (key === "calculator") return <section key="calculator" className="rounded-3xl bg-gradient-to-r from-amber-50 via-white to-blue-50 border border-amber-200 p-7 md:p-10 flex flex-col lg:flex-row justify-between gap-6 items-center"><div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Smart Decision Tool</p><h2 className="mt-1 text-2xl md:text-3xl font-black">☀️ Find the Right Solar Inverter</h2><p className="mt-2 text-slate-600">Estimate connected load, battery capacity and approximate solar requirement before choosing your inverter.</p></div><button onClick={() => setShowSolarCalculator(true)} className="rounded-2xl bg-slate-950 text-white px-6 py-4 font-black">Calculate My Solar Requirement →</button></section>;
     if (key === "materials") return <section key="materials"><div className="text-center mb-6"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">Premium Materials</p><h2 className="text-2xl md:text-3xl font-black">✨ Choose Your Material</h2></div><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{["Genuine Leather","PU Leather","TPU","Polycarbonate (PC)","TPU + PC Hybrid","MagSafe","Carbon Fiber","Silicone","Clear TPU"].map(x => <button key={x} onClick={() => goCategory("Mobile Back Case")} className="text-left rounded-2xl border bg-white p-4 hover:shadow-lg"><div className="text-xl">✨</div><div className="mt-2 font-black text-sm">{x}</div></button>)}</div></section>;
     if (key === "trust") return <section key="trust" className="rounded-3xl bg-slate-950 text-white p-7 md:p-9"><div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">{["✓ Quality Products","🔒 Secure Payments","🚚 Fast Delivery","🛡️ Warranty Support","↩️ Easy Returns","💬 Customer Support"].map(x => <div key={x} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center font-black text-sm">{x}</div>)}</div></section>;
     if (key === "support") return <section key="support" className="grid md:grid-cols-3 gap-4"><button onClick={() => setShowWarrantyModal(true)} className="text-left rounded-2xl border border-emerald-200 bg-emerald-50 p-6"><div className="text-3xl">🛡️</div><h3 className="mt-3 font-black">Register Warranty</h3><p className="mt-1 text-sm text-slate-600">Register serial number and installation details.</p></button><button onClick={() => setShowTrackingModal(true)} className="text-left rounded-2xl border border-blue-200 bg-blue-50 p-6"><div className="text-3xl">📦</div><h3 className="mt-3 font-black">Track Your Order</h3><p className="mt-1 text-sm text-slate-600">Check status using Order ID and mobile.</p></button><button onClick={() => setShowWhatsAppModal(true)} className="text-left rounded-2xl border border-green-200 bg-green-50 p-6"><div className="text-3xl">💬</div><h3 className="mt-3 font-black">WhatsApp Support</h3><p className="mt-1 text-sm text-slate-600">Solar, bulk order and product help.</p></button></section>;
-    if (key === "reviews") return <section key="reviews" className="rounded-3xl border bg-white p-6"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Social Proof</p><h2 className="mt-1 text-2xl font-black">⭐ Customer Reviews</h2><div className="mt-4 grid md:grid-cols-2 gap-3">{(cfg.reviews || []).filter(r => r.show !== false).map(r => <div key={r.id} className="rounded-2xl bg-amber-50 p-4"><div className="font-black">{r.name || "Customer"} · {"★".repeat(Math.max(1, Math.min(5, Number(r.rating || 5))))}</div><p className="mt-2 text-sm text-slate-600">{r.text}</p></div>)}{!(cfg.reviews || []).some(r => r.show !== false) && <p className="text-sm text-slate-500">Customer reviews will appear here after they are added and published from Admin Panel.</p>}</div></section>;
+    if (key === "reviews") {
+      const publishedReviews = (cfg.reviews || []).filter(r => r.show !== false && r.status !== "Pending" && r.status !== "Rejected");
+      const reviewCount = publishedReviews.length;
+      const ratingTotal = publishedReviews.reduce((sum, r) => sum + Math.max(1, Math.min(5, Number(r.rating || 0))), 0);
+      const averageRating = reviewCount ? (ratingTotal / reviewCount).toFixed(1) : "0.0";
+      const ratingCounts = [5,4,3,2,1].map(star => ({ star, count: publishedReviews.filter(r => Number(r.rating) === star).length }));
+      return <section key="reviews" className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+          <div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600">Real Customer Feedback</p><h2 className="mt-1 text-2xl md:text-3xl font-black text-slate-950">⭐ Customer Reviews & Ratings</h2><p className="mt-2 text-sm text-slate-500">See genuine customer feedback before you buy. Only published reviews are shown here.</p></div>
+          {reviewCount > 0 && <div className="flex items-center gap-3 rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3"><div className="text-3xl font-black text-slate-950">{averageRating}</div><div><div className="text-amber-500 text-lg leading-none">{"★".repeat(Math.round(Number(averageRating)))}{"☆".repeat(5 - Math.round(Number(averageRating)))}</div><div className="mt-1 text-xs font-bold text-slate-500">Based on {reviewCount} published review{reviewCount === 1 ? "" : "s"}</div></div></div>}
+        </div>
+        {reviewCount > 0 ? <div className="mt-6 grid lg:grid-cols-[280px_1fr] gap-5">
+          <div className="rounded-2xl bg-slate-50 border border-slate-200 p-5">
+            <div className="text-sm font-black text-slate-900">Rating summary</div>
+            <div className="mt-4 space-y-2">{ratingCounts.map(({star,count}) => <div key={star} className="flex items-center gap-2 text-xs"><span className="w-8 font-bold">{star} ★</span><div className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-amber-400" style={{width:`${reviewCount ? Math.round(count / reviewCount * 100) : 0}%`}} /></div><span className="w-6 text-right text-slate-500">{count}</span></div>)}</div>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3">{publishedReviews.slice(0, 6).map(r => <article key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-black text-slate-900">{r.name || "Customer"}</div><div className="mt-1 text-xs text-amber-500">{"★".repeat(Math.max(1, Math.min(5, Number(r.rating || 1))))}{"☆".repeat(5 - Math.max(1, Math.min(5, Number(r.rating || 1))))}</div></div>{r.verifiedPurchase && <span className="shrink-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1 text-[10px] font-black">✓ Verified Purchase</span>}</div><p className="mt-3 text-sm leading-6 text-slate-600">{r.text}</p></article>)}</div>
+        </div> : <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center"><div className="text-3xl">⭐</div><h3 className="mt-2 font-black text-slate-900">Be the first to review</h3><p className="mt-1 text-sm text-slate-500">Customer ratings will appear here after reviews are published from the Admin Panel.</p></div>}
+      </section>;
+    }
     if (key === "faq") return <section key="faq" className="rounded-3xl border bg-white p-6"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">Help Center</p><h2 className="mt-1 text-2xl font-black">❓ Frequently Asked Questions</h2><div className="mt-4 grid md:grid-cols-2 gap-2">{(cfg.faqs || []).map(q => <details key={q.id} className="rounded-xl bg-slate-50 px-4 py-3"><summary className="font-bold cursor-pointer">{q.question}</summary><p className="mt-2 text-sm text-slate-600">{q.answer}</p></details>)}</div></section>;
     if (key === "cta") return <section key="cta" className="rounded-[2rem] bg-slate-950 text-white p-8 md:p-12 text-center shadow-2xl"><p className="text-amber-300 text-[11px] font-black uppercase tracking-[0.25em]">LUXMO HUB</p><h2 className="mt-2 text-3xl md:text-5xl font-black">Choose Better. Power Smarter. Protect Better.</h2><div className="mt-7 flex flex-wrap justify-center gap-3"><button onClick={() => goCategory("Hybrid Solar Inverter")} className="rounded-xl bg-amber-400 text-slate-950 px-6 py-3.5 font-black">☀️ Shop Solar →</button><button onClick={() => goCategory("Mobile Back Case")} className="rounded-xl bg-white text-slate-950 px-6 py-3.5 font-black">📱 Shop Mobile Cases →</button></div></section>;
     if (key === "footer") return null;
@@ -8669,20 +8817,20 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
         </div>
 
         <div className="p-4 pt-0 relative">
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 if (product.variants?.length) onSelect(product);
                 else onAddToCart(product);
               }}
-              className="min-w-0 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black py-2.5 rounded-lg transition">
-              {product.variants?.length ? "Select Options" : "Add to Cart"}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black py-2.5 rounded-lg transition">
+              {product.variants?.length ? "Select Options" : "🛒 Add to Cart"}
             </button>
 
             <button type="button" onClick={handleBuyNow}
-              className="min-w-0 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-black py-2.5 rounded-lg transition">
-              Buy Now
+              className="w-full bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-black py-2.5 rounded-lg transition">
+              ⚡ Buy Now
             </button>
 
             <button type="button" aria-label="More product options" title="More options"
