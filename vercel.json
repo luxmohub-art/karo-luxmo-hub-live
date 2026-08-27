@@ -19,6 +19,10 @@
     {
       "source": "/api/customer-session",
       "destination": "/api/orders?action=customer-session"
+    },
+    {
+      "source": "/api/whatsapp/webhook",
+      "destination": "/api/orders?whatsapp_webhook=1"
     }
   ]
 }
