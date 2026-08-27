@@ -1386,10 +1386,6 @@ async function handleCustomer(
 
 /* ============================================================
    CUSTOMER SESSION
-   IMPORTANT:
-   This does NOT use Firebase.
-   This prevents /api/customer-session from returning 500
-   simply because Firebase/admin settings are unavailable.
 ============================================================ */
 
 async function handleCustomerSession(
@@ -1542,17 +1538,6 @@ function getQueryValue(
   );
 }
 
-/*
-  Meta webhook GET verification.
-
-  Meta sends:
-    hub.mode
-    hub.verify_token
-    hub.challenge
-
-  We return hub.challenge when the token matches.
-*/
-
 async function handleWhatsAppWebhook(
   req,
   res
@@ -1640,14 +1625,6 @@ async function handleWhatsAppWebhook(
         JSON.stringify(body)
       );
 
-      /*
-        Do not perform database work here.
-
-        Meta only needs a fast 200 response.
-        Incoming WhatsApp events can be processed
-        later without blocking webhook acknowledgement.
-      */
-
       return sendJson(
         res,
         200,
@@ -1661,11 +1638,6 @@ async function handleWhatsAppWebhook(
         "WhatsApp webhook POST failed:",
         error
       );
-
-      /*
-        Still return 200 to prevent unnecessary
-        Meta webhook retries for a malformed event.
-      */
 
       return sendJson(
         res,
@@ -1711,20 +1683,50 @@ export default async function handler(
     const query =
       req.query || {};
 
+    /* ============================================================
+       FIX: DIRECT /api/customer-session ROUTE
+       This is the important addition.
+    ============================================================ */
+
+    const pathname =
+      clean(
+        req.url?.split("?")[0]
+      );
+
     const action =
       clean(
         query.action
       ).toLowerCase();
 
-    /*
-      IMPORTANT:
-      WhatsApp webhook is checked FIRST.
+    if (
+      pathname === "/api/customer-session"
+    ) {
+      if (method !== "GET") {
+        res.setHeader(
+          "Allow",
+          "GET"
+        );
 
-      Therefore:
-        /api/orders?whatsapp_webhook=1
+        return sendJson(
+          res,
+          405,
+          {
+            success: false,
+            error:
+              "Method not allowed.",
+          }
+        );
+      }
 
-      never falls into admin/customer handling.
-    */
+      return handleCustomerSession(
+        req,
+        res
+      );
+    }
+
+    /* --------------------------------------------------------
+       WHATSAPP WEBHOOK
+    -------------------------------------------------------- */
 
     const whatsappWebhook =
       clean(
