@@ -6208,65 +6208,7 @@ export default function LuxmoHubApp() {
               `Payment may have been successful, but order processing needs attention.\n\nPlease DO NOT make another payment.\nReference: ${response?.razorpay_order_id || "N/A"}`
             );
           }
-        },
-
-        prefill: {
-          name: orderPayload.customer?.name || "Customer",
-          email: orderPayload.customer?.email || "",
-          contact: orderPayload.customer?.phone || ""
-        },
-
-        // Keep Razorpay's full Standard Checkout available:
-        // UPI -> Cards -> Net Banking -> Wallets, with Razorpay's
-        // supported UPI apps shown according to the customer's device/account.
-        config: {
-          display: {
-            sequence: ["upi", "card", "netbanking", "wallet"],
-            preferences: {
-              show_default_blocks: true
-            }
-          }
-        },
-
-        modal: {
-          backdropclose: false,
-          escape: true,
-          handleback: true,
-          ondismiss: function () {
-            try {
-              localStorage.removeItem(shipmentLockKey);
-            } catch {}
-          }
-        },
-
-        theme: {
-          color: "#2563eb",
-          backdrop_color: "#0f172a"
-        }
       };
-
-      const paymentObject = new window.Razorpay(options);
-
-      paymentObject.on("payment.failed", function (response) {
-        console.error("Payment failed:", response.error);
-        try {
-          localStorage.removeItem(shipmentLockKey);
-        } catch {}
-        alert(
-          response.error?.description ||
-            "Payment failed. Please try again."
-        );
-      });
-
-      paymentObject.open();
-    } catch (error) {
-      console.error("Razorpay Error:", error);
-      try {
-        localStorage.removeItem(shipmentLockKey);
-      } catch {}
-      alert(error.message || "Unable to start payment.");
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col luxmo-page-root">
