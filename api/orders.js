@@ -1,1918 +1,898 @@
-// api/orders.js
-// ============================================================
-// LUXMO HUB — CUSTOMER ORDERS + ADMIN ORDERS + WHATSAPP WEBHOOK
-// ============================================================
-
-import crypto from "crypto";
-import { getFirestore } from "firebase-admin/firestore";
-import { getFirebaseAdmin } from "../lib/firebase-admin.js";
-
-const ADMIN_COOKIE_NAME = "luxmo_admin_session";
-
 /* ============================================================
-   FIREBASE
+   ABANDONED CHECKOUT / WHATSAPP REMINDER
+   Existing api/orders.js only
+   No new API file
 ============================================================ */
 
-function getDb() {
-  const app = getFirebaseAdmin();
-  return getFirestore(app);
-}
+function getWhatsAppConfig() {
+  return {
+    accessToken: clean(
+      process.env.WHATSAPP_ACCESS_TOKEN ||
+      process.env.META_WHATSAPP_ACCESS_TOKEN ||
+      process.env.WHATSAPP_CLOUD_API_TOKEN
+    ),
 
-/* ============================================================
-   RESPONSE
-============================================================ */
+    phoneNumberId: clean(
+      process.env.WHATSAPP_PHONE_NUMBER_ID ||
+      process.env.META_WHATSAPP_PHONE_NUMBER_ID
+    ),
 
-function sendJson(res, status, data) {
-  res.setHeader(
-    "Content-Type",
-    "application/json; charset=utf-8"
-  );
+    apiVersion: clean(
+      process.env.WHATSAPP_API_VERSION ||
+      process.env.META_GRAPH_API_VERSION ||
+      "v23.0"
+    ),
 
-  return res.status(status).json(data);
-}
+    templateName: clean(
+      process.env.WHATSAPP_ABANDONED_TEMPLATE ||
+      "abandoned_checkout"
+    ),
 
-/* ============================================================
-   BASIC HELPERS
-============================================================ */
-
-function clean(value) {
-  return String(value ?? "").trim();
-}
-
-function normalizeMobile(value) {
-  const digits = clean(value).replace(/\D/g, "");
-
-  if (!digits) {
-    return "";
-  }
-
-  return digits.length > 10
-    ? digits.slice(-10)
-    : digits;
-}
-
-function normalizeOrderId(value) {
-  return clean(value)
-    .replace(/\//g, "_")
-    .slice(0, 120);
-}
-
-function normalizeEmail(value) {
-  return clean(value).toLowerCase();
-}
-
-function safeNumber(value) {
-  const number = Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : 0;
-}
-
-function pickFirst(...values) {
-  for (const value of values) {
-    if (
-      value !== undefined &&
-      value !== null &&
-      clean(value) !== ""
-    ) {
-      return value;
-    }
-  }
-
-  return "";
-}
-
-/* ============================================================
-   COOKIE
-============================================================ */
-
-function getCookie(req, name) {
-  const cookieHeader =
-    req.headers?.cookie || "";
-
-  if (!cookieHeader) {
-    return null;
-  }
-
-  const cookies =
-    cookieHeader.split(";");
-
-  for (const cookie of cookies) {
-    const index =
-      cookie.indexOf("=");
-
-    if (index === -1) {
-      continue;
-    }
-
-    const key =
-      cookie.slice(0, index).trim();
-
-    const value =
-      cookie.slice(index + 1).trim();
-
-    if (key === name) {
-      try {
-        return decodeURIComponent(value);
-      } catch {
-        return value;
-      }
-    }
-  }
-
-  return null;
-}
-
-/* ============================================================
-   ADMIN SESSION
-============================================================ */
-
-function base64UrlDecode(value) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return Buffer.from(
-      value,
-      "base64url"
-    ).toString("utf8");
-  } catch {
-    return null;
-  }
-}
-
-function safeEqual(a, b) {
-  if (
-    typeof a !== "string" ||
-    typeof b !== "string"
-  ) {
-    return false;
-  }
-
-  const left =
-    Buffer.from(a, "utf8");
-
-  const right =
-    Buffer.from(b, "utf8");
-
-  if (
-    left.length !== right.length
-  ) {
-    return false;
-  }
-
-  try {
-    return crypto.timingSafeEqual(
-      left,
-      right
-    );
-  } catch {
-    return false;
-  }
-}
-
-function verifyAdminSession(req) {
-  const secret = clean(
-    process.env.ADMIN_SESSION_SECRET
-  );
-
-  if (!secret) {
-    return {
-      ok: false,
-      status: 500,
-      error:
-        "ADMIN_SESSION_SECRET is not configured on the server.",
-    };
-  }
-
-  const token = getCookie(
-    req,
-    ADMIN_COOKIE_NAME
-  );
-
-  if (!token) {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Admin session cookie not found.",
-    };
-  }
-
-  const parts =
-    String(token).split(".");
-
-  if (parts.length !== 3) {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Invalid or expired admin session.",
-    };
-  }
-
-  const [
-    encodedPayload,
-    expiresAtText,
-    signature,
-  ] = parts;
-
-  if (
-    !encodedPayload ||
-    !expiresAtText ||
-    !signature
-  ) {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Invalid or expired admin session.",
-    };
-  }
-
-  const expectedSignature =
-    crypto
-      .createHmac(
-        "sha256",
-        secret
-      )
-      .update(
-        `${encodedPayload}.${expiresAtText}`
-      )
-      .digest("base64url");
-
-  if (
-    !safeEqual(
-      signature,
-      expectedSignature
+    templateLanguage: clean(
+      process.env.WHATSAPP_ABANDONED_TEMPLATE_LANGUAGE ||
+      "en_US"
     )
-  ) {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Invalid or expired admin session.",
-    };
-  }
-
-  const expiresAt =
-    Number(expiresAtText);
-
-  if (
-    !Number.isFinite(expiresAt) ||
-    expiresAt <= 0 ||
-    Date.now() >= expiresAt
-  ) {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Invalid or expired admin session.",
-    };
-  }
-
-  const payloadText =
-    base64UrlDecode(
-      encodedPayload
-    );
-
-  if (!payloadText) {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Invalid or expired admin session.",
-    };
-  }
-
-  try {
-    const payload =
-      JSON.parse(payloadText);
-
-    if (
-      !payload ||
-      payload.role !== "admin"
-    ) {
-      return {
-        ok: false,
-        status: 401,
-        error:
-          "Invalid or expired admin session.",
-      };
-    }
-
-    return {
-      ok: true,
-      payload,
-      expiresAt,
-    };
-  } catch {
-    return {
-      ok: false,
-      status: 401,
-      error:
-        "Invalid or expired admin session.",
-    };
-  }
+  };
 }
 
-/* ============================================================
-   FIRESTORE SERIALIZATION
-============================================================ */
 
-function serializeValue(value) {
-  if (
-    value === undefined ||
-    value === null
-  ) {
-    return null;
+/* ------------------------------------------------------------
+   WHATSAPP OPT-IN
+------------------------------------------------------------ */
+
+function isWhatsAppOptedIn(checkout) {
+  return (
+    checkout?.whatsappOptIn === true ||
+    checkout?.whatsapp_opt_in === true ||
+    checkout?.whatsappConsent === true ||
+    checkout?.consent?.whatsapp === true
+  );
+}
+
+
+/* ------------------------------------------------------------
+   PURCHASE EXCLUSION
+------------------------------------------------------------ */
+
+function isPurchased(checkout) {
+  return (
+    checkout?.purchased === true ||
+    checkout?.purchaseCompleted === true ||
+    checkout?.paymentVerified === true ||
+    clean(
+      checkout?.paymentStatus ||
+      checkout?.payment_status
+    ).toLowerCase() === "paid"
+  );
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE
+------------------------------------------------------------ */
+
+function getCheckoutMobile(checkout) {
+  return normalizeMobile(
+    pickFirst(
+      checkout?.customer?.phone,
+      checkout?.customer?.mobile,
+      checkout?.customerPhone,
+      checkout?.customerMobile,
+      checkout?.phone,
+      checkout?.mobile,
+      checkout?.shippingAddress?.phone,
+      checkout?.shippingAddress?.mobile
+    )
+  );
+}
+
+
+/* ------------------------------------------------------------
+   ITEMS
+------------------------------------------------------------ */
+
+function getCheckoutItems(checkout) {
+  const items =
+    Array.isArray(checkout?.items)
+      ? checkout.items
+      : Array.isArray(checkout?.products)
+      ? checkout.products
+      : [];
+
+  return items
+    .slice(0, 10)
+    .map((item) => ({
+      name: clean(
+        item?.name ||
+        item?.title ||
+        item?.productName ||
+        "Product"
+      ),
+
+      price: safeNumber(
+        item?.price ??
+        item?.salePrice ??
+        item?.sellingPrice ??
+        0
+      ),
+
+      quantity: Math.max(
+        1,
+        Math.floor(
+          safeNumber(
+            item?.quantity ??
+            item?.qty ??
+            1
+          )
+        )
+      ),
+
+      image: clean(
+        item?.image ||
+        item?.imageUrl ||
+        item?.image_url ||
+        item?.thumbnail
+      ),
+
+      url: clean(
+        item?.url ||
+        item?.productUrl ||
+        item?.productURL ||
+        item?.productLink
+      )
+    }));
+}
+
+
+/* ------------------------------------------------------------
+   PRODUCT SUMMARY
+------------------------------------------------------------ */
+
+function getCheckoutProductSummary(checkout) {
+  const items =
+    getCheckoutItems(checkout);
+
+  if (!items.length) {
+    return {
+      productName: "Your cart",
+
+      productPrice: safeNumber(
+        checkout?.total ||
+        checkout?.grandTotal ||
+        checkout?.amount ||
+        0
+      ),
+
+      productImage: "",
+
+      productUrl: ""
+    };
   }
 
-  if (value instanceof Date) {
-    return value.toISOString();
+  const first = items[0];
+
+  return {
+    productName:
+      items.length === 1
+        ? first.name
+        : `${first.name} + ${items.length - 1} more`,
+
+    productPrice:
+      safeNumber(
+        checkout?.total ||
+        checkout?.grandTotal ||
+        checkout?.amount ||
+        first.price
+      ),
+
+    productImage:
+      first.image,
+
+    productUrl:
+      first.url
+  };
+}
+
+
+/* ------------------------------------------------------------
+   PRICE
+------------------------------------------------------------ */
+
+function formatWhatsAppPrice(value) {
+  return `₹${safeNumber(value).toLocaleString(
+    "en-IN",
+    {
+      maximumFractionDigits: 2
+    }
+  )}`;
+}
+
+
+/* ------------------------------------------------------------
+   SITE URL
+------------------------------------------------------------ */
+
+function getSiteUrl() {
+  return clean(
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.SITE_URL ||
+    "https://www.luxmohub.in"
+  ).replace(/\/+$/, "");
+}
+
+
+/* ------------------------------------------------------------
+   CHECKOUT URL
+------------------------------------------------------------ */
+
+function buildCheckoutUrl(checkout) {
+  const explicit =
+    clean(
+      checkout?.checkoutUrl ||
+      checkout?.checkoutURL ||
+      checkout?.cartUrl
+    );
+
+  if (explicit) {
+    return explicit;
+  }
+
+  const productUrl =
+    getCheckoutProductSummary(
+      checkout
+    ).productUrl;
+
+  return (
+    productUrl ||
+    getSiteUrl()
+  );
+}
+
+
+/* ------------------------------------------------------------
+   COOLDOWN
+------------------------------------------------------------ */
+
+function getReminderCooldownMs() {
+  const minutes =
+    Math.max(
+      60,
+      safeNumber(
+        process.env.WHATSAPP_ABANDONED_COOLDOWN_MINUTES ||
+        1440
+      )
+    );
+
+  return minutes * 60 * 1000;
+}
+
+
+/* ------------------------------------------------------------
+   ABANDONED AFTER
+------------------------------------------------------------ */
+
+function getAbandonedAfterMs() {
+  const minutes =
+    Math.max(
+      15,
+      safeNumber(
+        process.env.WHATSAPP_ABANDONED_AFTER_MINUTES ||
+        60
+      )
+    );
+
+  return minutes * 60 * 1000;
+}
+
+
+/* ------------------------------------------------------------
+   DATE
+------------------------------------------------------------ */
+
+function toMillis(value) {
+  if (!value) {
+    return 0;
+  }
+
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
+    return value;
   }
 
   if (
     typeof value === "object" &&
-    typeof value.toDate === "function"
+    typeof value.toMillis === "function"
   ) {
     try {
-      return value
-        .toDate()
-        .toISOString();
-    } catch {
-      return String(value);
-    }
+      return value.toMillis();
+    } catch {}
   }
 
-  if (Array.isArray(value)) {
-    return value.map(
-      serializeValue
+  const parsed =
+    Date.parse(
+      String(value)
     );
-  }
 
-  if (
-    typeof value === "object"
-  ) {
-    const output = {};
-
-    for (
-      const [key, item]
-      of Object.entries(value)
-    ) {
-      output[key] =
-        serializeValue(item);
-    }
-
-    return output;
-  }
-
-  return value;
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
 }
 
-/* ============================================================
-   MOBILE
-============================================================ */
 
-function getOrderMobile(order) {
-  return normalizeMobile(
-    pickFirst(
-      order?.customer?.phone,
-      order?.customer?.mobile,
-      order?.customer?.contact,
-      order?.customerPhone,
-      order?.customerMobile,
-      order?.phone,
-      order?.mobile,
-      order?.contactNumber,
-      order?.contact,
-      order?.shippingAddress?.phone,
-      order?.shippingAddress?.mobile,
-      order?.shippingAddress?.contact,
-      order?.address?.phone,
-      order?.address?.mobile,
-      order?.address?.contact,
-      order?.billingAddress?.phone,
-      order?.billingAddress?.mobile
-    )
+/* ------------------------------------------------------------
+   CHECKOUT CREATED TIME
+------------------------------------------------------------ */
+
+function getCheckoutCreatedAt(
+  checkout,
+  fallback
+) {
+  return (
+    toMillis(
+      checkout?.checkoutStartedAt ||
+      checkout?.checkout_started_at ||
+      checkout?.createdAt ||
+      checkout?.created_at ||
+      checkout?.updatedAt ||
+      checkout?.updated_at
+    ) ||
+    fallback
   );
 }
 
-function mobileMatches(
-  order,
-  suppliedMobile
+
+/* ------------------------------------------------------------
+   LAST REMINDER
+------------------------------------------------------------ */
+
+function getLastReminderAt(
+  checkout
 ) {
-  const expected =
-    getOrderMobile(order);
-
-  const actual =
-    normalizeMobile(
-      suppliedMobile
-    );
-
-  if (
-    !expected ||
-    !actual
-  ) {
-    return false;
-  }
-
-  return expected === actual;
-}
-
-/* ============================================================
-   ORDER ID
-============================================================ */
-
-function getOrderIdentifiers(
-  order,
-  firestoreId = ""
-) {
-  return [
-    order?.websiteOrderId,
-    order?.website_order_id,
-    order?.orderId,
-    order?.orderID,
-    order?.order_id,
-    order?.externalOrderId,
-    order?.external_order_id,
-    order?.id,
-    firestoreId,
-  ]
-    .map(normalizeOrderId)
-    .filter(Boolean);
-}
-
-function orderIdMatches(
-  order,
-  requestedOrderId,
-  firestoreId = ""
-) {
-  const requested =
-    normalizeOrderId(
-      requestedOrderId
-    );
-
-  if (!requested) {
-    return false;
-  }
-
-  return getOrderIdentifiers(
-    order,
-    firestoreId
-  ).some(
-    (id) => id === requested
+  return toMillis(
+    checkout?.whatsappReminderSentAt ||
+    checkout?.whatsapp_reminder_sent_at ||
+    checkout?.lastWhatsAppReminderAt ||
+    checkout?.last_whatsapp_reminder_at
   );
 }
 
-/* ============================================================
-   FIND ORDER
-============================================================ */
 
-async function findOrder(
-  db,
-  orderId,
-  mobile
+/* ------------------------------------------------------------
+   TEMPLATE PAYLOAD
+------------------------------------------------------------ */
+
+function buildAbandonedTemplatePayload(
+  checkout
 ) {
-  const normalizedOrderId =
-    normalizeOrderId(orderId);
+  const config =
+    getWhatsAppConfig();
 
-  const normalizedMobile =
-    normalizeMobile(mobile);
-
-  if (!normalizedOrderId) {
-    return null;
-  }
-
-  const ordersRef =
-    db.collection("orders");
-
-  /* ----------------------------------------------------------
-     DIRECT DOCUMENT ID
-  ---------------------------------------------------------- */
-
-  try {
-    const directRef =
-      ordersRef.doc(
-        normalizedOrderId
-      );
-
-    const directSnapshot =
-      await directRef.get();
-
-    if (directSnapshot.exists) {
-      const data =
-        directSnapshot.data() || {};
-
-      if (
-        !normalizedMobile ||
-        mobileMatches(
-          data,
-          normalizedMobile
-        )
-      ) {
-        return {
-          ref: directRef,
-          data,
-          id: directSnapshot.id,
-        };
-      }
-    }
-  } catch (error) {
-    console.error(
-      "Direct order lookup failed:",
-      error
+  const mobile =
+    getCheckoutMobile(
+      checkout
     );
-  }
 
-  /* ----------------------------------------------------------
-     KNOWN ORDER ID FIELDS
-  ---------------------------------------------------------- */
-
-  const idFields = [
-    "websiteOrderId",
-    "website_order_id",
-    "orderId",
-    "orderID",
-    "order_id",
-    "externalOrderId",
-    "external_order_id",
-    "id",
-  ];
-
-  for (const field of idFields) {
-    try {
-      const snapshot =
-        await ordersRef
-          .where(
-            field,
-            "==",
-            normalizedOrderId
-          )
-          .limit(10)
-          .get();
-
-      if (!snapshot.empty) {
-        for (
-          const doc
-          of snapshot.docs
-        ) {
-          const data =
-            doc.data() || {};
-
-          if (
-            !normalizedMobile ||
-            mobileMatches(
-              data,
-              normalizedMobile
-            )
-          ) {
-            return {
-              ref: doc.ref,
-              data,
-              id: doc.id,
-            };
-          }
-        }
-      }
-    } catch (error) {
-      console.error(
-        `Order lookup failed for ${field}:`,
-        error
-      );
-    }
-  }
-
-  /* ----------------------------------------------------------
-     COMPATIBILITY SCAN
-  ---------------------------------------------------------- */
-
-  try {
-    const snapshot =
-      await ordersRef
-        .limit(500)
-        .get();
-
-    for (
-      const doc
-      of snapshot.docs
-    ) {
-      const data =
-        doc.data() || {};
-
-      if (
-        orderIdMatches(
-          data,
-          normalizedOrderId,
-          doc.id
-        ) &&
-        (
-          !normalizedMobile ||
-          mobileMatches(
-            data,
-            normalizedMobile
-          )
-        )
-      ) {
-        return {
-          ref: doc.ref,
-          data,
-          id: doc.id,
-        };
-      }
-    }
-  } catch (error) {
-    console.error(
-      "Compatibility order scan failed:",
-      error
+  const {
+    productName,
+    productPrice,
+    productUrl
+  } =
+    getCheckoutProductSummary(
+      checkout
     );
-  }
 
-  return null;
-}
-
-/* ============================================================
-   ITEMS
-============================================================ */
-
-function buildItems(order) {
-  const rawItems =
-    Array.isArray(order?.items)
-      ? order.items
-      : Array.isArray(order?.orderItems)
-      ? order.orderItems
-      : Array.isArray(order?.products)
-      ? order.products
-      : [];
-
-  return rawItems.map(
-    (item) => {
-      const quantity =
-        Math.max(
-          1,
-          Math.floor(
-            safeNumber(
-              item?.qty ??
-                item?.quantity ??
-                item?.count ??
-                1
-            )
-          )
-        );
-
-      const price =
-        safeNumber(
-          item?.price ??
-            item?.salePrice ??
-            item?.sellingPrice ??
-            item?.unitPrice ??
-            item?.amount ??
-            0
-        );
-
-      return {
-        id:
-          item?.id ||
-          item?.productId ||
-          item?.product_id ||
-          "",
-
-        productId:
-          item?.productId ||
-          item?.product_id ||
-          item?.id ||
-          "",
-
-        sku:
-          item?.sku ||
-          item?.SKU ||
-          "",
-
-        title:
-          item?.title ||
-          item?.name ||
-          item?.productName ||
-          item?.product_name ||
-          "",
-
-        name:
-          item?.name ||
-          item?.title ||
-          item?.productName ||
-          "",
-
-        image:
-          item?.image ||
-          item?.imageUrl ||
-          item?.image_url ||
-          item?.thumbnail ||
-          "",
-
-        quantity,
-        qty: quantity,
-
-        price,
-
-        salePrice:
-          safeNumber(
-            item?.salePrice ??
-              item?.sellingPrice ??
-              item?.price ??
-              0
-          ),
-
-        colour:
-          item?.colour ||
-          item?.color ||
-          item?.colourName ||
-          "",
-
-        color:
-          item?.color ||
-          item?.colour ||
-          item?.colourName ||
-          "",
-
-        model:
-          item?.model ||
-          item?.modelName ||
-          "",
-
-        variant:
-          item?.variant ||
-          item?.variantName ||
-          "",
-
-        size:
-          item?.size ||
-          "",
-
-        category:
-          item?.category ||
-          "",
-
-        hsn:
-          item?.hsn ||
-          item?.HSN ||
-          "",
-
-        gst:
-          safeNumber(
-            item?.gst ??
-              item?.gstAmount ??
-              0
-          ),
-      };
-    }
-  );
-}
-
-/* ============================================================
-   PAYMENT
-============================================================ */
-
-function getPaymentMethod(order) {
-  const explicit =
+  const customerName =
     clean(
-      order?.paymentMethod ||
-      order?.payment_method ||
-      order?.method ||
-      order?.paymentType
-    );
-
-  if (explicit) {
-    if (
-      explicit.toLowerCase() ===
-      "cod"
-    ) {
-      return "COD";
-    }
-
-    return explicit;
-  }
-
-  if (
-    order?.isCOD === true ||
-    order?.cod === true
-  ) {
-    return "COD";
-  }
-
-  return "Razorpay";
-}
-
-function getPaymentStatus(order) {
-  const explicit =
-    clean(
-      order?.paymentStatus ||
-      order?.payment_status ||
-      order?.paymentState
-    );
-
-  if (explicit) {
-    return explicit;
-  }
-
-  if (
-    order?.paymentVerified === true
-  ) {
-    return "Paid";
-  }
-
-  return "Pending";
-}
-
-/* ============================================================
-   SHIPMENT
-============================================================ */
-
-function getShipmentStatus(order) {
-  const explicit =
-    clean(
-      order?.shipmentStatus ||
-      order?.shipment_status ||
-      order?.deliveryStatus ||
-      order?.delivery_status
-    );
-
-  if (explicit) {
-    return explicit;
-  }
-
-  if (
-    order?.delivered === true
-  ) {
-    return "Delivered";
-  }
-
-  if (
-    order?.shipmentId ||
-    order?.shipment_id ||
-    order?.awb ||
-    order?.awbNumber
-  ) {
-    return "Created";
-  }
-
-  return "Pending";
-}
-
-/* ============================================================
-   CUSTOMER ORDER
-============================================================ */
-
-function buildCustomerOrder(
-  order,
-  firestoreId = ""
-) {
-  const customer =
-    order?.customer &&
-    typeof order.customer ===
-      "object"
-      ? order.customer
-      : {};
-
-  const shippingAddress =
-    order?.shippingAddress &&
-    typeof order.shippingAddress ===
-      "object"
-      ? order.shippingAddress
-      : order?.address &&
-        typeof order.address ===
-          "object"
-      ? order.address
-      : {};
-
-  const billingAddress =
-    order?.billingAddress &&
-    typeof order.billingAddress ===
-      "object"
-      ? order.billingAddress
-      : {};
-
-  const orderId =
-    pickFirst(
-      order?.websiteOrderId,
-      order?.website_order_id,
-      order?.orderId,
-      order?.orderID,
-      order?.order_id,
-      order?.externalOrderId,
-      order?.external_order_id,
-      order?.id,
-      firestoreId
-    );
-
-  const paymentMethod =
-    getPaymentMethod(order);
-
-  const paymentStatus =
-    getPaymentStatus(order);
-
-  const shipmentStatus =
-    getShipmentStatus(order);
-
-  const customerMobile =
-    getOrderMobile(order);
-
-  const customerEmail =
-    normalizeEmail(
-      pickFirst(
-        customer?.email,
-        order?.customerEmail,
-        order?.email,
-        shippingAddress?.email
-      )
-    );
-
-  const subtotal =
-    safeNumber(
-      order?.subtotal ??
-        order?.subTotal ??
-        0
-    );
-
-  const discount =
-    safeNumber(
-      order?.discount ??
-        order?.totalDiscount ??
-        order?.total_discount ??
-        0
-    );
-
-  const shippingFee =
-    safeNumber(
-      order?.shippingFee ??
-        order?.shippingCharges ??
-        order?.shippingCharge ??
-        order?.shippingCost ??
-        order?.shipping ??
-        0
-    );
-
-  const total =
-    safeNumber(
-      order?.total ??
-        order?.grandTotal ??
-        order?.totalAmount ??
-        order?.amount ??
-        0
-    );
-
-  const paidAmount =
-    safeNumber(
-      order?.paidAmount ??
-        (
-          paymentStatus
-            .toLowerCase() ===
-          "paid"
-            ? total
-            : 0
-        )
+      checkout?.customer?.name ||
+      checkout?.customerName ||
+      checkout?.name ||
+      "Customer"
     );
 
   return {
-    id:
-      firestoreId ||
-      order?.id ||
-      null,
+    messaging_product:
+      "whatsapp",
 
-    orderId,
+    recipient_type:
+      "individual",
 
-    websiteOrderId:
-      order?.websiteOrderId ||
-      orderId,
+    to:
+      mobile,
 
-    externalOrderId:
-      order?.externalOrderId ||
-      null,
+    type:
+      "template",
 
-    status:
-      order?.status ||
-      order?.orderStatus ||
-      "Order Placed",
-
-    orderStatus:
-      order?.orderStatus ||
-      order?.status ||
-      "Order Placed",
-
-    shipmentStatus,
-
-    createdAt:
-      order?.createdAt ||
-      order?.created_at ||
-      null,
-
-    updatedAt:
-      order?.updatedAt ||
-      order?.updated_at ||
-      null,
-
-    paidAt:
-      order?.paidAt ||
-      order?.paymentDate ||
-      order?.payment_date ||
-      null,
-
-    payment: {
-      status:
-        paymentStatus,
-
-      verified:
-        order?.paymentVerified ===
-        true,
-
-      method:
-        paymentMethod,
-
-      amount:
-        paidAmount,
-
-      totalAmount:
-        total,
-
-      currency:
-        order?.currency ||
-        "INR",
-
-      razorpayOrderId:
-        order?.razorpayOrderId ||
-        order?.razorpay_order_id ||
-        null,
-
-      razorpayPaymentId:
-        order?.razorpayPaymentId ||
-        order?.razorpay_payment_id ||
-        null,
-    },
-
-    paymentStatus,
-    paymentMethod,
-
-    paymentVerified:
-      order?.paymentVerified ===
-      true,
-
-    pricing: {
-      subtotal,
-      discount,
-      shippingFee,
-      total,
-
-      couponCode:
-        order?.couponCode ||
-        order?.coupon ||
-        null,
-    },
-
-    subtotal,
-    discount,
-    shippingFee,
-    total,
-
-    grandTotal:
-      total,
-
-    totalAmount:
-      total,
-
-    customer: {
+    template: {
       name:
-        pickFirst(
-          customer?.name,
-          customer?.fullName,
-          order?.customerName,
-          order?.name,
-          order?.fullName,
-          shippingAddress?.name
-        ),
+        config.templateName,
 
-      mobile:
-        customerMobile,
+      language: {
+        code:
+          config.templateLanguage
+      },
 
-      phone:
-        customerMobile,
+      components: [
+        {
+          type:
+            "body",
 
-      email:
-        customerEmail,
-    },
+          parameters: [
+            {
+              type:
+                "text",
 
-    shippingAddress: {
-      name:
-        pickFirst(
-          shippingAddress?.name,
-          shippingAddress?.fullName
-        ),
+              text:
+                customerName
+            },
 
-      address:
-        pickFirst(
-          shippingAddress?.line1,
-          shippingAddress?.address1,
-          shippingAddress?.address,
-          shippingAddress?.street
-        ),
+            {
+              type:
+                "text",
 
-      address1:
-        pickFirst(
-          shippingAddress?.line1,
-          shippingAddress?.address1,
-          shippingAddress?.address
-        ),
+              text:
+                productName
+            },
 
-      address2:
-        pickFirst(
-          shippingAddress?.line2,
-          shippingAddress?.address2
-        ),
+            {
+              type:
+                "text",
 
-      city:
-        shippingAddress?.city ||
-        "",
+              text:
+                formatWhatsAppPrice(
+                  productPrice
+                )
+            },
 
-      state:
-        shippingAddress?.state ||
-        "",
+            {
+              type:
+                "text",
 
-      pincode:
-        shippingAddress?.pincode ||
-        shippingAddress?.pinCode ||
-        shippingAddress?.postalCode ||
-        shippingAddress?.zip ||
-        "",
-
-      postalCode:
-        shippingAddress?.postalCode ||
-        shippingAddress?.pincode ||
-        shippingAddress?.pinCode ||
-        "",
-
-      country:
-        shippingAddress?.country ||
-        "India",
-
-      phone:
-        normalizeMobile(
-          pickFirst(
-            shippingAddress?.phone,
-            shippingAddress?.mobile,
-            customerMobile
-          )
-        ),
-    },
-
-    billingAddress: {
-      name:
-        pickFirst(
-          billingAddress?.name,
-          billingAddress?.fullName
-        ),
-
-      address:
-        pickFirst(
-          billingAddress?.line1,
-          billingAddress?.address1,
-          billingAddress?.address
-        ),
-
-      address2:
-        billingAddress?.line2 ||
-        billingAddress?.address2 ||
-        "",
-
-      city:
-        billingAddress?.city ||
-        "",
-
-      state:
-        billingAddress?.state ||
-        "",
-
-      pincode:
-        billingAddress?.pincode ||
-        billingAddress?.pinCode ||
-        billingAddress?.postalCode ||
-        "",
-
-      country:
-        billingAddress?.country ||
-        "India",
-    },
-
-    items:
-      buildItems(order),
-
-    shipment: {
-      status:
-        shipmentStatus,
-
-      shipmentId:
-        order?.shipmentId ||
-        order?.shipment_id ||
-        null,
-
-      awb:
-        order?.awb ||
-        order?.awbNumber ||
-        order?.trackingNumber ||
-        null,
-
-      trackingNumber:
-        order?.trackingNumber ||
-        order?.awb ||
-        order?.awbNumber ||
-        null,
-
-      courier:
-        order?.courier ||
-        order?.courierName ||
-        order?.carrier ||
-        null,
-
-      trackingUrl:
-        order?.trackingUrl ||
-        order?.tracking_url ||
-        null,
-
-      estimatedDelivery:
-        order?.estimatedDelivery ||
-        order?.estimated_delivery ||
-        null,
-    },
-
-    invoice: {
-      number:
-        order?.invoiceNumber ||
-        order?.invoice_number ||
-        null,
-
-      url:
-        order?.invoiceUrl ||
-        order?.invoice_url ||
-        null,
-    },
-
-    notes:
-      order?.notes ||
-      "",
-
-    raw:
-      serializeValue(order),
+              text:
+                productUrl ||
+                buildCheckoutUrl(
+                  checkout
+                )
+            }
+          ]
+        }
+      ]
+    }
   };
 }
 
-/* ============================================================
-   CUSTOMER ORDER LOOKUP
-============================================================ */
 
-async function handleCustomer(
-  req,
-  res
+/* ------------------------------------------------------------
+   SEND WHATSAPP TEMPLATE
+------------------------------------------------------------ */
+
+async function sendWhatsAppTemplate(
+  checkout
 ) {
-  const body =
-    req.method === "POST"
-      ? (
-          req.body &&
-          typeof req.body === "object"
-            ? req.body
-            : {}
-        )
-      : {};
+  const config =
+    getWhatsAppConfig();
 
-  const query =
-    req.query || {};
-
-  const orderId =
-    clean(
-      body.orderId ??
-        body.websiteOrderId ??
-        body.id ??
-        query.orderId ??
-        query.websiteOrderId ??
-        query.id
-    );
-
-  const mobile =
-    clean(
-      body.mobile ??
-        body.phone ??
-        body.customerMobile ??
-        query.mobile ??
-        query.phone ??
-        query.customerMobile
-    );
-
-  if (!orderId) {
-    return sendJson(
-      res,
-      400,
-      {
-        success: false,
-        error:
-          "Order ID is required.",
-      }
+  if (
+    !config.accessToken ||
+    !config.phoneNumberId
+  ) {
+    throw new Error(
+      "WhatsApp Cloud API credentials are not configured."
     );
   }
 
-  if (!mobile) {
-    return sendJson(
-      res,
-      400,
+  const payload =
+    buildAbandonedTemplatePayload(
+      checkout
+    );
+
+  const response =
+    await fetch(
+      `https://graph.facebook.com/${encodeURIComponent(
+        config.apiVersion
+      )}/${encodeURIComponent(
+        config.phoneNumberId
+      )}/messages`,
       {
-        success: false,
-        error:
-          "Mobile number is required.",
-      }
-    );
-  }
+        method:
+          "POST",
 
-  try {
-    const db = getDb();
+        headers: {
+          Authorization:
+            `Bearer ${config.accessToken}`,
 
-    const found =
-      await findOrder(
-        db,
-        orderId,
-        mobile
-      );
+          "Content-Type":
+            "application/json",
 
-    if (!found) {
-      return sendJson(
-        res,
-        404,
-        {
-          success: false,
-          found: false,
-          error:
-            "Order not found.",
-        }
-      );
-    }
+          Accept:
+            "application/json"
+        },
 
-    return sendJson(
-      res,
-      200,
-      {
-        success: true,
-        found: true,
-
-        order:
-          buildCustomerOrder(
-            found.data,
-            found.id
-          ),
-      }
-    );
-  } catch (error) {
-    console.error(
-      "Customer order lookup failed:",
-      error
-    );
-
-    return sendJson(
-      res,
-      500,
-      {
-        success: false,
-        found: false,
-        error:
-          "Unable to load order.",
-      }
-    );
-  }
-}
-
-/* ============================================================
-   CUSTOMER SESSION
-============================================================ */
-
-async function handleCustomerSession(
-  req,
-  res
-) {
-  return sendJson(
-    res,
-    200,
-    {
-      success: true,
-      authenticated: false,
-      customer: null,
-      message:
-        "Customer session is not active.",
-    }
-  );
-}
-
-/* ============================================================
-   ADMIN ORDERS
-============================================================ */
-
-async function handleAdminOrders(
-  req,
-  res
-) {
-  const session =
-    verifyAdminSession(req);
-
-  if (!session.ok) {
-    return sendJson(
-      res,
-      session.status,
-      {
-        success: false,
-        authenticated: false,
-        error:
-          session.error,
-      }
-    );
-  }
-
-  try {
-    const db = getDb();
-
-    const limitValue =
-      Number(
-        req.query?.limit || 100
-      );
-
-    const limit =
-      Math.min(
-        Math.max(
-          Number.isFinite(
-            limitValue
+        body:
+          JSON.stringify(
+            payload
           )
-            ? Math.floor(
-                limitValue
-              )
-            : 100,
-          1
-        ),
-        500
-      );
-
-    const snapshot =
-      await db
-        .collection("orders")
-        .limit(limit)
-        .get();
-
-    const orders =
-      snapshot.docs.map(
-        (doc) => {
-          const data =
-            doc.data() || {};
-
-          return {
-            ...serializeValue(
-              data
-            ),
-
-            id:
-              doc.id,
-
-            orderId:
-              pickFirst(
-                data?.websiteOrderId,
-                data?.website_order_id,
-                data?.orderId,
-                data?.orderID,
-                data?.order_id,
-                data?.externalOrderId,
-                data?.external_order_id,
-                data?.id,
-                doc.id
-              ),
-          };
-        }
-      );
-
-    return sendJson(
-      res,
-      200,
-      {
-        success: true,
-        authenticated: true,
-        orders,
-        count:
-          orders.length,
-      }
-    );
-  } catch (error) {
-    console.error(
-      "Admin orders failed:",
-      error
-    );
-
-    return sendJson(
-      res,
-      500,
-      {
-        success: false,
-        authenticated: true,
-        error:
-          "Unable to load orders.",
-      }
-    );
-  }
-}
-
-/* ============================================================
-   WHATSAPP WEBHOOK
-============================================================ */
-
-function getWhatsAppVerifyToken() {
-  return clean(
-    process.env.WHATSAPP_VERIFY_TOKEN ||
-    "LUXMO_HUB_WA_2026"
-  );
-}
-
-function getQueryValue(
-  req,
-  key
-) {
-  return clean(
-    req.query?.[key]
-  );
-}
-
-async function handleWhatsAppWebhook(
-  req,
-  res
-) {
-  const method =
-    String(
-      req.method || "GET"
-    ).toUpperCase();
-
-  /* ----------------------------------------------------------
-     GET — META VERIFICATION
-  ---------------------------------------------------------- */
-
-  if (method === "GET") {
-    const mode =
-      getQueryValue(
-        req,
-        "hub.mode"
-      );
-
-    const token =
-      getQueryValue(
-        req,
-        "hub.verify_token"
-      );
-
-    const challenge =
-      getQueryValue(
-        req,
-        "hub.challenge"
-      );
-
-    console.log(
-      "WhatsApp webhook verification:",
-      {
-        mode,
-        tokenMatched:
-          token ===
-          getWhatsAppVerifyToken(),
       }
     );
 
-    if (
-      mode === "subscribe" &&
-      token ===
-        getWhatsAppVerifyToken() &&
-      challenge
-    ) {
-      res.setHeader(
-        "Content-Type",
-        "text/plain; charset=utf-8"
-      );
+  const data =
+    await response
+      .json()
+      .catch(() => ({}));
 
-      return res
-        .status(200)
-        .send(challenge);
-    }
-
-    return sendJson(
-      res,
-      403,
-      {
-        success: false,
-        error:
-          "Webhook verification failed.",
-      }
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      data?.message ||
+      "WhatsApp template message failed."
     );
   }
 
-  /* ----------------------------------------------------------
-     POST — WHATSAPP EVENTS
-  ---------------------------------------------------------- */
-
-  if (method === "POST") {
-    try {
-      const body =
-        req.body &&
-        typeof req.body ===
-          "object"
-          ? req.body
-          : {};
-
-      console.log(
-        "WhatsApp webhook event:",
-        JSON.stringify(body)
-      );
-
-      return sendJson(
-        res,
-        200,
-        {
-          success: true,
-          received: true,
-        }
-      );
-    } catch (error) {
-      console.error(
-        "WhatsApp webhook POST failed:",
-        error
-      );
-
-      return sendJson(
-        res,
-        200,
-        {
-          success: true,
-          received: true,
-        }
-      );
-    }
-  }
-
-  res.setHeader(
-    "Allow",
-    "GET, POST"
-  );
-
-  return sendJson(
-    res,
-    405,
-    {
-      success: false,
-      error:
-        "Method not allowed.",
-    }
-  );
+  return data;
 }
 
-/* ============================================================
-   MAIN HANDLER
-============================================================ */
 
-export default async function handler(
-  req,
-  res
+/* ------------------------------------------------------------
+   MARK PURCHASED CHECKOUTS
+------------------------------------------------------------ */
+
+async function markPurchasedAbandonedCheckouts(
+  db,
+  order
 ) {
-  try {
-    const method =
-      String(
-        req.method || "GET"
-      ).toUpperCase();
+  const mobile =
+    getOrderMobile(order);
 
-    const query =
-      req.query || {};
+  const email =
+    normalizeEmail(
+      pickFirst(
+        order?.customer?.email,
+        order?.customerEmail,
+        order?.email
+      )
+    );
 
-    /* ============================================================
-       FIX: DIRECT /api/customer-session ROUTE
-       This is the important addition.
-    ============================================================ */
+  if (!mobile && !email) {
+    return 0;
+  }
 
-    const pathname =
-      clean(
-        req.url?.split("?")[0]
+  const snapshot =
+    await db
+      .collection(
+        "abandonedCheckouts"
+      )
+      .limit(500)
+      .get();
+
+  const batch =
+    db.batch();
+
+  let count = 0;
+
+  for (
+    const doc
+    of snapshot.docs
+  ) {
+    const checkout =
+      doc.data() || {};
+
+    const checkoutMobile =
+      getCheckoutMobile(
+        checkout
       );
 
-    const action =
-      clean(
-        query.action
-      ).toLowerCase();
-
-    if (
-      pathname === "/api/customer-session"
-    ) {
-      if (method !== "GET") {
-        res.setHeader(
-          "Allow",
-          "GET"
-        );
-
-        return sendJson(
-          res,
-          405,
-          {
-            success: false,
-            error:
-              "Method not allowed.",
-          }
-        );
-      }
-
-      return handleCustomerSession(
-        req,
-        res
-      );
-    }
-
-    /* --------------------------------------------------------
-       WHATSAPP WEBHOOK
-    -------------------------------------------------------- */
-
-    const whatsappWebhook =
-      clean(
-        query.whatsapp_webhook
-      );
-
-    if (
-      whatsappWebhook === "1"
-    ) {
-      return handleWhatsAppWebhook(
-        req,
-        res
-      );
-    }
-
-    /* --------------------------------------------------------
-       CUSTOMER SESSION
-    -------------------------------------------------------- */
-
-    if (
-      action ===
-        "customer-session" ||
-      action ===
-        "customersession"
-    ) {
-      if (
-        method !== "GET"
-      ) {
-        res.setHeader(
-          "Allow",
-          "GET"
-        );
-
-        return sendJson(
-          res,
-          405,
-          {
-            success: false,
-            error:
-              "Method not allowed.",
-          }
-        );
-      }
-
-      return handleCustomerSession(
-        req,
-        res
-      );
-    }
-
-    /* --------------------------------------------------------
-       CUSTOMER ORDER LOOKUP
-    -------------------------------------------------------- */
-
-    if (
-      action === "customer" ||
-      action === "lookup" ||
-      action === "my-orders" ||
-      (
-        method === "POST" &&
-        req.body &&
-        typeof req.body ===
-          "object" &&
-        (
-          req.body.action ===
-            "customer" ||
-          req.body.orderId ||
-          req.body.websiteOrderId
+    const checkoutEmail =
+      normalizeEmail(
+        pickFirst(
+          checkout?.customer?.email,
+          checkout?.customerEmail,
+          checkout?.email
         )
+      );
+
+    if (
+      (
+        mobile &&
+        checkoutMobile === mobile
+      ) ||
+      (
+        email &&
+        checkoutEmail &&
+        checkoutEmail === email
       )
     ) {
-      if (
-        method !== "GET" &&
-        method !== "POST"
-      ) {
-        res.setHeader(
-          "Allow",
-          "GET, POST"
-        );
+      batch.set(
+        doc.ref,
+        {
+          purchased:
+            true,
 
-        return sendJson(
-          res,
-          405,
-          {
-            success: false,
-            error:
-              "Method not allowed.",
-          }
-        );
-      }
+          purchaseCompleted:
+            true,
 
-      return handleCustomer(
-        req,
-        res
+          purchasedAt:
+            new Date(),
+
+          whatsappReminderDisabled:
+            true,
+
+          whatsappReminderReason:
+            "purchase",
+
+          updatedAt:
+            new Date()
+        },
+        {
+          merge:
+            true
+        }
       );
+
+      count += 1;
     }
+  }
 
-    /* --------------------------------------------------------
-       ADMIN
-    -------------------------------------------------------- */
+  if (count) {
+    await batch.commit();
+  }
 
-    if (
-      action === "admin"
-    ) {
-      return handleAdminOrders(
-        req,
-        res
-      );
-    }
+  return count;
+}
 
-    if (
-      method === "GET"
-    ) {
-      return handleAdminOrders(
-        req,
-        res
-      );
-    }
 
-    if (
-      method === "POST" &&
-      req.body &&
-      typeof req.body ===
-        "object" &&
-      req.body.action ===
-        "admin"
-    ) {
-      return handleAdminOrders(
-        req,
-        res
-      );
-    }
+/* ------------------------------------------------------------
+   ABANDONED CHECKOUT CRON
+------------------------------------------------------------ */
 
-    /* --------------------------------------------------------
-       POST FALLBACK
-    -------------------------------------------------------- */
-
-    if (
-      method === "POST"
-    ) {
-      const body =
-        req.body &&
-        typeof req.body ===
-          "object"
-          ? req.body
-          : {};
-
-      if (
-        body.orderId ||
-        body.websiteOrderId ||
-        body.id ||
-        body.mobile
-      ) {
-        return handleCustomer(
-          req,
-          res
-        );
-      }
-
-      return handleAdminOrders(
-        req,
-        res
-      );
-    }
-
-    /* --------------------------------------------------------
-       METHOD NOT ALLOWED
-    -------------------------------------------------------- */
-
+async function handleWhatsAppAbandoned(
+  req,
+  res
+) {
+  if (
+    req.method !==
+    "GET"
+  ) {
     res.setHeader(
       "Allow",
-      "GET, POST"
+      "GET"
     );
 
     return sendJson(
       res,
       405,
       {
-        success: false,
+        success:
+          false,
+
         error:
-          "Method not allowed.",
+          "Method not allowed."
       }
     );
+  }
+
+  try {
+    const db =
+      getDb();
+
+    const now =
+      Date.now();
+
+    const cutoff =
+      now -
+      getAbandonedAfterMs();
+
+    const snapshot =
+      await db
+        .collection(
+          "abandonedCheckouts"
+        )
+        .limit(500)
+        .get();
+
+    let scanned = 0;
+    let sent = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    const config =
+      getWhatsAppConfig();
+
+    if (
+      !config.accessToken ||
+      !config.phoneNumberId
+    ) {
+      return sendJson(
+        res,
+        200,
+        {
+          success:
+            true,
+
+          enabled:
+            false,
+
+          message:
+            "WhatsApp Cloud API credentials are not configured.",
+
+          scanned:
+            0,
+
+          sent:
+            0,
+
+          skipped:
+            0,
+
+          failed:
+            0
+        }
+      );
+    }
+
+    for (
+      const doc
+      of snapshot.docs
+    ) {
+      const checkout =
+        doc.data() || {};
+
+      scanned += 1;
+
+      /* Consent required */
+
+      if (
+        !isWhatsAppOptedIn(
+          checkout
+        )
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      /* Never remind a purchased customer */
+
+      if (
+        isPurchased(
+          checkout
+        )
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      const mobile =
+        getCheckoutMobile(
+          checkout
+        );
+
+      if (!mobile) {
+        skipped += 1;
+        continue;
+      }
+
+      const createdAt =
+        getCheckoutCreatedAt(
+          checkout,
+          now
+        );
+
+      if (
+        createdAt >
+        cutoff
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      const lastReminderAt =
+        getLastReminderAt(
+          checkout
+        );
+
+      /* Cooldown / duplicate protection */
+
+      if (
+        lastReminderAt &&
+        now -
+          lastReminderAt <
+          getReminderCooldownMs()
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      try {
+        const result =
+          await sendWhatsAppTemplate(
+            checkout
+          );
+
+        await doc.ref.set(
+          {
+            whatsappReminderSent:
+              true,
+
+            whatsappReminderSentAt:
+              new Date(),
+
+            lastWhatsAppReminderAt:
+              new Date(),
+
+            whatsappReminderMessageId:
+              result?.messages?.[0]?.id ||
+              null,
+
+            whatsappReminderError:
+              "",
+
+            updatedAt:
+              new Date()
+          },
+          {
+            merge:
+              true
+          }
+        );
+
+        sent += 1;
+
+      } catch (error) {
+        failed += 1;
+
+        await doc.ref.set(
+          {
+            whatsappReminderSent:
+              false,
+
+            whatsappReminderError:
+              clean(
+                error?.message ||
+                error
+              ).slice(0, 1000),
+
+            updatedAt:
+              new Date()
+          },
+          {
+            merge:
+              true
+          }
+        );
+      }
+    }
+
+    return sendJson(
+      res,
+      200,
+      {
+        success:
+          true,
+
+        enabled:
+          true,
+
+        scanned,
+
+        sent,
+
+        skipped,
+
+        failed,
+
+        cooldownMinutes:
+          getReminderCooldownMs() /
+          60000,
+
+        abandonedAfterMinutes:
+          getAbandonedAfterMs() /
+          60000
+      }
+    );
+
   } catch (error) {
     console.error(
-      "Orders API error:",
+      "Abandoned checkout WhatsApp job failed:",
       error
     );
 
@@ -1920,9 +900,12 @@ export default async function handler(
       res,
       500,
       {
-        success: false,
+        success:
+          false,
+
         error:
-          "Internal server error.",
+          error?.message ||
+          "Unable to process abandoned checkout reminders."
       }
     );
   }
