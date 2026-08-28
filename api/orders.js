@@ -1,18 +1,30 @@
 /* ============================================================
-   WHATSAPP ABANDONED CHECKOUT
+   LUXMO HUB — ORDER WHATSAPP NOTIFICATIONS
+   ============================================================
+   Sends:
+   🛒 Order Placed
+   💰 Payment Successful
+   📦 Order Shipped
+   🚚 Out for Delivery
+   ✅ Delivered
+
+   Uses the EXISTING /api/orders endpoint.
+   No new API folder is required.
    ============================================================ */
 
-function getWhatsAppConfig() {
+function getLuxmoOrderWhatsAppConfig() {
   return {
     accessToken: clean(
       process.env.WHATSAPP_ACCESS_TOKEN ||
       process.env.META_WHATSAPP_ACCESS_TOKEN ||
-      process.env.WHATSAPP_CLOUD_API_TOKEN
+      process.env.WHATSAPP_CLOUD_API_TOKEN ||
+      ""
     ),
 
     phoneNumberId: clean(
       process.env.WHATSAPP_PHONE_NUMBER_ID ||
-      process.env.META_WHATSAPP_PHONE_NUMBER_ID
+      process.env.META_WHATSAPP_PHONE_NUMBER_ID ||
+      ""
     ),
 
     apiVersion: clean(
@@ -22,12 +34,13 @@ function getWhatsAppConfig() {
     ),
 
     templateName: clean(
-      process.env.WHATSAPP_ABANDONED_TEMPLATE ||
-      "abandoned_checkout"
+      process.env.WHATSAPP_ORDER_TEMPLATE ||
+      "luxmo_order_update"
     ),
 
     templateLanguage: clean(
-      process.env.WHATSAPP_ABANDONED_TEMPLATE_LANGUAGE ||
+      process.env.WHATSAPP_ORDER_TEMPLATE_LANGUAGE ||
+      process.env.WHATSAPP_ORDER_LANGUAGE ||
       "en_US"
     )
   };
@@ -35,89 +48,106 @@ function getWhatsAppConfig() {
 
 
 /* ============================================================
-   WHATSAPP OPT-IN
-============================================================ */
+   CUSTOMER NAME
+   ============================================================ */
 
-function isWhatsAppOptedIn(checkout) {
-  return (
-    checkout?.whatsappOptIn === true ||
-    checkout?.whatsapp_opt_in === true ||
-    checkout?.whatsappConsent === true ||
-    checkout?.consent?.whatsapp === true
+function getLuxmoOrderCustomerName(order) {
+  return clean(
+    order?.customer?.name ||
+    order?.customerName ||
+    order?.name ||
+    order?.shippingAddress?.name ||
+    order?.address?.name ||
+    "Customer"
   );
 }
 
 
 /* ============================================================
-   PURCHASE EXCLUSION
-============================================================ */
+   CUSTOMER MOBILE / WHATSAPP
+   ============================================================ */
 
-function isPurchasedCheckout(checkout) {
-  return (
-    checkout?.purchased === true ||
-    checkout?.purchaseCompleted === true ||
-    checkout?.paymentVerified === true ||
-    clean(
-      checkout?.paymentStatus ||
-      checkout?.payment_status ||
-      ""
-    ).toLowerCase() === "paid"
+function getLuxmoOrderCustomerMobile(order) {
+  const raw = pickFirst(
+    order?.customer?.phone,
+    order?.customer?.mobile,
+    order?.customerPhone,
+    order?.customerMobile,
+    order?.phone,
+    order?.mobile,
+    order?.contactNumber,
+    order?.shippingAddress?.phone,
+    order?.shippingAddress?.mobile,
+    order?.address?.phone,
+    order?.address?.mobile
+  );
+
+  return normalizeMobile(raw);
+}
+
+
+/* ============================================================
+   ORDER ID
+   ============================================================ */
+
+function getLuxmoOrderNumber(order) {
+  return clean(
+    order?.websiteOrderId ||
+    order?.orderNumber ||
+    order?.orderId ||
+    order?.id ||
+    "N/A"
   );
 }
 
 
 /* ============================================================
-   CUSTOMER MOBILE
-============================================================ */
+   ORDER TOTAL
+   ============================================================ */
 
-function getCheckoutMobile(checkout) {
-  return normalizeMobile(
-    pickFirst(
-      checkout?.customer?.phone,
-      checkout?.customer?.mobile,
-      checkout?.customerPhone,
-      checkout?.customerMobile,
-      checkout?.phone,
-      checkout?.mobile,
-      checkout?.contactNumber,
-      checkout?.shippingAddress?.phone,
-      checkout?.shippingAddress?.mobile
-    )
+function getLuxmoOrderTotal(order) {
+  const total = safeNumber(
+    order?.total ??
+    order?.grandTotal ??
+    order?.amount ??
+    order?.pricing?.total ??
+    0
   );
+
+  return `₹${total.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
 }
 
 
 /* ============================================================
-   CHECKOUT ITEMS
-============================================================ */
+   ORDER ITEMS
+   ============================================================ */
 
-function getCheckoutItems(checkout) {
+function getLuxmoOrderItems(order) {
   const items =
-    Array.isArray(checkout?.items)
-      ? checkout.items
-      : Array.isArray(checkout?.products)
-      ? checkout.products
+    Array.isArray(order?.items)
+      ? order.items
+      : Array.isArray(order?.products)
+      ? order.products
       : [];
 
+  if (!items.length) {
+    return "Your LUXMO HUB order";
+  }
+
   return items
-    .slice(0, 10)
-    .map((item) => ({
-      name: clean(
+    .slice(0, 3)
+    .map((item) => {
+      const name = clean(
         item?.name ||
         item?.title ||
         item?.productName ||
         "Product"
-      ),
+      );
 
-      price: safeNumber(
-        item?.price ??
-        item?.salePrice ??
-        item?.sellingPrice ??
-        item?.unitPrice ??
-        0
-      ),
-
-      quantity: Math.max(
+      const quantity = Math.max(
         1,
         Math.floor(
           safeNumber(
@@ -126,271 +156,59 @@ function getCheckoutItems(checkout) {
             1
           )
         )
-      ),
+      );
 
-      image: clean(
-        item?.image ||
-        item?.imageUrl ||
-        item?.image_url ||
-        item?.thumbnail ||
-        ""
-      ),
-
-      url: clean(
-        item?.url ||
-        item?.productUrl ||
-        item?.productURL ||
-        item?.productLink ||
-        ""
-      )
-    }));
+      return `${name} x${quantity}`;
+    })
+    .join(", ");
 }
 
 
 /* ============================================================
-   PRODUCT SUMMARY
-============================================================ */
+   NOTIFICATION TEXT
+   ============================================================ */
 
-function getCheckoutProduct(checkout) {
-  const items =
-    getCheckoutItems(checkout);
+function getLuxmoOrderNotificationText(type) {
+  switch (type) {
 
-  if (!items.length) {
-    return {
-      name: "Your cart",
+    case "order_placed":
+      return "Your LUXMO HUB order has been placed successfully.";
 
-      price: safeNumber(
-        checkout?.total ||
-        checkout?.grandTotal ||
-        checkout?.amount ||
-        0
-      ),
+    case "payment_success":
+      return "Your payment has been received successfully.";
 
-      image: "",
+    case "order_shipped":
+      return "Your LUXMO HUB order has been shipped.";
 
-      url: ""
-    };
+    case "out_for_delivery":
+      return "Your LUXMO HUB order is out for delivery.";
+
+    case "delivered":
+      return "Your LUXMO HUB order has been delivered successfully.";
+
+    default:
+      return "Your LUXMO HUB order status has been updated.";
   }
-
-  const first =
-    items[0];
-
-  return {
-    name:
-      items.length === 1
-        ? first.name
-        : `${first.name} + ${items.length - 1} more`,
-
-    price:
-      safeNumber(
-        checkout?.total ||
-        checkout?.grandTotal ||
-        checkout?.amount ||
-        first.price ||
-        0
-      ),
-
-    image:
-      first.image,
-
-    url:
-      first.url
-  };
-}
-
-
-/* ============================================================
-   PRICE
-============================================================ */
-
-function formatWhatsAppPrice(value) {
-  return `₹${safeNumber(
-    value
-  ).toLocaleString(
-    "en-IN",
-    {
-      maximumFractionDigits: 2
-    }
-  )}`;
-}
-
-
-/* ============================================================
-   CHECKOUT URL
-============================================================ */
-
-function getCheckoutUrl(checkout) {
-  const direct =
-    clean(
-      checkout?.checkoutUrl ||
-      checkout?.checkoutURL ||
-      checkout?.cartUrl ||
-      ""
-    );
-
-  if (direct) {
-    return direct;
-  }
-
-  const product =
-    getCheckoutProduct(
-      checkout
-    );
-
-  return (
-    product.url ||
-    clean(
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.SITE_URL ||
-      "https://www.luxmohub.in"
-    )
-  );
-}
-
-
-/* ============================================================
-   TIME
-============================================================ */
-
-function toMillis(value) {
-  if (!value) {
-    return 0;
-  }
-
-  if (
-    typeof value === "number" &&
-    Number.isFinite(value)
-  ) {
-    return value;
-  }
-
-  if (
-    typeof value === "object" &&
-    typeof value.toMillis === "function"
-  ) {
-    try {
-      return value.toMillis();
-    } catch {}
-  }
-
-  const parsed =
-    Date.parse(
-      String(value)
-    );
-
-  return Number.isFinite(parsed)
-    ? parsed
-    : 0;
-}
-
-
-function getCheckoutCreatedAt(
-  checkout,
-  fallback
-) {
-  return (
-    toMillis(
-      checkout?.checkoutStartedAt ||
-      checkout?.checkout_started_at ||
-      checkout?.createdAt ||
-      checkout?.created_at ||
-      checkout?.updatedAt ||
-      checkout?.updated_at
-    ) ||
-    fallback
-  );
-}
-
-
-function getLastWhatsAppReminderAt(
-  checkout
-) {
-  return toMillis(
-    checkout?.whatsappReminderSentAt ||
-    checkout?.whatsapp_reminder_sent_at ||
-    checkout?.lastWhatsAppReminderAt ||
-    checkout?.last_whatsapp_reminder_at
-  );
-}
-
-
-/* ============================================================
-   SETTINGS
-============================================================ */
-
-function getAbandonedAfterMs() {
-  const minutes =
-    Math.max(
-      15,
-      safeNumber(
-        process.env.WHATSAPP_ABANDONED_AFTER_MINUTES ||
-        60
-      )
-    );
-
-  return (
-    minutes *
-    60 *
-    1000
-  );
-}
-
-
-function getReminderCooldownMs() {
-  const minutes =
-    Math.max(
-      60,
-      safeNumber(
-        process.env.WHATSAPP_ABANDONED_COOLDOWN_MINUTES ||
-        1440
-      )
-    );
-
-  return (
-    minutes *
-    60 *
-    1000
-  );
 }
 
 
 /* ============================================================
    WHATSAPP TEMPLATE PAYLOAD
-============================================================ */
+   ============================================================ */
 
-function buildAbandonedWhatsAppPayload(
-  checkout
-) {
+function buildLuxmoOrderWhatsAppPayload(order, type) {
   const config =
-    getWhatsAppConfig();
-
-  const product =
-    getCheckoutProduct(
-      checkout
-    );
-
-  const customerName =
-    clean(
-      checkout?.customer?.name ||
-      checkout?.customerName ||
-      checkout?.name ||
-      "Customer"
-    );
+    getLuxmoOrderWhatsAppConfig();
 
   return {
-    messaging_product:
-      "whatsapp",
+    messaging_product: "whatsapp",
 
-    recipient_type:
-      "individual",
+    recipient_type: "individual",
 
     to:
-      getCheckoutMobile(
-        checkout
-      ),
+      getLuxmoOrderCustomerMobile(order),
 
-    type:
-      "template",
+    type: "template",
 
     template: {
       name:
@@ -403,44 +221,37 @@ function buildAbandonedWhatsAppPayload(
 
       components: [
         {
-          type:
-            "body",
+          type: "body",
 
           parameters: [
             {
-              type:
-                "text",
-
+              type: "text",
               text:
-                customerName
+                getLuxmoOrderCustomerName(order)
             },
 
             {
-              type:
-                "text",
-
+              type: "text",
               text:
-                product.name
+                getLuxmoOrderNumber(order)
             },
 
             {
-              type:
-                "text",
-
+              type: "text",
               text:
-                formatWhatsAppPrice(
-                  product.price
-                )
+                getLuxmoOrderNotificationText(type)
             },
 
             {
-              type:
-                "text",
-
+              type: "text",
               text:
-                getCheckoutUrl(
-                  checkout
-                )
+                getLuxmoOrderTotal(order)
+            },
+
+            {
+              type: "text",
+              text:
+                getLuxmoOrderItems(order)
             }
           ]
         }
@@ -451,14 +262,13 @@ function buildAbandonedWhatsAppPayload(
 
 
 /* ============================================================
-   SEND WHATSAPP
-============================================================ */
+   SEND ORDER WHATSAPP
+   ============================================================ */
 
-async function sendAbandonedWhatsApp(
-  checkout
-) {
+async function sendLuxmoOrderWhatsApp(order, type) {
+
   const config =
-    getWhatsAppConfig();
+    getLuxmoOrderWhatsAppConfig();
 
   if (
     !config.accessToken ||
@@ -466,6 +276,15 @@ async function sendAbandonedWhatsApp(
   ) {
     throw new Error(
       "WhatsApp Cloud API credentials are not configured."
+    );
+  }
+
+  const mobile =
+    getLuxmoOrderCustomerMobile(order);
+
+  if (!mobile) {
+    throw new Error(
+      "Customer WhatsApp/mobile number is missing or invalid."
     );
   }
 
@@ -477,8 +296,7 @@ async function sendAbandonedWhatsApp(
         config.phoneNumberId
       )}/messages`,
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           Authorization:
@@ -493,8 +311,9 @@ async function sendAbandonedWhatsApp(
 
         body:
           JSON.stringify(
-            buildAbandonedWhatsAppPayload(
-              checkout
+            buildLuxmoOrderWhatsAppPayload(
+              order,
+              type
             )
           )
       }
@@ -508,403 +327,113 @@ async function sendAbandonedWhatsApp(
       );
 
   if (!response.ok) {
+
     throw new Error(
       data?.error?.message ||
+      data?.error?.error_data?.details ||
       data?.message ||
-      "WhatsApp message failed."
+      "WhatsApp order notification failed."
     );
   }
+
+  console.log(
+    "LUXMO WhatsApp notification sent:",
+    {
+      type,
+      orderId:
+        getLuxmoOrderNumber(order),
+      mobile,
+      messageId:
+        data?.messages?.[0]?.id ||
+        null
+    }
+  );
 
   return data;
 }
 
 
 /* ============================================================
-   MARK PURCHASED
-============================================================ */
+   SAFE NOTIFICATION WRAPPER
+   ============================================================ */
 
-async function markAbandonedCheckoutPurchased(
-  db,
-  order
+async function sendLuxmoOrderNotification(
+  order,
+  type
 ) {
-  const mobile =
-    getOrderMobile(
-      order
-    );
 
-  const email =
-    normalizeEmail(
-      pickFirst(
-        order?.customer?.email,
-        order?.customerEmail,
-        order?.email
-      )
-    );
+  const allowedTypes =
+    new Set([
+      "order_placed",
+      "payment_success",
+      "order_shipped",
+      "out_for_delivery",
+      "delivered"
+    ]);
 
-  if (
-    !mobile &&
-    !email
-  ) {
-    return 0;
-  }
+  if (!allowedTypes.has(type)) {
 
-  const snapshot =
-    await db
-      .collection(
-        "abandonedCheckouts"
-      )
-      .limit(500)
-      .get();
-
-  const batch =
-    db.batch();
-
-  let count = 0;
-
-  for (
-    const doc
-    of snapshot.docs
-  ) {
-    const checkout =
-      doc.data() ||
-      {};
-
-    const checkoutMobile =
-      getCheckoutMobile(
-        checkout
-      );
-
-    const checkoutEmail =
-      normalizeEmail(
-        pickFirst(
-          checkout?.customer?.email,
-          checkout?.customerEmail,
-          checkout?.email
-        )
-      );
-
-    if (
-      (
-        mobile &&
-        checkoutMobile === mobile
-      ) ||
-      (
-        email &&
-        checkoutEmail &&
-        checkoutEmail === email
-      )
-    ) {
-      batch.set(
-        doc.ref,
-        {
-          purchased:
-            true,
-
-          purchaseCompleted:
-            true,
-
-          purchasedAt:
-            new Date(),
-
-          whatsappReminderDisabled:
-            true,
-
-          whatsappReminderReason:
-            "purchase",
-
-          updatedAt:
-            new Date()
-        },
-        {
-          merge:
-            true
-        }
-      );
-
-      count += 1;
-    }
-  }
-
-  if (count) {
-    await batch.commit();
-  }
-
-  return count;
-}
-
-
-/* ============================================================
-   ABANDONED CHECKOUT PROCESSOR
-============================================================ */
-
-async function handleWhatsAppAbandoned(
-  req,
-  res
-) {
-  if (
-    req.method !==
-    "GET"
-  ) {
-    res.setHeader(
-      "Allow",
-      "GET"
-    );
-
-    return sendJson(
-      res,
-      405,
-      {
-        success:
-          false,
-
-        error:
-          "Method not allowed."
-      }
-    );
+    return {
+      success: false,
+      error:
+        `Unsupported notification type: ${type}`
+    };
   }
 
   try {
-    const db =
-      getDb();
 
-    const config =
-      getWhatsAppConfig();
-
-    if (
-      !config.accessToken ||
-      !config.phoneNumberId
-    ) {
-      return sendJson(
-        res,
-        200,
-        {
-          success:
-            true,
-
-          enabled:
-            false,
-
-          message:
-            "WhatsApp Cloud API credentials are not configured.",
-
-          scanned:
-            0,
-
-          sent:
-            0,
-
-          skipped:
-            0,
-
-          failed:
-            0
-        }
+    const result =
+      await sendLuxmoOrderWhatsApp(
+        order,
+        type
       );
-    }
 
-    const now =
-      Date.now();
+    return {
+      success: true,
 
-    const cutoff =
-      now -
-      getAbandonedAfterMs();
+      channel: "whatsapp",
 
-    const snapshot =
-      await db
-        .collection(
-          "abandonedCheckouts"
-        )
-        .limit(500)
-        .get();
+      type,
 
-    let scanned = 0;
-    let sent = 0;
-    let skipped = 0;
-    let failed = 0;
+      orderId:
+        getLuxmoOrderNumber(order),
 
-    for (
-      const doc
-      of snapshot.docs
-    ) {
-      const checkout =
-        doc.data() ||
-        {};
-
-      scanned += 1;
-
-      if (
-        !isWhatsAppOptedIn(
-          checkout
-        )
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      if (
-        isPurchasedCheckout(
-          checkout
-        )
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      if (
-        checkout?.whatsappReminderDisabled ===
-        true
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      const mobile =
-        getCheckoutMobile(
-          checkout
-        );
-
-      if (!mobile) {
-        skipped += 1;
-        continue;
-      }
-
-      const createdAt =
-        getCheckoutCreatedAt(
-          checkout,
-          now
-        );
-
-      if (
-        createdAt >
-        cutoff
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      const lastReminder =
-        getLastWhatsAppReminderAt(
-          checkout
-        );
-
-      if (
-        lastReminder &&
-        now -
-          lastReminder <
-          getReminderCooldownMs()
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      try {
-        const result =
-          await sendAbandonedWhatsApp(
-            checkout
-          );
-
-        await doc.ref.set(
-          {
-            whatsappReminderSent:
-              true,
-
-            whatsappReminderSentAt:
-              new Date(),
-
-            lastWhatsAppReminderAt:
-              new Date(),
-
-            whatsappReminderMessageId:
-              result?.messages?.[0]?.id ||
-              null,
-
-            whatsappReminderError:
-              "",
-
-            updatedAt:
-              new Date()
-          },
-          {
-            merge:
-              true
-          }
-        );
-
-        sent += 1;
-
-      } catch (error) {
-        failed += 1;
-
-        await doc.ref.set(
-          {
-            whatsappReminderSent:
-              false,
-
-            whatsappReminderError:
-              clean(
-                error?.message ||
-                error
-              ).slice(
-                0,
-                1000
-              ),
-
-            updatedAt:
-              new Date()
-          },
-          {
-            merge:
-              true
-          }
-        );
-      }
-    }
-
-    return sendJson(
-      res,
-      200,
-      {
-        success:
-          true,
-
-        enabled:
-          true,
-
-        scanned,
-
-        sent,
-
-        skipped,
-
-        failed,
-
-        abandonedAfterMinutes:
-          getAbandonedAfterMs() /
-          60000,
-
-        cooldownMinutes:
-          getReminderCooldownMs() /
-          60000
-      }
-    );
+      messageId:
+        result?.messages?.[0]?.id ||
+        null
+    };
 
   } catch (error) {
+
     console.error(
-      "WhatsApp abandoned checkout processor failed:",
+      `LUXMO WhatsApp ${type} notification failed:`,
       error
     );
 
-    return sendJson(
-      res,
-      500,
-      {
-        success:
-          false,
+    /*
+     * IMPORTANT:
+     * Notification failure must NEVER
+     * make a successful order/payment fail.
+     */
 
-        error:
+    return {
+      success: false,
+
+      channel: "whatsapp",
+
+      type,
+
+      orderId:
+        getLuxmoOrderNumber(order),
+
+      error:
+        clean(
           error?.message ||
-          "Unable to process abandoned checkout reminders."
-      }
-    );
+          error
+        ).slice(
+          0,
+          1000
+        )
+    };
   }
 }
