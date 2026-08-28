@@ -24,5 +24,11 @@
       "source": "/api/whatsapp/webhook",
       "destination": "/api/orders?whatsapp_webhook=1"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/orders?action=whatsapp-abandoned",
+      "schedule": "*/15 * * * *"
+    }
   ]
 }
