@@ -2496,72 +2496,6 @@ function luxmoCloseAbandonedCheckout(id=""){try{const c=JSON.parse(localStorage.
 function luxmoWhatsAppReminderAllowed(phone,kind="checkout",ms=86400000){if(!phone)return false;try{const k=`${kind}:${String(phone).replace(/\D/g,"")}`,d=JSON.parse(localStorage.getItem(LUXMO_WHATSAPP_COOLDOWN_KEY)||"{}"),last=Number(d[k]||0);if(Date.now()-last<ms)return false;d[k]=Date.now();localStorage.setItem(LUXMO_WHATSAPP_COOLDOWN_KEY,JSON.stringify(d));return true}catch{return false}}
 function luxmoBuildWhatsAppCheckoutMessage(s={},kind="checkout"){const c=s?.customer||{},a=Array.isArray(s?.items)?s.items:[];return[`Hello ${c.name||"Customer"},`,kind==="cod"?"Your COD checkout is still pending.":"Your LUXMO HUB checkout is still pending.","",...a.map(i=>`• ${i.item_name} × ${i.quantity} — ₹${Number(i.price||0).toLocaleString("en-IN")}`),"",`Total: ₹${Number(s?.value||0).toLocaleString("en-IN")}`,"","Please return to LUXMO HUB to complete your order."].join("\n")}
 async function luxmoSendServerMarketingEvent(n,p={}){if(!luxmoMarketingConsentGranted())return false;const e=typeof window!=="undefined"?window.LUXMO_MARKETING_CAPI_ENDPOINT:"";if(!e)return false;try{const r=await fetch(e,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({eventName:n,...p})});return r.ok}catch{return false}}
-
-async function luxmoTrackCompletedPurchaseOnce(order = {}) {
-  const orderId = String(order?.websiteOrderId || order?.orderId || order?.id || "").trim();
-  if (!orderId) return false;
-
-  // Purchase must be idempotent: refreshes/duplicate hosted callbacks must
-  // never send the same Purchase event twice.
-  const key = `luxmo_purchase_tracked_${orderId}`;
-  try {
-    if (localStorage.getItem(key) === "1") return false;
-    localStorage.setItem(key, "1");
-  } catch {}
-
-  const payload = {
-    transaction_id: orderId,
-    value: Number(order?.total ?? order?.amount ?? 0) || 0,
-    currency: String(order?.currency || "INR"),
-    payment_method: String(order?.paymentMethod || "razorpay"),
-    items: luxmoMarketingItems(order?.items || [])
-  };
-
-  // Respect the existing consent gate.
-  luxmoMarketingEvent("purchase", payload);
-  await luxmoSendServerMarketingEvent("purchase", payload);
-
-  // Stop abandoned checkout/reminders only after verified purchase.
-  luxmoMarkPurchase(order);
-  luxmoCloseAbandonedCheckout(orderId);
-
-  // Server-side marker is the source of truth for WhatsApp reminder exclusion.
-  try {
-    await luxmoSecurityFetch("/api/orders", {
-      method: "POST",
-      body: JSON.stringify({
-        action: "mark-purchased",
-        orderId,
-        razorpayOrderId: order?.razorpayOrderId || "",
-        razorpayPaymentId: order?.razorpayPaymentId || ""
-      })
-    });
-  } catch (error) {
-    console.warn("Purchase reminder exclusion sync unavailable:", error?.message || error);
-  }
-
-  return true;
-}
-
-async function luxmoQueueAbandonedCheckout(snapshot = {}) {
-  const customer = snapshot?.customer || {};
-  if (customer?.whatsapp_opt_in !== true || !customer?.phone) return false;
-  try {
-    const response = await luxmoSecurityFetch("/api/orders", {
-      method: "POST",
-      body: JSON.stringify({
-        action: "queue-abandoned-checkout",
-        checkout: snapshot
-      })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data?.success) throw new Error(data?.error || "Unable to queue abandoned checkout.");
-    return true;
-  } catch (error) {
-    console.warn("Abandoned checkout server queue unavailable:", error?.message || error);
-    return false;
-  }
-}
 function LuxmoCheckout({
   cart,
   subtotal,
@@ -2829,6 +2763,7 @@ function LuxmoCheckout({
     const marketingItems=luxmoMarketingItems(cart);
     luxmoMarketingEvent("checkout_started",{value:Number(total||0),currency:"INR",items:marketingItems,customer:marketingCustomer,payment_method:payment});
     luxmoSendServerMarketingEvent("checkout_started",{value:Number(total||0),currency:"INR",items:marketingItems,customer:marketingCustomer,payment_method:payment});
+    luxmoSaveAbandonedCheckout({customer:marketingCustomer,paymentMethod:payment,items:marketingItems,value:Number(total||0)});
     const order = {
       id: luxmoOrderNumber(),
 
@@ -2898,24 +2833,9 @@ function LuxmoCheckout({
       trackingUrl: "",
     };
 
-    const abandonedCheckoutSnapshot = {
-      websiteOrderId: order.id,
-      customer: marketingCustomer,
-      paymentMethod: payment,
-      items: marketingItems,
-      value: Number(total || 0),
-      currency: "INR",
-      checkoutUrl: typeof window !== "undefined" ? window.location.origin : "https://luxmohub.in",
-      createdAt: new Date().toISOString()
-    };
-    luxmoSaveAbandonedCheckout(abandonedCheckoutSnapshot);
-    // Persist server-side so the reminder can still be sent after the
-    // customer's browser is closed. No new API route is used.
-    void luxmoQueueAbandonedCheckout(abandonedCheckoutSnapshot);
-
-    // IMPORTANT: Purchase tracking is NOT fired here.
-    // Razorpay Purchase is recorded only after server-side verification.
-    // COD is recorded only after the server confirms the COD order.
+    luxmoMarketingEvent("purchase",{transaction_id:order.id,value:Number(order.total||0),currency:"INR",payment_method:order.paymentMethod,items:luxmoMarketingItems(order.items)});
+    luxmoSendServerMarketingEvent("purchase",{transaction_id:order.id,value:Number(order.total||0),currency:"INR",payment_method:order.paymentMethod,items:luxmoMarketingItems(order.items)});
+    luxmoCloseAbandonedCheckout(order.id);
     onOrderCreated(order);
   };
 
@@ -3697,11 +3617,6 @@ function LuxmoProSuite({ products, cart, addToCart, onSelectProduct, isAdminLogg
         setOrders(next);
         safeWriteJSON(LUXMO_PRO_STORAGE.orders,next);
         luxmoRememberPaidOrder(finalOrder, null);
-        await luxmoTrackCompletedPurchaseOnce({
-          ...finalOrder,
-          paymentStatus: "Pending Collection",
-          paymentVerified: true
-        });
         alert(`Order ${finalOrder.id} created successfully. Opening My Orders now.`);
         if (typeof onCheckoutClose === "function") {
           onCheckoutClose();
@@ -5100,11 +5015,6 @@ export default function LuxmoHubApp() {
             })
           );
         } catch {}
-
-        // PAYMENT IS VERIFIED AT THIS POINT. Record Purchase now, before
-        // attempting Shiprocket. A Shiprocket outage must never turn a paid
-        // order into a failed payment or trigger a second payment.
-        await luxmoTrackCompletedPurchaseOnce(paidOrder);
 
         const shipmentKey = `luxmo_shipment_${websiteOrderId}`;
 
