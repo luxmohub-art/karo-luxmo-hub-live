@@ -7,6 +7,187 @@
  */
 /* LUXMO SECURITY FRONTEND HARDENING — STAGE B PREPARATION */
 
+
+/* LUXMO_COMPLETE_TRACKING_V2 */
+
+const LUXMO_MARKETING_CONFIG = {
+  metaPixelId: "",
+  googleTagId: "",
+  metaConversionsApiEndpoint: "/api/orders",
+  remarketing: {
+    productViewed: true,
+    cartBased: true,
+    purchaseExclusion: true
+  }
+};
+const LUXMO_TRACKING_CONSENT_KEY = "luxmo_tracking_consent_v2";
+const LUXMO_ABANDONED_CHECKOUT_KEY = "luxmo_abandoned_checkout_v2";
+const LUXMO_COOLDOWN_KEY = "luxmo_whatsapp_cooldowns_v2";
+const LUXMO_PURCHASE_KEY = "luxmo_purchase_exclusion_v2";
+
+function luxmoHasTrackingConsent() {
+  try { return localStorage.getItem(LUXMO_TRACKING_CONSENT_KEY) === "granted"; }
+  catch { return false; }
+}
+
+function luxmoSetTrackingConsent(granted) {
+  try { localStorage.setItem(LUXMO_TRACKING_CONSENT_KEY, granted ? "granted" : "denied"); }
+  catch {}
+}
+
+function luxmoDirectProductUrl(product) {
+  if (typeof window === "undefined") return "";
+  const id = product?.slug || product?.id || "";
+  return id ? `${window.location.origin}/product/${encodeURIComponent(id)}` : window.location.href;
+}
+
+function luxmoTrackingItem(product, qty = 1) {
+  return {
+    item_id: String(product?.id || ""),
+    item_name: String(product?.title || product?.name || ""),
+    price: Number(luxmoProductPrice(product) || 0),
+    quantity: Number(qty || 1),
+    image: product?.images?.[0] || product?.image || "",
+    product_url: luxmoDirectProductUrl(product)
+  };
+}
+
+function luxmoTrackCommerce(eventName, payload = {}) {
+  if (!luxmoHasTrackingConsent()) return false;
+  const event = { event: eventName, timestamp: new Date().toISOString(), ...payload };
+
+  try {
+    const existing = JSON.parse(localStorage.getItem("luxmo_tracking_events_v2") || "[]");
+    localStorage.setItem("luxmo_tracking_events_v2",
+      JSON.stringify([...(Array.isArray(existing) ? existing : []), event].slice(-300)));
+  } catch {}
+
+  try {
+    if (typeof window !== "undefined" && typeof window.fbq === "function") {
+      const map = {
+        product_viewed: "ViewContent",
+        add_to_cart: "AddToCart",
+        checkout_started: "InitiateCheckout",
+        purchase: "Purchase"
+      };
+      window.fbq("track", map[eventName] || eventName, payload);
+    }
+  } catch {}
+
+  try {
+    if (typeof window !== "undefined" && typeof window.gtag === "function") {
+      window.gtag("event", eventName, payload);
+    }
+  } catch {}
+
+  return true;
+}
+
+function luxmoTrackProductViewed(product) {
+  return luxmoTrackCommerce("product_viewed", {
+    currency: "INR",
+    value: Number(luxmoProductPrice(product) || 0),
+    items: [luxmoTrackingItem(product)]
+  });
+}
+
+function luxmoTrackAddToCartComplete(product, qty = 1) {
+  const item = luxmoTrackingItem(product, qty);
+  return luxmoTrackCommerce("add_to_cart", {
+    currency: "INR",
+    value: item.price * item.quantity,
+    items: [item]
+  });
+}
+
+function luxmoTrackCheckoutStarted(cart = [], customer = {}, paymentMethod = "") {
+  const items = (Array.isArray(cart) ? cart : []).map(i => luxmoTrackingItem(i, i?.qty || 1));
+  const value = items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const identity = {
+    name: String(customer?.name || "").trim(),
+    phone: String(customer?.phone || "").replace(/\D/g, ""),
+    email: String(customer?.email || "").trim().toLowerCase(),
+    whatsapp_opt_in: customer?.whatsapp_opt_in === true
+  };
+
+  luxmoTrackCommerce("checkout_started", {
+    currency: "INR",
+    value,
+    items,
+    customer: identity,
+    payment_method: paymentMethod
+  });
+
+  if (identity.whatsapp_opt_in && identity.phone) {
+    try {
+      localStorage.setItem(LUXMO_ABANDONED_CHECKOUT_KEY, JSON.stringify({
+        status: "open",
+        createdAt: Date.now(),
+        customer: identity,
+        payment_method: paymentMethod,
+        items,
+        value,
+        currency: "INR"
+      }));
+    } catch {}
+  }
+}
+
+function luxmoMarkPurchase(order = {}) {
+  const orderId = String(order?.id || order?.orderId || "");
+  try {
+    localStorage.setItem(LUXMO_PURCHASE_KEY, JSON.stringify({
+      purchased: true, orderId, timestamp: Date.now()
+    }));
+    const abandoned = JSON.parse(localStorage.getItem(LUXMO_ABANDONED_CHECKOUT_KEY) || "null");
+    if (abandoned) {
+      localStorage.setItem(LUXMO_ABANDONED_CHECKOUT_KEY, JSON.stringify({
+        ...abandoned, status: "purchased", orderId, purchasedAt: Date.now()
+      }));
+    }
+  } catch {}
+}
+
+function luxmoCanSendReminder(identityKey, cooldownMs = 24 * 60 * 60 * 1000) {
+  try {
+    const data = JSON.parse(localStorage.getItem(LUXMO_COOLDOWN_KEY) || "{}");
+    const now = Date.now();
+    if (Number(data?.[identityKey] || 0) && now - Number(data[identityKey]) < cooldownMs) return false;
+    data[identityKey] = now;
+    localStorage.setItem(LUXMO_COOLDOWN_KEY, JSON.stringify(data));
+    return true;
+  } catch { return false; }
+}
+
+function luxmoBuildWhatsAppReminder(snapshot, kind = "checkout") {
+  const name = snapshot?.customer?.name || "Customer";
+  const lines = (snapshot?.items || []).map(i =>
+    `• ${i.item_name} × ${i.quantity} — ₹${Number(i.price || 0).toLocaleString("en-IN")}`
+  );
+  return [
+    `Hello ${name},`,
+    kind === "cod" ? "Your COD checkout is still pending." :
+      kind === "prepaid" ? "Your prepaid checkout is still pending." :
+      "You left some products in your checkout.",
+    "",
+    ...lines,
+    "",
+    `Total: ₹${Number(snapshot?.value || 0).toLocaleString("en-IN")}`,
+    "",
+    "Return to LUXMO HUB to complete your order."
+  ].join("\n");
+}
+
+function luxmoBuildWhatsAppProductMessage(product) {
+  const item = luxmoTrackingItem(product, 1);
+  return [
+    "LUXMO HUB product you viewed:",
+    `Product: ${item.item_name}`,
+    `Price: ₹${item.price.toLocaleString("en-IN")}`,
+    item.product_url ? `View product: ${item.product_url}` : ""
+  ].filter(Boolean).join("\n");
+}
+
 const LUXMO_SECURITY_KEYS = Object.freeze({
   products: "luxmo_products",
   orders: "luxmo_pro_orders",
@@ -2266,6 +2447,22 @@ function LuxmoStoreSettingsPanel({ settings, setSettings }) {
   </div>;
 }
 
+/* LUXMO HUB — ADDITIVE MARKETING / WHATSAPP LAYER */
+const LUXMO_MARKETING_CONSENT_KEY="luxmo_marketing_consent_v2";
+const LUXMO_ABANDONED_CHECKOUT_KEY="luxmo_abandoned_checkout_v2";
+const LUXMO_WHATSAPP_COOLDOWN_KEY="luxmo_whatsapp_cooldown_v2";
+const LUXMO_PURCHASE_EXCLUSION_KEY="luxmo_purchase_exclusion_v2";
+function luxmoMarketingConsentGranted(){try{return localStorage.getItem(LUXMO_MARKETING_CONSENT_KEY)==="granted"}catch{return false}}
+function luxmoMarketingSetConsent(v){try{localStorage.setItem(LUXMO_MARKETING_CONSENT_KEY,v?"granted":"denied")}catch{}}
+function luxmoMarketingProduct(i={},q=1){return{item_id:i?.id||i?.sku||"",item_name:i?.title||i?.name||"",price:Number(i?.salePrice??i?.price??0)||0,quantity:Number(q||1),image:i?.images?.[0]||i?.image||"",product_url:typeof window!=="undefined"?window.location.href:""}}
+function luxmoMarketingItems(a=[]){return(Array.isArray(a)?a:[]).map(i=>luxmoMarketingProduct(i,i?.qty||1))}
+function luxmoMarketingEvent(n,p={}){if(!luxmoMarketingConsentGranted())return false;try{const a=JSON.parse(localStorage.getItem("luxmo_marketing_events_v2")||"[]");localStorage.setItem("luxmo_marketing_events_v2",JSON.stringify([...(Array.isArray(a)?a:[]),{event:n,timestamp:new Date().toISOString(),...p}].slice(-250)))}catch{}try{if(typeof window!=="undefined"&&typeof window.fbq==="function"){const m={product_viewed:"ViewContent",add_to_cart:"AddToCart",checkout_started:"InitiateCheckout",purchase:"Purchase"};window.fbq("track",m[n]||n,p)}}catch{}try{if(typeof window!=="undefined"&&typeof window.gtag==="function")window.gtag("event",n,p)}catch{}return true}
+function luxmoMarketingIdentity(d={},opt=false){return{name:String(d?.name||"").trim(),phone:String(d?.phone||d?.mobile||"").replace(/\D/g,""),email:String(d?.email||"").trim().toLowerCase(),whatsapp_opt_in:Boolean(opt)}}
+function luxmoSaveAbandonedCheckout(x){if(!x?.customer?.whatsapp_opt_in||!x?.customer?.phone)return;try{localStorage.setItem(LUXMO_ABANDONED_CHECKOUT_KEY,JSON.stringify({...x,status:"open",createdAt:Date.now()}))}catch{}}
+function luxmoCloseAbandonedCheckout(id=""){try{const c=JSON.parse(localStorage.getItem(LUXMO_ABANDONED_CHECKOUT_KEY)||"null");if(c)localStorage.setItem(LUXMO_ABANDONED_CHECKOUT_KEY,JSON.stringify({...c,status:"purchased",orderId:id,purchasedAt:Date.now()}));localStorage.setItem(LUXMO_PURCHASE_EXCLUSION_KEY,JSON.stringify({purchased:true,orderId:id,timestamp:Date.now()}))}catch{}}
+function luxmoWhatsAppReminderAllowed(phone,kind="checkout",ms=86400000){if(!phone)return false;try{const k=`${kind}:${String(phone).replace(/\D/g,"")}`,d=JSON.parse(localStorage.getItem(LUXMO_WHATSAPP_COOLDOWN_KEY)||"{}"),last=Number(d[k]||0);if(Date.now()-last<ms)return false;d[k]=Date.now();localStorage.setItem(LUXMO_WHATSAPP_COOLDOWN_KEY,JSON.stringify(d));return true}catch{return false}}
+function luxmoBuildWhatsAppCheckoutMessage(s={},kind="checkout"){const c=s?.customer||{},a=Array.isArray(s?.items)?s.items:[];return[`Hello ${c.name||"Customer"},`,kind==="cod"?"Your COD checkout is still pending.":"Your LUXMO HUB checkout is still pending.","",...a.map(i=>`• ${i.item_name} × ${i.quantity} — ₹${Number(i.price||0).toLocaleString("en-IN")}`),"",`Total: ₹${Number(s?.value||0).toLocaleString("en-IN")}`,"","Please return to LUXMO HUB to complete your order."].join("\n")}
+async function luxmoSendServerMarketingEvent(n,p={}){if(!luxmoMarketingConsentGranted())return false;const e=typeof window!=="undefined"?window.LUXMO_MARKETING_CAPI_ENDPOINT:"";if(!e)return false;try{const r=await fetch(e,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({eventName:n,...p})});return r.ok}catch{return false}}
 function LuxmoCheckout({
   cart,
   subtotal,
@@ -2301,6 +2498,7 @@ function LuxmoCheckout({
   const [payment, setPayment] = useState(
     storeSettings.onlinePaymentEnabled ? "razorpay" : "cod"
   );
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
 
   const [shippingMode, setShippingMode] = useState(
     storeSettings.standardDeliveryEnabled ? "standard" : "express"
@@ -2528,6 +2726,11 @@ function LuxmoCheckout({
       );
     }
 
+    const marketingCustomer=luxmoMarketingIdentity(draft,whatsappOptIn);
+    const marketingItems=luxmoMarketingItems(cart);
+    luxmoMarketingEvent("checkout_started",{value:Number(total||0),currency:"INR",items:marketingItems,customer:marketingCustomer,payment_method:payment});
+    luxmoSendServerMarketingEvent("checkout_started",{value:Number(total||0),currency:"INR",items:marketingItems,customer:marketingCustomer,payment_method:payment});
+    luxmoSaveAbandonedCheckout({customer:marketingCustomer,paymentMethod:payment,items:marketingItems,value:Number(total||0)});
     const order = {
       id: luxmoOrderNumber(),
 
@@ -2544,6 +2747,8 @@ function LuxmoCheckout({
       email: String(
         draft.email || ""
       ).trim().toLowerCase(),
+
+      whatsappOptIn,
 
       customer: {
         name: String(
@@ -2595,6 +2800,9 @@ function LuxmoCheckout({
       trackingUrl: "",
     };
 
+    luxmoMarketingEvent("purchase",{transaction_id:order.id,value:Number(order.total||0),currency:"INR",payment_method:order.paymentMethod,items:luxmoMarketingItems(order.items)});
+    luxmoSendServerMarketingEvent("purchase",{transaction_id:order.id,value:Number(order.total||0),currency:"INR",payment_method:order.paymentMethod,items:luxmoMarketingItems(order.items)});
+    luxmoCloseAbandonedCheckout(order.id);
     onOrderCreated(order);
   };
 
@@ -2814,6 +3022,10 @@ function LuxmoCheckout({
               <h3 className="font-black">
                 Payment Method
               </h3>
+              <label className="flex items-start gap-3 text-xs text-slate-600 mt-3 rounded-xl border bg-slate-50 p-3">
+                <input type="checkbox" checked={whatsappOptIn} onChange={e=>setWhatsappOptIn(e.target.checked)} className="mt-0.5" />
+                <span>I agree to receive order and checkout-related WhatsApp messages from LUXMO HUB. This is optional.</span>
+              </label>
 
               <div className="space-y-2 mt-3">
 
@@ -3989,6 +4201,222 @@ function LuxmoSolarCalculator({ products = [], onClose }) {
   );
 }
 
+
+/*
+ * LUXMO HUB — WhatsApp Business / Meta Cloud API READY LAYER
+ *
+ * IMPORTANT:
+ * The Meta access token is NEVER stored in this browser file.
+ * This component sends a secure request to /api/orders with the
+ * "whatsapp-marketing" action. The server must call Meta's WhatsApp
+ * Cloud API using Vercel environment variables.
+ *
+ * This preserves the existing API-function count because it reuses
+ * the existing /api/orders endpoint instead of adding a new /api file.
+ */
+const LUXMO_WHATSAPP_MARKETING_CONFIG = Object.freeze({
+  enabled: true,
+  endpoint: "/api/orders",
+  action: "whatsapp-marketing",
+  templateName: "luxmo_shop_now",
+  languageCode: "en_US",
+  delayMs: 15000,
+});
+
+async function requestLuxmoWhatsAppMarketing(payload = {}) {
+  const response = await luxmoSecurityFetch(
+    LUXMO_WHATSAPP_MARKETING_CONFIG.endpoint,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        action: LUXMO_WHATSAPP_MARKETING_CONFIG.action,
+        ...payload,
+      }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.success) {
+    throw new Error(
+      data?.error ||
+        "WhatsApp marketing request could not be completed."
+    );
+  }
+  return data;
+}
+
+function LuxmoWhatsAppShopNowCard({ product, variant }) {
+  const [mobile, setMobile] = useState("");
+  const [optIn, setOptIn] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!product || LUXMO_WHATSAPP_MARKETING_CONFIG.enabled !== true) {
+    return null;
+  }
+
+  const productImage =
+    product?.images?.[0] ||
+    product?.image ||
+    "";
+  const price = Number(
+    variant?.salePrice ??
+      variant?.price ??
+      product?.salePrice ??
+      product?.price ??
+      0
+  );
+  const productUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.id || "")}`
+      : "";
+
+  const sendPromotion = async (event) => {
+    event.preventDefault();
+    setError("");
+    setSent(false);
+
+    const cleanMobile = String(mobile || "").replace(/\D/g, "").slice(-10);
+    if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+      setError("Enter a valid 10-digit WhatsApp number.");
+      return;
+    }
+    if (!optIn) {
+      setError("Please allow WhatsApp offers to continue.");
+      return;
+    }
+
+    setSending(true);
+    try {
+      await requestLuxmoWhatsAppMarketing({
+        mobile: cleanMobile,
+        countryCode: "91",
+        templateName: LUXMO_WHATSAPP_MARKETING_CONFIG.templateName,
+        languageCode: LUXMO_WHATSAPP_MARKETING_CONFIG.languageCode,
+        product: {
+          id: product.id || "",
+          title: product.title || "LUXMO HUB Product",
+          imageUrl: productImage,
+          price: Number.isFinite(price) ? price : 0,
+          url: productUrl,
+        },
+        consent: {
+          marketing: true,
+          source: "product-page",
+          consentAt: new Date().toISOString(),
+        },
+      });
+
+      try {
+        localStorage.setItem(
+          "luxmo_whatsapp_marketing_optin",
+          JSON.stringify({
+            mobile: cleanMobile,
+            consentAt: new Date().toISOString(),
+          })
+        );
+      } catch {}
+
+      setSent(true);
+    } catch (err) {
+      setError(err?.message || "Unable to send WhatsApp offer.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        {productImage ? (
+          <img
+            src={productImage}
+            alt=""
+            className="w-20 h-20 rounded-xl object-cover border border-emerald-100 bg-white shrink-0"
+          />
+        ) : (
+          <div className="w-20 h-20 rounded-xl border border-emerald-100 bg-white flex items-center justify-center text-3xl shrink-0">
+            🛍️
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] uppercase tracking-widest font-black text-emerald-700">
+            WhatsApp Shop Now
+          </div>
+          <h3 className="mt-1 text-base font-black text-slate-900">
+            You stopped at this product once.
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Get this product offer directly on WhatsApp.
+          </p>
+          <p className="mt-2 text-sm font-black text-slate-900 truncate">
+            {product.title || "LUXMO HUB Product"}
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={sendPromotion} className="mt-4 space-y-3">
+        <div className="flex gap-2">
+          <span className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700">
+            +91
+          </span>
+          <input
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel"
+            maxLength={10}
+            value={mobile}
+            onChange={(e) =>
+              setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))
+            }
+            placeholder="WhatsApp mobile number"
+            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+
+        <label className="flex items-start gap-2 text-[11px] leading-4 text-slate-600">
+          <input
+            type="checkbox"
+            checked={optIn}
+            onChange={(e) => setOptIn(e.target.checked)}
+            className="mt-0.5 accent-emerald-600"
+          />
+          <span>
+            I agree to receive this product offer and relevant LUXMO HUB
+            updates on WhatsApp. I can opt out later.
+          </span>
+        </label>
+
+        <button
+          type="submit"
+          disabled={sending || sent}
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white py-3 font-black text-sm shadow-sm"
+        >
+          {sent
+            ? "✓ WhatsApp Offer Requested"
+            : sending
+              ? "Sending…"
+              : "🟢 Send Shop Now on WhatsApp"}
+        </button>
+
+        {sent && (
+          <p className="text-xs font-bold text-emerald-700">
+            Your WhatsApp offer request was accepted.
+          </p>
+        )}
+
+        {error && (
+          <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-xl p-2.5">
+            {error}
+          </p>
+        )}
+      </form>
+    </div>
+  );
+}
+
 function LuxmoQuickWhatsAppModal({ onClose }) {
   const phone = null;
   const [type, setType] = useState("Solar Inverter");
@@ -5027,6 +5455,8 @@ export default function LuxmoHubApp() {
 
   const addToCart = (product, variant = null) => {
     const item = buildCartItem(product, variant);
+    luxmoMarketingEvent("add_to_cart",{value:Number(item?.salePrice??item?.price??0)||0,currency:"INR",items:[luxmoMarketingProduct(item)]});
+    luxmoSendServerMarketingEvent("add_to_cart",{value:Number(item?.salePrice??item?.price??0)||0,currency:"INR",items:[luxmoMarketingProduct(item)]});
     const cartKey = item.cartKey;
     setCart(prev => {
       const exists = prev.find(x => x.cartKey === cartKey);
@@ -6052,7 +6482,7 @@ export default function LuxmoHubApp() {
               setShowTrackingModal={setShowTrackingModal}
               setShowWarrantyModal={setShowWarrantyModal}
               setShowWhatsAppModal={setShowWhatsAppModal}
-              onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p?.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
+              onSelectProduct={(p) => { luxmoMarketingEvent("product_viewed",{items:[luxmoMarketingProduct(p)]}); setSelectedProduct(p); setSelectedVariantKey(p?.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
               onAddToCart={addToCart}
               onBuyNow={startBuyNow}
             />
@@ -6448,7 +6878,7 @@ export default function LuxmoHubApp() {
                 <div className="flex items-center justify-between border-b pb-3"><h2 className="font-black text-lg">Products <span className="text-sm text-slate-500">({filteredProducts.length})</span></h2></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
-                    onSelect={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
+                    onSelect={(p) => { luxmoMarketingEvent("product_viewed",{items:[luxmoMarketingProduct(p)]}); setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
                     onAddToCart={addToCart}
                     onBuyNow={(p) => {
                       if (p.variants?.length) {
@@ -6972,6 +7402,11 @@ export default function LuxmoHubApp() {
                   ⚡ BUY NOW
                 </button>
               </div>
+
+              <LuxmoWhatsAppShopNowCard
+                product={selectedProduct}
+                variant={activeVariant}
+              />
             </div>
           </div>
           </>
@@ -7369,7 +7804,7 @@ export default function LuxmoHubApp() {
                 products={products}
                 cart={cart}
                 addToCart={addToCart}
-                onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowStoreTools(false); }}
+                onSelectProduct={(p) => { luxmoMarketingEvent("product_viewed",{items:[luxmoMarketingProduct(p)]}); setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowStoreTools(false); }}
                 isAdminLoggedIn={true}
                 onPay={handleRazorpayPayment}
                 siteTheme={siteTheme}
@@ -7398,7 +7833,7 @@ export default function LuxmoHubApp() {
                   products={products}
                   cart={buyNowItem ? [buyNowItem] : cart}
                   addToCart={addToCart}
-                  onSelectProduct={(p) => { setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowCheckoutModal(false); }}
+                  onSelectProduct={(p) => { luxmoMarketingEvent("product_viewed",{items:[luxmoMarketingProduct(p)]}); setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); setShowCheckoutModal(false); }}
                   isAdminLoggedIn={false}
                   onPay={handleRazorpayPayment}
                   siteTheme={siteTheme}
@@ -7407,6 +7842,16 @@ export default function LuxmoHubApp() {
                   onCheckoutClose={() => { setShowCheckoutModal(false); setBuyNowItem(null); setActiveTab("my-orders"); }}
                 />
               </div>
+            </div>
+          </div>
+        )}
+        {!luxmoMarketingConsentGranted() && (
+          <div className="fixed bottom-4 left-4 right-4 z-[12000] max-w-3xl mx-auto bg-white border rounded-2xl shadow-2xl p-4">
+            <div className="text-sm font-black text-slate-900">Privacy & Marketing Choices</div>
+            <p className="text-xs text-slate-600 mt-1">Analytics/advertising tracking and WhatsApp checkout reminders are optional and require consent.</p>
+            <div className="flex gap-2 mt-3">
+              <button type="button" onClick={()=>luxmoMarketingSetConsent(false)} className="border rounded-xl px-4 py-2 text-xs font-black">Decline</button>
+              <button type="button" onClick={()=>luxmoMarketingSetConsent(true)} className="bg-slate-900 text-white rounded-xl px-4 py-2 text-xs font-black">Allow</button>
             </div>
           </div>
         )}
@@ -9103,3 +9548,16 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
              </section>
 
 }
+
+/* ============================================================
+   LUXMO HUB — COMPLETE REMAINING FRONTEND FEATURES
+   Existing code is preserved; this block is additive.
+   Events: product_viewed, add_to_cart, checkout_started, purchase.
+   Customer identity + WhatsApp opt-in are consent gated.
+   Abandoned checkout snapshot contains product image/name/price/URL,
+   payment method (COD/prepaid), and duplicate-reminder cooldown state.
+   Purchase writes an exclusion marker and closes the abandoned record.
+   fbq/gtag adapters are ready when platform IDs are configured.
+   Meta CAPI and actual WhatsApp outbound sending must remain server-side
+   and require verified credentials; no secrets are placed in this file.
+============================================================ */
