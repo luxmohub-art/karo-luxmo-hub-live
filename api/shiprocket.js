@@ -20,9 +20,7 @@ function num(value, fallback = 0) {
 
 function positive(value, fallback = 1) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0
-    ? n
-    : fallback;
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function phone(value) {
@@ -142,9 +140,12 @@ async function getToken() {
   );
 
   if (!loginEmail || !password) {
-    throw new Error(
+    const error = new Error(
       "Shiprocket credentials missing. Add SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in Vercel."
     );
+
+    error.status = 500;
+    throw error;
   }
 
   const response = await fetch(
@@ -155,6 +156,7 @@ async function getToken() {
       headers: {
         Accept:
           "application/json",
+
         "Content-Type":
           "application/json",
       },
@@ -192,11 +194,18 @@ async function getToken() {
       data?.raw ||
       data;
 
-    throw new Error(
+    const error = new Error(
       typeof details === "string"
         ? details
         : JSON.stringify(details)
     );
+
+    error.status =
+      response.status;
+
+    error.data = data;
+
+    throw error;
   }
 
   return data.token;
@@ -276,6 +285,9 @@ async function request(
       response.status;
 
     error.data = data;
+
+    error.endpoint =
+      endpoint;
 
     throw error;
   }
@@ -367,13 +379,9 @@ function getItems(order) {
   const source =
     Array.isArray(order?.items)
       ? order.items
-      : Array.isArray(
-          order?.orderItems
-        )
+      : Array.isArray(order?.orderItems)
       ? order.orderItems
-      : Array.isArray(
-          order?.products
-        )
+      : Array.isArray(order?.products)
       ? order.products
       : [];
 
@@ -576,12 +584,9 @@ function isCOD(order) {
 
   return (
     method === "cod" ||
-    method ===
-      "cash on delivery" ||
-    method ===
-      "cash_on_delivery" ||
-    method ===
-      "cash-on-delivery" ||
+    method === "cash on delivery" ||
+    method === "cash_on_delivery" ||
+    method === "cash-on-delivery" ||
     order?.isCOD === true ||
     order?.isCod === true
   );
@@ -901,6 +906,10 @@ function extractShipmentData(
 
 /* =========================================================
    FIND EXISTING ORDER
+
+   IMPORTANT:
+   Always search before creating a new Shiprocket order.
+   This protects against duplicate orders after timeout/retry.
 ========================================================= */
 
 async function findExistingOrder(
@@ -972,10 +981,14 @@ async function findExistingOrder(
       data,
       order:
         exact ||
-        candidates[0] ||
         null,
     };
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Shiprocket existing-order lookup failed:",
+      error?.message
+    );
+
     return {
       data: {},
       order: null,
@@ -996,6 +1009,7 @@ async function createOrder(
     token,
     {
       method: "POST",
+
       body:
         buildOrderPayload(
           order
@@ -1028,6 +1042,102 @@ async function showOrder(
 }
 
 /* =========================================================
+   SAFE SHOW ORDER
+
+   Shiprocket sometimes returns:
+   HTTP 404
+   "record not found"
+
+   immediately after creating an order.
+
+   We retry READ only.
+   We NEVER create another order here.
+========================================================= */
+
+async function safeShowOrder(
+  token,
+  orderId,
+  attempts = 8
+) {
+  if (!orderId) {
+    return {};
+  }
+
+  let lastError = null;
+
+  for (
+    let attempt = 0;
+    attempt < attempts;
+    attempt++
+  ) {
+    try {
+      const data =
+        await showOrder(
+          token,
+          orderId
+        );
+
+      if (
+        data &&
+        typeof data === "object" &&
+        Object.keys(data).length
+      ) {
+        return data;
+      }
+    } catch (error) {
+      lastError = error;
+
+      const status =
+        Number(
+          error?.status || 0
+        );
+
+      const message =
+        clean(
+          error?.message
+        ).toLowerCase();
+
+      const retryable =
+        status === 404 ||
+        status === 429 ||
+        status >= 500 ||
+        message.includes(
+          "record not found"
+        ) ||
+        message.includes(
+          "not found"
+        );
+
+      if (!retryable) {
+        throw error;
+      }
+    }
+
+    if (
+      attempt <
+      attempts - 1
+    ) {
+      await sleep(
+        1200 +
+        attempt * 700
+      );
+    }
+  }
+
+  console.warn(
+    "LUXMO HUB Shiprocket order lookup temporarily unavailable:",
+    {
+      orderId,
+      error:
+        lastError?.message ||
+        null,
+    }
+  );
+
+  return {};
+}
+
+/* =========================================================
    SHIPMENT DETAILS
 ========================================================= */
 
@@ -1049,7 +1159,12 @@ async function getShipment(
         method: "GET",
       }
     );
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Shiprocket shipment lookup failed:",
+      error?.message
+    );
+
     return {};
   }
 }
@@ -1127,6 +1242,84 @@ async function generateLabel(
 }
 
 /* =========================================================
+   RESOLVE SHIPMENT
+
+   First use shipment_id returned by create/recovery.
+   Only use /orders/show when necessary.
+========================================================= */
+
+async function resolveShipment(
+  token,
+  created,
+  recovered,
+  shiprocketOrderId
+) {
+  let orderDetails = {};
+
+  let info =
+    extractShipmentData(
+      created,
+      recovered
+    );
+
+  /*
+    MOST IMPORTANT FIX:
+    If Shiprocket already returned shipment_id,
+    don't depend on /orders/show.
+  */
+  if (!info.shipmentId) {
+    orderDetails =
+      await safeShowOrder(
+        token,
+        shiprocketOrderId,
+        8
+      );
+
+    info =
+      extractShipmentData(
+        created,
+        recovered,
+        orderDetails
+      );
+  }
+
+  /*
+    If the newly-created order is not immediately
+    readable, try again without creating another order.
+  */
+  for (
+    let attempt = 0;
+    !info.shipmentId &&
+    attempt < 8;
+    attempt++
+  ) {
+    await sleep(
+      1200 +
+      attempt * 600
+    );
+
+    orderDetails =
+      await safeShowOrder(
+        token,
+        shiprocketOrderId,
+        3
+      );
+
+    info =
+      extractShipmentData(
+        created,
+        recovered,
+        orderDetails
+      );
+  }
+
+  return {
+    orderDetails,
+    info,
+  };
+}
+
+/* =========================================================
    MAIN HANDLER
 ========================================================= */
 
@@ -1156,7 +1349,8 @@ export default async function handler(
 
   try {
     const body =
-      req.body || {};
+      req.body ||
+      {};
 
     const order =
       body?.order &&
@@ -1181,16 +1375,16 @@ export default async function handler(
       );
     }
 
-    /*
-      PAYMENT SECURITY
+    /* =====================================================
+       PAYMENT SECURITY
 
-      Paid online orders:
-      paymentVerified === true
-      paymentStatus === Paid
+       Prepaid:
+       paymentVerified === true
+       paymentStatus === Paid
 
-      COD orders:
-      allowed when payment method is COD.
-    */
+       COD:
+       allowed without Razorpay payment.
+    ===================================================== */
 
     const cod =
       isCOD(order);
@@ -1287,6 +1481,10 @@ export default async function handler(
 
     /* =====================================================
        FIND EXISTING ORDER FIRST
+
+       This is critical for idempotency.
+       If browser retries, we recover the existing
+       Shiprocket order instead of creating duplicate.
     ===================================================== */
 
     let recovered =
@@ -1314,11 +1512,10 @@ export default async function handler(
         createError
       ) {
         /*
-          IMPORTANT:
-          Shiprocket may create the order but
-          return a delayed/error response.
+          Shiprocket may create the order but the HTTP
+          request can fail/timeout.
 
-          Search again before declaring failure.
+          Search again BEFORE attempting another creation.
         */
 
         recovered =
@@ -1336,7 +1533,7 @@ export default async function handler(
     }
 
     /* =====================================================
-       FIND SHIPROCKET ORDER ID
+       FIND SHIPROCKET ORDER ID + SHIPMENT ID
     ===================================================== */
 
     let extracted =
@@ -1358,12 +1555,36 @@ export default async function handler(
         ]
       );
 
-    if (!shiprocketOrderId) {
-      /*
-        One more search attempt.
-      */
+    /*
+      IMPORTANT:
+      Do NOT discard shipment_id from the create response.
+    */
 
-      await sleep(1200);
+    let shipmentId =
+      extracted.shipmentId ||
+      deepFind(
+        [
+          created,
+          recovered,
+        ],
+        [
+          "shipment_id",
+          "shipmentId",
+          "shipmentID",
+        ]
+      );
+
+    /* =====================================================
+       EXTRA RECOVERY SEARCH
+    ===================================================== */
+
+    if (
+      !shiprocketOrderId &&
+      !shipmentId
+    ) {
+      await sleep(
+        1200
+      );
 
       recovered =
         (
@@ -1373,14 +1594,28 @@ export default async function handler(
           )
         ).order;
 
+      extracted =
+        extractShipmentData(
+          created,
+          recovered
+        );
+
       shiprocketOrderId =
+        extracted.orderId ||
         recovered?.id ||
         recovered?.order_id ||
         recovered?.orderId ||
         null;
+
+      shipmentId =
+        extracted.shipmentId ||
+        null;
     }
 
-    if (!shiprocketOrderId) {
+    if (
+      !shiprocketOrderId &&
+      !shipmentId
+    ) {
       return sendJson(
         res,
         502,
@@ -1391,96 +1626,57 @@ export default async function handler(
           stage:
             "shiprocket_order",
           retryable: true,
+
           error:
-            "Shiprocket order was created/recovered, but Shiprocket Order ID is not available yet.",
+            "Shiprocket order was created/recovered, but Order ID and Shipment ID are not available yet.",
+
+          message:
+            "Payment/order is successful. Do NOT pay again. Retry shipment creation after a short wait.",
+
           orderId:
             websiteOrderId,
-          details: {
-            create:
-              created,
-            recovered,
-          },
         }
       );
     }
 
     /* =====================================================
-       SHOW ORDER
+       RESOLVE SHIPMENT
     ===================================================== */
 
     let orderDetails =
-      await showOrder(
-        token,
-        shiprocketOrderId
-      );
-
-    /* =====================================================
-       FIND SHIPMENT ID
-    ===================================================== */
-
-    let info =
-      extractShipmentData(
-        created,
-        recovered,
-        orderDetails
-      );
+      {};
 
     /*
-      Retry longer because Shiprocket can take
-      a few seconds to expose shipment_id.
+      If shipmentId is already available,
+      skip the risky immediate /orders/show call.
     */
-
-    for (
-      let attempt = 0;
-      !info.shipmentId &&
-      attempt < 10;
-      attempt++
-    ) {
-      await sleep(1800);
-
-      orderDetails =
-        await showOrder(
+    if (!shipmentId) {
+      const resolved =
+        await resolveShipment(
           token,
+          created,
+          recovered,
           shiprocketOrderId
         );
 
-      info =
+      orderDetails =
+        resolved.orderDetails;
+
+      shipmentId =
+        resolved.info.shipmentId;
+    } else {
+      /*
+        We still optionally read order details later,
+        but shipment creation does NOT depend on it.
+      */
+      extracted =
         extractShipmentData(
           created,
-          recovered,
-          orderDetails
+          recovered
         );
     }
 
-    /*
-      Direct shipment lookup if shipment ID
-      appeared inside another response.
-    */
-
-    if (!info.shipmentId) {
-      const possibleShipmentId =
-        deepFind(
-          [
-            created,
-            recovered,
-            orderDetails,
-          ],
-          [
-            "shipment_id",
-            "shipmentId",
-            "shipmentID",
-          ]
-        );
-
-      if (
-        possibleShipmentId
-      ) {
-        info.shipmentId =
-          possibleShipmentId;
-      }
-    }
-
-    if (!info.shipmentId) {
+    if (!shipmentId) {
       return sendJson(
         res,
         502,
@@ -1493,25 +1689,17 @@ export default async function handler(
           retryable: true,
 
           error:
-            "Shiprocket order was created/recovered, but Shipment ID is still not available.",
+            "Shiprocket order exists, but Shipment ID is still not available.",
 
           message:
-            "Payment/order is successful. Do NOT create another payment. Retry shipment creation after a short wait.",
+            "Payment/order is successful. Do NOT pay again. Retry shipment creation after a short wait.",
 
           orderId:
             websiteOrderId,
 
-          shiprocketOrderId,
-
-          details: {
-            create:
-              created,
-
-            recovered,
-
-            order:
-              orderDetails,
-          },
+          shiprocketOrderId:
+            shiprocketOrderId ||
+            null,
         }
       );
     }
@@ -1523,16 +1711,22 @@ export default async function handler(
     let shipment =
       await getShipment(
         token,
-        info.shipmentId
+        shipmentId
       );
 
-    info =
+    let info =
       extractShipmentData(
         created,
         recovered,
         orderDetails,
         shipment
       );
+
+    /*
+      Keep authoritative shipment ID.
+    */
+    info.shipmentId =
+      shipmentId;
 
     /* =====================================================
        AWB
@@ -1546,24 +1740,24 @@ export default async function handler(
         awbResponse =
           await assignAWB(
             token,
-            info.shipmentId
+            shipmentId
           );
       } catch (
         awbError
       ) {
         /*
-          Sometimes AWB assignment says an existing
-          AWB is already being processed.
-
-          Refresh shipment before failing.
+          AWB may already be processing.
+          Refresh shipment instead of creating anything again.
         */
 
-        await sleep(1500);
+        await sleep(
+          1500
+        );
 
         shipment =
           await getShipment(
             token,
-            info.shipmentId
+            shipmentId
           );
 
         info =
@@ -1571,8 +1765,12 @@ export default async function handler(
             created,
             recovered,
             orderDetails,
-            shipment
+            shipment,
+            awbResponse
           );
+
+        info.shipmentId =
+          shipmentId;
 
         if (!info.awb) {
           return sendJson(
@@ -1586,7 +1784,6 @@ export default async function handler(
               : 502,
             {
               success: false,
-
               provider:
                 "shiprocket",
 
@@ -1599,13 +1796,17 @@ export default async function handler(
                 awbError?.message ||
                 "Shiprocket AWB assignment failed.",
 
+              message:
+                "Shipment already exists. Do NOT create another order or payment. Retry AWB assignment.",
+
               orderId:
                 websiteOrderId,
 
-              shiprocketOrderId,
+              shiprocketOrderId:
+                shiprocketOrderId ||
+                null,
 
-              shipmentId:
-                info.shipmentId,
+              shipmentId,
 
               details:
                 awbError?.data ||
@@ -1621,12 +1822,14 @@ export default async function handler(
     ===================================================== */
 
     if (!info.awb) {
-      await sleep(1800);
+      await sleep(
+        1800
+      );
 
       shipment =
         await getShipment(
           token,
-          info.shipmentId
+          shipmentId
         );
 
       info =
@@ -1637,6 +1840,9 @@ export default async function handler(
           shipment,
           awbResponse
         );
+
+      info.shipmentId =
+        shipmentId;
     }
 
     /* =====================================================
@@ -1644,12 +1850,14 @@ export default async function handler(
     ===================================================== */
 
     if (!info.awb) {
-      await sleep(2000);
+      await sleep(
+        2000
+      );
 
       shipment =
         await getShipment(
           token,
-          info.shipmentId
+          shipmentId
         );
 
       info =
@@ -1660,13 +1868,10 @@ export default async function handler(
           shipment,
           awbResponse
         );
-    }
 
-    /*
-      Do NOT create a duplicate order.
-      If Shiprocket has shipment but AWB is delayed,
-      return retryable status.
-    */
+      info.shipmentId =
+        shipmentId;
+    }
 
     if (!info.awb) {
       return sendJson(
@@ -1674,7 +1879,6 @@ export default async function handler(
         502,
         {
           success: false,
-
           provider:
             "shiprocket",
 
@@ -1686,19 +1890,17 @@ export default async function handler(
           error:
             "Shipment exists, but Shiprocket has not assigned an AWB yet.",
 
+          message:
+            "Payment/order is successful. Do NOT pay again. Shipment already exists; retry AWB later.",
+
           orderId:
             websiteOrderId,
 
-          shiprocketOrderId,
+          shiprocketOrderId:
+            shiprocketOrderId ||
+            null,
 
-          shipmentId:
-            info.shipmentId,
-
-          details: {
-            shipment,
-            awb:
-              awbResponse,
-          },
+          shipmentId,
         }
       );
     }
@@ -1731,16 +1933,34 @@ export default async function handler(
         labelResponse =
           await generateLabel(
             token,
-            info.shipmentId
+            shipmentId
+          );
+
+        labelUrl =
+          deepFind(
+            labelResponse,
+            [
+              "label_url",
+              "labelUrl",
+              "file_name",
+              "pdf_url",
+              "url",
+            ]
           );
       } catch (
         labelError
       ) {
         /*
-          Shipment + AWB are already successful.
-          Do not make the order fail only because
-          label generation is temporarily unavailable.
+          Shipment + AWB are successful.
+          Label failure must NOT turn a Paid order
+          into a failed payment.
         */
+
+        const trackingUrl =
+          info.trackingUrl ||
+          `https://shiprocket.co/tracking/${encodeURIComponent(
+            info.awb
+          )}`;
 
         return sendJson(
           res,
@@ -1754,10 +1974,14 @@ export default async function handler(
             orderId:
               websiteOrderId,
 
-            shiprocketOrderId,
+            shiprocketOrderId:
+              shiprocketOrderId ||
+              null,
 
-            shipmentId:
-              info.shipmentId,
+            shipmentId,
+
+            shipment_id:
+              shipmentId,
 
             awb:
               info.awb,
@@ -1777,17 +2001,10 @@ export default async function handler(
               info.courierId ||
               null,
 
-            trackingUrl:
-              info.trackingUrl ||
-              `https://shiprocket.co/tracking/${encodeURIComponent(
-                info.awb
-              )}`,
+            trackingUrl,
 
             tracking_url:
-              info.trackingUrl ||
-              `https://shiprocket.co/tracking/${encodeURIComponent(
-                info.awb
-              )}`,
+              trackingUrl,
 
             labelUrl:
               null,
@@ -1843,18 +2060,6 @@ export default async function handler(
           }
         );
       }
-
-      labelUrl =
-        deepFind(
-          labelResponse,
-          [
-            "label_url",
-            "labelUrl",
-            "file_name",
-            "pdf_url",
-            "url",
-          ]
-        );
     }
 
     /* =====================================================
@@ -1887,13 +2092,14 @@ export default async function handler(
         orderId:
           websiteOrderId,
 
-        shiprocketOrderId,
+        shiprocketOrderId:
+          shiprocketOrderId ||
+          null,
 
-        shipmentId:
-          info.shipmentId,
+        shipmentId,
 
         shipment_id:
-          info.shipmentId,
+          shipmentId,
 
         awb:
           info.awb,
@@ -1927,7 +2133,9 @@ export default async function handler(
           null,
 
         labelReady:
-          Boolean(labelUrl),
+          Boolean(
+            labelUrl
+          ),
 
         shipmentReady:
           true,
@@ -1974,26 +2182,34 @@ export default async function handler(
         },
       }
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "LUXMO HUB Shiprocket error:",
       error
     );
 
+    const status =
+      Number(
+        error?.status || 0
+      );
+
     return sendJson(
       res,
-      Number(
-        error?.status
-      ) >= 400
-        ? Number(
-            error.status
-          )
+      status >= 400
+        ? status
         : 500,
       {
         success: false,
 
         provider:
           "shiprocket",
+
+        retryable:
+          status === 404 ||
+          status === 429 ||
+          status >= 500,
 
         error:
           error?.message ||
