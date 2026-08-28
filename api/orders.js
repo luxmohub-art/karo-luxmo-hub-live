@@ -1,8 +1,6 @@
 /* ============================================================
-   ABANDONED CHECKOUT / WHATSAPP REMINDER
-   Existing api/orders.js only
-   No new API file
-============================================================ */
+   WHATSAPP ABANDONED CHECKOUT
+   ============================================================ */
 
 function getWhatsAppConfig() {
   return {
@@ -36,9 +34,9 @@ function getWhatsAppConfig() {
 }
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    WHATSAPP OPT-IN
------------------------------------------------------------- */
+============================================================ */
 
 function isWhatsAppOptedIn(checkout) {
   return (
@@ -50,26 +48,27 @@ function isWhatsAppOptedIn(checkout) {
 }
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    PURCHASE EXCLUSION
------------------------------------------------------------- */
+============================================================ */
 
-function isPurchased(checkout) {
+function isPurchasedCheckout(checkout) {
   return (
     checkout?.purchased === true ||
     checkout?.purchaseCompleted === true ||
     checkout?.paymentVerified === true ||
     clean(
       checkout?.paymentStatus ||
-      checkout?.payment_status
+      checkout?.payment_status ||
+      ""
     ).toLowerCase() === "paid"
   );
 }
 
 
-/* ------------------------------------------------------------
-   MOBILE
------------------------------------------------------------- */
+/* ============================================================
+   CUSTOMER MOBILE
+============================================================ */
 
 function getCheckoutMobile(checkout) {
   return normalizeMobile(
@@ -80,6 +79,7 @@ function getCheckoutMobile(checkout) {
       checkout?.customerMobile,
       checkout?.phone,
       checkout?.mobile,
+      checkout?.contactNumber,
       checkout?.shippingAddress?.phone,
       checkout?.shippingAddress?.mobile
     )
@@ -87,9 +87,9 @@ function getCheckoutMobile(checkout) {
 }
 
 
-/* ------------------------------------------------------------
-   ITEMS
------------------------------------------------------------- */
+/* ============================================================
+   CHECKOUT ITEMS
+============================================================ */
 
 function getCheckoutItems(checkout) {
   const items =
@@ -113,6 +113,7 @@ function getCheckoutItems(checkout) {
         item?.price ??
         item?.salePrice ??
         item?.sellingPrice ??
+        item?.unitPrice ??
         0
       ),
 
@@ -131,75 +132,81 @@ function getCheckoutItems(checkout) {
         item?.image ||
         item?.imageUrl ||
         item?.image_url ||
-        item?.thumbnail
+        item?.thumbnail ||
+        ""
       ),
 
       url: clean(
         item?.url ||
         item?.productUrl ||
         item?.productURL ||
-        item?.productLink
+        item?.productLink ||
+        ""
       )
     }));
 }
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    PRODUCT SUMMARY
------------------------------------------------------------- */
+============================================================ */
 
-function getCheckoutProductSummary(checkout) {
+function getCheckoutProduct(checkout) {
   const items =
     getCheckoutItems(checkout);
 
   if (!items.length) {
     return {
-      productName: "Your cart",
+      name: "Your cart",
 
-      productPrice: safeNumber(
+      price: safeNumber(
         checkout?.total ||
         checkout?.grandTotal ||
         checkout?.amount ||
         0
       ),
 
-      productImage: "",
+      image: "",
 
-      productUrl: ""
+      url: ""
     };
   }
 
-  const first = items[0];
+  const first =
+    items[0];
 
   return {
-    productName:
+    name:
       items.length === 1
         ? first.name
         : `${first.name} + ${items.length - 1} more`,
 
-    productPrice:
+    price:
       safeNumber(
         checkout?.total ||
         checkout?.grandTotal ||
         checkout?.amount ||
-        first.price
+        first.price ||
+        0
       ),
 
-    productImage:
+    image:
       first.image,
 
-    productUrl:
+    url:
       first.url
   };
 }
 
 
-/* ------------------------------------------------------------
+/* ============================================================
    PRICE
------------------------------------------------------------- */
+============================================================ */
 
 function formatWhatsAppPrice(value) {
-  return `₹${safeNumber(value).toLocaleString(
+  return `₹${safeNumber(
+    value
+  ).toLocaleString(
     "en-IN",
     {
       maximumFractionDigits: 2
@@ -208,86 +215,42 @@ function formatWhatsAppPrice(value) {
 }
 
 
-/* ------------------------------------------------------------
-   SITE URL
------------------------------------------------------------- */
-
-function getSiteUrl() {
-  return clean(
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.SITE_URL ||
-    "https://www.luxmohub.in"
-  ).replace(/\/+$/, "");
-}
-
-
-/* ------------------------------------------------------------
+/* ============================================================
    CHECKOUT URL
------------------------------------------------------------- */
+============================================================ */
 
-function buildCheckoutUrl(checkout) {
-  const explicit =
+function getCheckoutUrl(checkout) {
+  const direct =
     clean(
       checkout?.checkoutUrl ||
       checkout?.checkoutURL ||
-      checkout?.cartUrl
+      checkout?.cartUrl ||
+      ""
     );
 
-  if (explicit) {
-    return explicit;
+  if (direct) {
+    return direct;
   }
 
-  const productUrl =
-    getCheckoutProductSummary(
+  const product =
+    getCheckoutProduct(
       checkout
-    ).productUrl;
+    );
 
   return (
-    productUrl ||
-    getSiteUrl()
+    product.url ||
+    clean(
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.SITE_URL ||
+      "https://www.luxmohub.in"
+    )
   );
 }
 
 
-/* ------------------------------------------------------------
-   COOLDOWN
------------------------------------------------------------- */
-
-function getReminderCooldownMs() {
-  const minutes =
-    Math.max(
-      60,
-      safeNumber(
-        process.env.WHATSAPP_ABANDONED_COOLDOWN_MINUTES ||
-        1440
-      )
-    );
-
-  return minutes * 60 * 1000;
-}
-
-
-/* ------------------------------------------------------------
-   ABANDONED AFTER
------------------------------------------------------------- */
-
-function getAbandonedAfterMs() {
-  const minutes =
-    Math.max(
-      15,
-      safeNumber(
-        process.env.WHATSAPP_ABANDONED_AFTER_MINUTES ||
-        60
-      )
-    );
-
-  return minutes * 60 * 1000;
-}
-
-
-/* ------------------------------------------------------------
-   DATE
------------------------------------------------------------- */
+/* ============================================================
+   TIME
+============================================================ */
 
 function toMillis(value) {
   if (!value) {
@@ -321,10 +284,6 @@ function toMillis(value) {
 }
 
 
-/* ------------------------------------------------------------
-   CHECKOUT CREATED TIME
------------------------------------------------------------- */
-
 function getCheckoutCreatedAt(
   checkout,
   fallback
@@ -343,11 +302,7 @@ function getCheckoutCreatedAt(
 }
 
 
-/* ------------------------------------------------------------
-   LAST REMINDER
------------------------------------------------------------- */
-
-function getLastReminderAt(
+function getLastWhatsAppReminderAt(
   checkout
 ) {
   return toMillis(
@@ -359,27 +314,58 @@ function getLastReminderAt(
 }
 
 
-/* ------------------------------------------------------------
-   TEMPLATE PAYLOAD
------------------------------------------------------------- */
+/* ============================================================
+   SETTINGS
+============================================================ */
 
-function buildAbandonedTemplatePayload(
+function getAbandonedAfterMs() {
+  const minutes =
+    Math.max(
+      15,
+      safeNumber(
+        process.env.WHATSAPP_ABANDONED_AFTER_MINUTES ||
+        60
+      )
+    );
+
+  return (
+    minutes *
+    60 *
+    1000
+  );
+}
+
+
+function getReminderCooldownMs() {
+  const minutes =
+    Math.max(
+      60,
+      safeNumber(
+        process.env.WHATSAPP_ABANDONED_COOLDOWN_MINUTES ||
+        1440
+      )
+    );
+
+  return (
+    minutes *
+    60 *
+    1000
+  );
+}
+
+
+/* ============================================================
+   WHATSAPP TEMPLATE PAYLOAD
+============================================================ */
+
+function buildAbandonedWhatsAppPayload(
   checkout
 ) {
   const config =
     getWhatsAppConfig();
 
-  const mobile =
-    getCheckoutMobile(
-      checkout
-    );
-
-  const {
-    productName,
-    productPrice,
-    productUrl
-  } =
-    getCheckoutProductSummary(
+  const product =
+    getCheckoutProduct(
       checkout
     );
 
@@ -399,7 +385,9 @@ function buildAbandonedTemplatePayload(
       "individual",
 
     to:
-      mobile,
+      getCheckoutMobile(
+        checkout
+      ),
 
     type:
       "template",
@@ -432,7 +420,7 @@ function buildAbandonedTemplatePayload(
                 "text",
 
               text:
-                productName
+                product.name
             },
 
             {
@@ -441,7 +429,7 @@ function buildAbandonedTemplatePayload(
 
               text:
                 formatWhatsAppPrice(
-                  productPrice
+                  product.price
                 )
             },
 
@@ -450,8 +438,7 @@ function buildAbandonedTemplatePayload(
                 "text",
 
               text:
-                productUrl ||
-                buildCheckoutUrl(
+                getCheckoutUrl(
                   checkout
                 )
             }
@@ -463,11 +450,11 @@ function buildAbandonedTemplatePayload(
 }
 
 
-/* ------------------------------------------------------------
-   SEND WHATSAPP TEMPLATE
------------------------------------------------------------- */
+/* ============================================================
+   SEND WHATSAPP
+============================================================ */
 
-async function sendWhatsAppTemplate(
+async function sendAbandonedWhatsApp(
   checkout
 ) {
   const config =
@@ -481,11 +468,6 @@ async function sendWhatsAppTemplate(
       "WhatsApp Cloud API credentials are not configured."
     );
   }
-
-  const payload =
-    buildAbandonedTemplatePayload(
-      checkout
-    );
 
   const response =
     await fetch(
@@ -511,7 +493,9 @@ async function sendWhatsAppTemplate(
 
         body:
           JSON.stringify(
-            payload
+            buildAbandonedWhatsAppPayload(
+              checkout
+            )
           )
       }
     );
@@ -519,13 +503,15 @@ async function sendWhatsAppTemplate(
   const data =
     await response
       .json()
-      .catch(() => ({}));
+      .catch(
+        () => ({})
+      );
 
   if (!response.ok) {
     throw new Error(
       data?.error?.message ||
       data?.message ||
-      "WhatsApp template message failed."
+      "WhatsApp message failed."
     );
   }
 
@@ -533,16 +519,18 @@ async function sendWhatsAppTemplate(
 }
 
 
-/* ------------------------------------------------------------
-   MARK PURCHASED CHECKOUTS
------------------------------------------------------------- */
+/* ============================================================
+   MARK PURCHASED
+============================================================ */
 
-async function markPurchasedAbandonedCheckouts(
+async function markAbandonedCheckoutPurchased(
   db,
   order
 ) {
   const mobile =
-    getOrderMobile(order);
+    getOrderMobile(
+      order
+    );
 
   const email =
     normalizeEmail(
@@ -553,7 +541,10 @@ async function markPurchasedAbandonedCheckouts(
       )
     );
 
-  if (!mobile && !email) {
+  if (
+    !mobile &&
+    !email
+  ) {
     return 0;
   }
 
@@ -575,7 +566,8 @@ async function markPurchasedAbandonedCheckouts(
     of snapshot.docs
   ) {
     const checkout =
-      doc.data() || {};
+      doc.data() ||
+      {};
 
     const checkoutMobile =
       getCheckoutMobile(
@@ -641,9 +633,9 @@ async function markPurchasedAbandonedCheckouts(
 }
 
 
-/* ------------------------------------------------------------
-   ABANDONED CHECKOUT CRON
------------------------------------------------------------- */
+/* ============================================================
+   ABANDONED CHECKOUT PROCESSOR
+============================================================ */
 
 async function handleWhatsAppAbandoned(
   req,
@@ -674,26 +666,6 @@ async function handleWhatsAppAbandoned(
   try {
     const db =
       getDb();
-
-    const now =
-      Date.now();
-
-    const cutoff =
-      now -
-      getAbandonedAfterMs();
-
-    const snapshot =
-      await db
-        .collection(
-          "abandonedCheckouts"
-        )
-        .limit(500)
-        .get();
-
-    let scanned = 0;
-    let sent = 0;
-    let skipped = 0;
-    let failed = 0;
 
     const config =
       getWhatsAppConfig();
@@ -730,16 +702,35 @@ async function handleWhatsAppAbandoned(
       );
     }
 
+    const now =
+      Date.now();
+
+    const cutoff =
+      now -
+      getAbandonedAfterMs();
+
+    const snapshot =
+      await db
+        .collection(
+          "abandonedCheckouts"
+        )
+        .limit(500)
+        .get();
+
+    let scanned = 0;
+    let sent = 0;
+    let skipped = 0;
+    let failed = 0;
+
     for (
       const doc
       of snapshot.docs
     ) {
       const checkout =
-        doc.data() || {};
+        doc.data() ||
+        {};
 
       scanned += 1;
-
-      /* Consent required */
 
       if (
         !isWhatsAppOptedIn(
@@ -750,12 +741,18 @@ async function handleWhatsAppAbandoned(
         continue;
       }
 
-      /* Never remind a purchased customer */
-
       if (
-        isPurchased(
+        isPurchasedCheckout(
           checkout
         )
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      if (
+        checkout?.whatsappReminderDisabled ===
+        true
       ) {
         skipped += 1;
         continue;
@@ -785,17 +782,15 @@ async function handleWhatsAppAbandoned(
         continue;
       }
 
-      const lastReminderAt =
-        getLastReminderAt(
+      const lastReminder =
+        getLastWhatsAppReminderAt(
           checkout
         );
 
-      /* Cooldown / duplicate protection */
-
       if (
-        lastReminderAt &&
+        lastReminder &&
         now -
-          lastReminderAt <
+          lastReminder <
           getReminderCooldownMs()
       ) {
         skipped += 1;
@@ -804,7 +799,7 @@ async function handleWhatsAppAbandoned(
 
       try {
         const result =
-          await sendWhatsAppTemplate(
+          await sendAbandonedWhatsApp(
             checkout
           );
 
@@ -849,7 +844,10 @@ async function handleWhatsAppAbandoned(
               clean(
                 error?.message ||
                 error
-              ).slice(0, 1000),
+              ).slice(
+                0,
+                1000
+              ),
 
             updatedAt:
               new Date()
@@ -880,19 +878,19 @@ async function handleWhatsAppAbandoned(
 
         failed,
 
-        cooldownMinutes:
-          getReminderCooldownMs() /
-          60000,
-
         abandonedAfterMinutes:
           getAbandonedAfterMs() /
+          60000,
+
+        cooldownMinutes:
+          getReminderCooldownMs() /
           60000
       }
     );
 
   } catch (error) {
     console.error(
-      "Abandoned checkout WhatsApp job failed:",
+      "WhatsApp abandoned checkout processor failed:",
       error
     );
 
