@@ -1,3 +1,9 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
+  AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
+  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, Menu, ChevronDown
+} from 'lucide-react';
 /*
  * STAGE 2 COMPLETE — PUBLIC SHIPPING CONFIG
  * Checkout shipping settings are loaded from /api/config.
@@ -469,12 +475,6 @@ function luxmoRememberPaidOrder(order, response) {
  * as a secure source of truth.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  ShoppingBag, Search, Lock, ChevronRight, Filter, Trash2, Edit3, 
-  AlertCircle, Star, ArrowLeft, Upload, CheckCircle2, ShieldCheck, X, Phone, Mail,
-  FileText, Info, HelpCircle, RefreshCw, Truck, Scale, Menu, ChevronDown
-} from 'lucide-react';
 
 const PUBLIC_BUSINESS_INFO = Object.freeze({
   tradeName: "LUXMO HUB",
@@ -5840,6 +5840,8 @@ export default function LuxmoHubApp() {
       console.warn("Could not read payment lock:", e);
     }
 
+    let paymentReference = "N/A";
+
     try {
       // Checkout already stores the customer's address + items + total here.
       // Use the latest pending online order when available.
@@ -5870,6 +5872,8 @@ export default function LuxmoHubApp() {
         alert("Please complete the delivery address and place the online order from Checkout first.");
         return;
       }
+
+      paymentReference = String(pendingOrder.id || "N/A");
 
       const address = pendingOrder.address || pendingOrder.shippingAddress;
       if (
@@ -5956,7 +5960,6 @@ export default function LuxmoHubApp() {
         ).trim().toUpperCase(),
         shippingMode:
           pendingOrder.shippingMode ||
-          effectiveShippingMode ||
           "standard",
         paymentMethod: "razorpay",
         customer: {
@@ -5985,6 +5988,10 @@ export default function LuxmoHubApp() {
       const razorpayOrderId = String(
         razorpayOrder?.id || ""
       ).trim();
+
+      if (razorpayOrderId) {
+        paymentReference = razorpayOrderId;
+      }
 
       const razorpayAmount = Number(
         razorpayOrder?.amount || 0
@@ -6205,7 +6212,7 @@ export default function LuxmoHubApp() {
               localStorage.removeItem(shipmentLockKey);
             } catch {}
             alert(
-              `Payment may have been successful, but order processing needs attention.\n\nPlease DO NOT make another payment.\nReference: ${response?.razorpay_order_id || "N/A"}`
+              `Payment may have been successful, but order processing needs attention.\n\nPlease DO NOT make another payment.\nReference: ${paymentReference}`
             );
           }
       };
