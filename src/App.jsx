@@ -8,6 +8,40 @@
 /* LUXMO SECURITY FRONTEND HARDENING — STAGE B PREPARATION */
 
 
+
+/* LUXMO_SHIPROCKET_API */
+const LUXMO_SHIPROCKET_API = "/api/shiprocket";
+
+async function luxmoCreateShiprocketShipment(order) {
+  const response = await fetch(LUXMO_SHIPROCKET_API, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      order,
+      orderData: order,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data?.success) {
+    const error = new Error(
+      data?.error ||
+      data?.message ||
+      "Shiprocket shipment creation is pending."
+    );
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
 /* LUXMO_COMPLETE_TRACKING_V2 */
 
 const LUXMO_MARKETING_CONFIG = {
@@ -3016,6 +3050,18 @@ function LuxmoCheckout({
               </div>
             </div>
 
+            {/* OFFERS */}
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="font-black text-sm text-emerald-800">
+                🎁 Offers & Savings
+              </div>
+              <div className="mt-2 space-y-1.5 text-xs text-emerald-700">
+                <div>• Prepaid discount: eligible online-payment offers are applied before payment.</div>
+                <div>• Coupon discounts are validated server-side for secure pricing.</div>
+                <div>• Shipping offers are calculated from your delivery method and cart.</div>
+              </div>
+            </div>
+
             {/* PAYMENT */}
             <div className="bg-white border rounded-2xl p-5">
               <h3 className="font-black">
@@ -3057,7 +3103,9 @@ function LuxmoCheckout({
                       </div>
 
                       <div className="text-xs text-slate-500">
-                        {m.description}
+                        {m.id === "razorpay"
+                          ? "UPI, Cards, Net Banking and Wallets via Razorpay"
+                          : m.description}
                       </div>
                     </button>
                   ))}
@@ -6878,7 +6926,10 @@ export default function LuxmoHubApp() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                   {filteredProducts.map(prod => <ProductCard key={prod.id} product={prod}
                     onSelect={(p) => { luxmoMarketingEvent("product_viewed",{items:[luxmoMarketingProduct(p)]}); setSelectedProduct(p); setSelectedVariantKey(p.variants?.[0]?.key || ""); setActiveImageIndex(0); setActiveTab("product"); }}
-                    onAddToCart={addToCart}
+                    onAddToCart={(p) => {
+                      addToCart(p);
+                      setActiveTab("cart");
+                    }}
                     onBuyNow={(p) => {
                       if (p.variants?.length) {
                         setSelectedProduct(p);
@@ -7388,7 +7439,10 @@ export default function LuxmoHubApp() {
               <div className="grid grid-cols-1 gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => addToCart(selectedProduct, activeVariant)}
+                  onClick={() => {
+                    addToCart(selectedProduct, activeVariant);
+                    setActiveTab("cart");
+                  }}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl text-sm transition shadow-sm"
                 >
                   🛒 Add to Cart
@@ -7411,34 +7465,245 @@ export default function LuxmoHubApp() {
           </>
         )}
 
-        {/* CART VIEW */}
+        {/* CART VIEW — SIMPLE, LOW-CONFUSION SHOPPING CART */}
         {activeTab === "cart" && (
-          <div className="bg-white rounded-2xl border p-6 max-w-2xl mx-auto space-y-6">
-            <h1 className="text-xl font-bold border-b pb-3">Shopping Cart</h1>
-            {cart.length === 0 ? <p className="text-center text-slate-500 py-8">Your cart is empty.</p> : (
-              <div className="space-y-4">
-                {cart.map(item => (
-                  <div key={item.id} className="flex justify-between items-center border-b pb-3">
-                    <div>
-                      <h4 className="font-semibold text-sm">{item.title}</h4>
-                      <p className="text-xs text-slate-500">Qty: {item.qty} × ₹{item.salePrice || item.price}</p>
-                    </div>
-                    <span className="font-bold">₹{(item.salePrice || item.price) * item.qty}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between items-center text-lg font-bold pt-2">
-                  <span>Total Payable:</span>
-                  <span className="text-blue-600">₹{cartTotal}</span>
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-5">
+
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-blue-600 font-black">
+                  LUXMO HUB
                 </div>
-                <button
-                  onClick={() => { setBuyNowItem(null); setShowCheckoutModal(true); }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm"
-                >
-                  Proceed to Secure Checkout
-                </button>
-                <p className="text-[10px] text-slate-500 text-center mt-2">
-                  Enter your delivery address and choose your payment method at checkout.
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-950">
+                  Shopping Cart
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  Review your products and continue to secure checkout.
                 </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("home")}
+                className="text-xs font-black text-slate-600 hover:text-slate-950 whitespace-nowrap"
+              >
+                Continue Shopping
+              </button>
+            </div>
+
+            {cart.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center shadow-sm">
+                <div className="text-5xl mb-3">🛒</div>
+                <h2 className="text-lg font-black">Your cart is empty</h2>
+                <p className="text-sm text-slate-500 mt-2">
+                  Add a product to continue shopping.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("home")}
+                  className="mt-5 bg-slate-950 text-white rounded-xl px-6 py-3 text-sm font-black"
+                >
+                  Browse Products
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+
+                {/* PRODUCTS */}
+                <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="px-4 py-4 border-b flex items-center justify-between">
+                    <h2 className="font-black">Products</h2>
+                    <span className="text-xs font-bold text-slate-500">
+                      {cart.reduce((sum, item) => sum + Number(item.qty || 1), 0)} item(s)
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100">
+                    {cart.map(item => {
+                      const cartKey = item.cartKey || item.id;
+                      const qty = Math.max(1, Number(item.qty || 1));
+                      const unitPrice = Number(item.salePrice ?? item.price ?? 0);
+                      const lineTotal = unitPrice * qty;
+                      const image = item.images?.[0] || item.image || "";
+
+                      return (
+                        <div key={cartKey} className="p-4">
+                          <div className="flex gap-3">
+
+                            <div className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
+                              {image ? (
+                                <img
+                                  src={image}
+                                  alt={item.title || "Product"}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full grid place-items-center text-2xl">
+                                  📦
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-black text-sm sm:text-base leading-5">
+                                {item.title}
+                              </h3>
+
+                              {(item.model || item.colour) && (
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  {item.model ? `Model: ${item.model}` : ""}
+                                  {item.model && item.colour ? " · " : ""}
+                                  {item.colour ? `Colour: ${item.colour}` : ""}
+                                </p>
+                              )}
+
+                              {item.sku && (
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                  SKU: {item.sku}
+                                </p>
+                              )}
+
+                              <div className="font-black mt-2">
+                                {luxmoMoney(unitPrice)}
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <div className="font-black text-sm">
+                                {luxmoMoney(lineTotal)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCart(prev =>
+                                    prev.map(x => {
+                                      const key = x.cartKey || x.id;
+                                      if (key !== cartKey) return x;
+                                      return {
+                                        ...x,
+                                        qty: Math.max(1, Number(x.qty || 1) - 1)
+                                      };
+                                    })
+                                  );
+                                }}
+                                className="w-10 h-9 font-black text-lg hover:bg-slate-100"
+                                aria-label="Decrease quantity"
+                              >
+                                −
+                              </button>
+
+                              <span className="w-10 text-center text-sm font-black">
+                                {qty}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCart(prev =>
+                                    prev.map(x => {
+                                      const key = x.cartKey || x.id;
+                                      if (key !== cartKey) return x;
+                                      const maxStock = Number(x.stock || 999999);
+                                      return {
+                                        ...x,
+                                        qty: Math.min(Number(x.qty || 1) + 1, maxStock)
+                                      };
+                                    })
+                                  );
+                                }}
+                                className="w-10 h-9 font-black text-lg hover:bg-slate-100"
+                                aria-label="Increase quantity"
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCart(prev =>
+                                  prev.filter(x => (x.cartKey || x.id) !== cartKey)
+                                );
+                              }}
+                              className="text-xs font-black text-slate-500 underline hover:text-red-600"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* OFFERS */}
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="font-black text-emerald-800 text-sm">
+                    🎁 Offers
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-xs text-emerald-700">
+                    <div>• Prepaid discount: eligible online-payment offers are applied at checkout.</div>
+                    <div>• Coupon/offer discounts are validated by the server before payment.</div>
+                  </div>
+                </div>
+
+                {/* SUMMARY */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Subtotal</span>
+                    <strong>{luxmoMoney(cartTotal)}</strong>
+                  </div>
+
+                  <div className="flex justify-between text-sm mt-2">
+                    <span className="text-slate-600">Prepaid discount</span>
+                    <span className="font-bold text-emerald-600">
+                      Available at checkout
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-sm mt-2">
+                    <span className="text-slate-600">Shipping</span>
+                    <span className="font-bold text-slate-700">
+                      Calculated at checkout
+                    </span>
+                  </div>
+
+                  <div className="border-t mt-4 pt-4 flex justify-between items-center">
+                    <span className="font-black text-lg">Subtotal</span>
+                    <span className="font-black text-xl text-blue-600">
+                      {luxmoMoney(cartTotal)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuyNowItem(null);
+                      setShowCheckoutModal(true);
+                    }}
+                    className="w-full mt-5 bg-slate-950 hover:bg-slate-800 text-white rounded-2xl py-4 text-base font-black transition"
+                  >
+                    BUY NOW
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("home")}
+                    className="w-full mt-3 border border-slate-300 rounded-xl py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                  >
+                    View Cart
+                  </button>
+
+                  <p className="text-[10px] text-slate-500 text-center mt-3">
+                    Secure Checkout · UPI · Cards · Net Banking · Wallets · COD
+                  </p>
+                </div>
+
               </div>
             )}
           </div>
@@ -7819,7 +8084,18 @@ export default function LuxmoHubApp() {
           <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
             <div className="min-h-full w-full p-2 md:p-5">
               <div className="max-w-5xl mx-auto">
-                <div className="flex justify-end mb-2">
+                <div className="flex justify-end gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCheckoutModal(false);
+                      setBuyNowItem(null);
+                      setActiveTab("cart");
+                    }}
+                    className="bg-white border rounded-xl px-4 py-2 text-sm font-black shadow-lg"
+                  >
+                    View Cart
+                  </button>
                   <button
                     type="button"
                     onClick={() => { setShowCheckoutModal(false); setBuyNowItem(null); }}
@@ -9560,3 +9836,18 @@ function ProductCard({ product, onSelect, onAddToCart, onBuyNow }) {
    Meta CAPI and actual WhatsApp outbound sending must remain server-side
    and require verified credentials; no secrets are placed in this file.
 ============================================================ */
+
+
+/*
+ * SHIPMENT FLOW (EXISTING BACKEND PRESERVED)
+ *
+ * Prepaid:
+ * Razorpay -> /api/verify-payment -> verified Paid order
+ * -> /api/shiprocket -> Shipment -> AWB -> My Orders
+ *
+ * COD:
+ * Order creation -> /api/shiprocket -> Shipment -> AWB -> My Orders
+ *
+ * If Shiprocket is temporarily unavailable, payment/order status remains
+ * successful and the backend can retry shipment without another payment.
+ */
