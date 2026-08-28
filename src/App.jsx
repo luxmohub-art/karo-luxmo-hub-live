@@ -2840,8 +2840,8 @@ function LuxmoCheckout({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/50 p-3 md:p-8 overflow-auto">
-      <div className="max-w-5xl mx-auto bg-slate-50 rounded-3xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[70] bg-slate-950 overflow-y-auto">
+      <div className="min-h-screen w-full bg-slate-50 shadow-2xl overflow-hidden">
 
         {/* HEADER */}
         <div className="bg-slate-950 text-white p-5 flex items-center justify-between">
@@ -2863,7 +2863,7 @@ function LuxmoCheckout({
           </button>
         </div>
 
-        <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="p-3 sm:p-5 lg:p-7 grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6 max-w-[1500px] mx-auto">
 
           {/* LEFT */}
           <div className="lg:col-span-2 space-y-5">
@@ -3050,6 +3050,23 @@ function LuxmoCheckout({
               </div>
             </div>
 
+            {/* PREPAID OFFER */}
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-black text-sm text-emerald-900">
+                    🎁 Extra 5% Off on Prepaid Orders
+                  </div>
+                  <div className="text-xs text-emerald-700 mt-1">
+                    Pay online with Razorpay and save on eligible orders.
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full bg-emerald-600 text-white px-3 py-1 text-[11px] font-black">
+                  PREPAID
+                </span>
+              </div>
+            </div>
+
             {/* OFFERS */}
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <div className="font-black text-sm text-emerald-800">
@@ -3071,6 +3088,15 @@ function LuxmoCheckout({
                 <input type="checkbox" checked={whatsappOptIn} onChange={e=>setWhatsappOptIn(e.target.checked)} className="mt-0.5" />
                 <span>I agree to receive order and checkout-related WhatsApp messages from LUXMO HUB. This is optional.</span>
               </label>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 mt-3">
+                <div className="font-black text-sm text-slate-900">
+                  💳 Pay securely with Razorpay
+                </div>
+                <div className="text-xs text-slate-600 mt-1">
+                  UPI apps, Debit/Credit Cards, Net Banking and Wallets are available inside Razorpay Checkout.
+                </div>
+              </div>
 
               <div className="space-y-2 mt-3">
 
@@ -3134,11 +3160,16 @@ function LuxmoCheckout({
           </div>
 
           {/* RIGHT SUMMARY */}
-          <div className="bg-white border rounded-2xl p-5 h-fit sticky top-3">
+          <div className="bg-white border rounded-2xl p-4 sm:p-5 h-fit xl:sticky xl:top-3">
 
-            <h3 className="font-black">
-              Order Summary
-            </h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-black">
+                Order Summary
+              </h3>
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                Secure Checkout
+              </span>
+            </div>
 
             <div className="space-y-2 mt-4">
 
@@ -4853,6 +4884,253 @@ export default function LuxmoHubApp() {
       document.body.style.overflow = "";
     };
   }, [showStoreTools, showCheckoutModal]);
+
+  /*
+   * LUXMO HOSTED RAZORPAY RETURN
+   * ---------------------------------------------------------
+   * Razorpay Hosted Checkout posts the payment result to the existing
+   * /api/verify-payment endpoint. That endpoint verifies the signature
+   * server-side and redirects back here with:
+   *   ?payment=verified&orderId=...&razorpayOrderId=...&paymentId=...
+   *
+   * We then use the already-existing /api/create-shipment flow.
+   * No new API route is introduced.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const paymentState = String(params.get("payment") || "").toLowerCase();
+
+    if (paymentState === "cancelled") {
+      try {
+        localStorage.removeItem("luxmo_payment_shipment_lock");
+        localStorage.removeItem("luxmo_pending_payment_order_id");
+      } catch {}
+      alert("Payment was cancelled. Your order is still available in Checkout.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (paymentState === "failed") {
+      try {
+        localStorage.removeItem("luxmo_payment_shipment_lock");
+      } catch {}
+      alert("Payment verification was not completed. No successful payment was recorded.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (paymentState !== "verified") return;
+
+    const websiteOrderId = String(
+      params.get("orderId") ||
+      params.get("websiteOrderId") ||
+      ""
+    ).trim();
+
+    const razorpayOrderId = String(
+      params.get("razorpayOrderId") ||
+      params.get("razorpay_order_id") ||
+      ""
+    ).trim();
+
+    const razorpayPaymentId = String(
+      params.get("paymentId") ||
+      params.get("razorpayPaymentId") ||
+      params.get("razorpay_payment_id") ||
+      ""
+    ).trim();
+
+    if (!websiteOrderId || !razorpayOrderId || !razorpayPaymentId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const finishHostedPayment = async () => {
+      const lockKey = "luxmo_payment_shipment_lock";
+
+      try {
+        let storedOrders = [];
+        try {
+          const raw = localStorage.getItem("luxmo_pro_orders");
+          const parsed = raw ? JSON.parse(raw) : [];
+          storedOrders = Array.isArray(parsed) ? parsed : [];
+        } catch {}
+
+        const storedOrder =
+          storedOrders.find(
+            (o) =>
+              String(o?.id || o?.orderId || o?.websiteOrderId || "") ===
+              websiteOrderId
+          ) || null;
+
+        if (!storedOrder) {
+          throw new Error(
+            "Verified payment received, but the local checkout order could not be restored."
+          );
+        }
+
+        const paidOrder = {
+          ...storedOrder,
+          id: storedOrder.id || websiteOrderId,
+          orderId: storedOrder.orderId || websiteOrderId,
+          websiteOrderId,
+          razorpayOrderId,
+          razorpayPaymentId,
+          paymentStatus: "Paid",
+          paymentVerified: true,
+          status: "Payment Confirmed - Shipment Pending",
+          shipmentStatus: "Pending",
+          courierProvider: "shiprocket",
+          paidAt: storedOrder.paidAt || new Date().toISOString(),
+          verifiedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        try {
+          localStorage.setItem(
+            "luxmo_pro_orders",
+            JSON.stringify([
+              paidOrder,
+              ...storedOrders.filter(
+                (o) =>
+                  String(o?.id || o?.orderId || o?.websiteOrderId || "") !==
+                  websiteOrderId
+              )
+            ])
+          );
+        } catch {}
+
+        try {
+          localStorage.setItem(
+            lockKey,
+            JSON.stringify({
+              status: "processing",
+              websiteOrderId,
+              razorpayOrderId,
+              razorpayPaymentId,
+              timestamp: Date.now()
+            })
+          );
+        } catch {}
+
+        const shipmentKey = `luxmo_shipment_${websiteOrderId}`;
+
+        let existingShipment = null;
+        try {
+          const saved = localStorage.getItem(shipmentKey);
+          existingShipment = saved ? JSON.parse(saved) : null;
+        } catch {}
+
+        if (!existingShipment?.success) {
+          const shipment = await luxmoCreateOrRefreshShipment(paidOrder);
+
+          if (!shipment?.success) {
+            throw new Error(
+              shipment?.error ||
+              shipment?.message ||
+              "Shipment creation is pending."
+            );
+          }
+        }
+
+        if (cancelled) return;
+
+        try {
+          const saved = localStorage.getItem(shipmentKey);
+          const shipmentRecord = saved ? JSON.parse(saved) : {};
+          const mergedOrder = {
+            ...paidOrder,
+            ...(shipmentRecord || {}),
+            paymentStatus: "Paid",
+            paymentVerified: true,
+            shipmentStatus:
+              shipmentRecord?.shipmentStatus ||
+              shipmentRecord?.status ||
+              "Created",
+            courierProvider: "shiprocket",
+            updatedAt: new Date().toISOString()
+          };
+
+          const current = JSON.parse(
+            localStorage.getItem("luxmo_pro_orders") || "[]"
+          );
+          const safeCurrent = Array.isArray(current) ? current : [];
+
+          localStorage.setItem(
+            "luxmo_pro_orders",
+            JSON.stringify([
+              mergedOrder,
+              ...safeCurrent.filter(
+                (o) =>
+                  String(o?.id || o?.orderId || o?.websiteOrderId || "") !==
+                  websiteOrderId
+              )
+            ])
+          );
+
+          luxmoRememberPaidOrder(
+            mergedOrder,
+            {
+              razorpay_order_id: razorpayOrderId,
+              razorpay_payment_id: razorpayPaymentId
+            }
+          );
+        } catch {}
+
+        try {
+          localStorage.removeItem(lockKey);
+          localStorage.removeItem("luxmo_pending_payment_order_id");
+        } catch {}
+
+        setCart([]);
+
+        setBuyNowItem(null);
+        setShowCheckoutModal(false);
+        setActiveTab("my-orders");
+
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+
+        alert(
+          "Payment successful and verified. Your order has been confirmed and shipment processing has started."
+        );
+      } catch (error) {
+        console.error("Hosted payment/shipment processing:", error);
+
+        try {
+          localStorage.removeItem(lockKey);
+        } catch {}
+
+        if (cancelled) return;
+
+        setBuyNowItem(null);
+        setShowCheckoutModal(false);
+        setActiveTab("my-orders");
+
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+
+        alert(
+          `Payment was successful and verified, but shipment creation is pending.\n\nYour payment is NOT failed. Please DO NOT pay again.\n\nReference: ${razorpayOrderId}`
+        );
+      }
+    };
+
+    finishHostedPayment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [showWarrantyModal, setShowWarrantyModal] = useState(false);
   const [showSolarCalculator, setShowSolarCalculator] = useState(false);
@@ -5795,318 +6073,132 @@ export default function LuxmoHubApp() {
         console.warn("Could not save payment lock:", e);
       }
 
-      const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: razorpayAmount,
-        currency: razorpayCurrency,
-        name: PUBLIC_BUSINESS_INFO.tradeName,
-        description: "Luxmo Hub Order",
-        order_id: razorpayOrderId,
+      /*
+       * LUXMO HOSTED RAZORPAY CHECKOUT
+       * ---------------------------------------------------------
+       * Standard checkout is a Razorpay-controlled modal/bottom-sheet.
+       * It does not expose a supported width/height option for making
+       * the mobile sheet full-screen.
+       *
+       * We therefore use Razorpay Hosted/Embedded Checkout here.
+       * This keeps Razorpay as the payment processor but opens the
+       * payment UI as a full-page experience on mobile/tablet/desktop.
+       *
+       * Existing payment verification + shipment flow is preserved:
+       * Razorpay -> /api/verify-payment?hosted=1 -> return to LUXMO
+       * -> /api/create-shipment -> My Orders.
+       *
+       * IMPORTANT:
+       * Existing api/create-order.js must save the pending website
+       * order in Firestore before returning the Razorpay order, and
+       * existing api/verify-payment.js must support hosted callbacks.
+       * No new API file is required.
+       */
 
-        handler: async function (response) {
-          try {
-            // STEP 1: Verify Razorpay payment on the server.
-            const verifyResponse = await fetch("/api/verify-payment", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                ...response,
-                order: orderPayload,
-                orderData: orderPayload
-              })
-            });
+      const hostedReturnUrl =
+        `${window.location.origin}/api/verify-payment?hosted=1`;
 
-            let verifyData = {};
-            try {
-              verifyData = await verifyResponse.json();
-            } catch {
-              throw new Error("Invalid payment verification response.");
-            }
+      const hostedCancelUrl =
+        `${window.location.origin}/?payment=cancelled&orderId=${encodeURIComponent(
+          String(pendingOrder.id || "")
+        )}`;
 
-            if (!verifyResponse.ok || !verifyData.success) {
-              console.error("Razorpay verification failed:", verifyData);
-              localStorage.removeItem(shipmentLockKey);
-              alert(verifyData.error || "Payment verification failed.");
-              return;
-            }
+      // Keep the exact checkout/order snapshot available after the
+      // browser leaves the SPA for Razorpay Hosted Checkout.
+      try {
+        const existing = JSON.parse(
+          localStorage.getItem("luxmo_pro_orders") || "[]"
+        );
+        const safeExisting = Array.isArray(existing) ? existing : [];
+        const pendingSnapshot = {
+          ...orderPayload,
+          razorpayOrderId,
+          paymentStatus: "Pending",
+          paymentVerified: false,
+          status: "Payment Pending",
+          updatedAt: new Date().toISOString()
+        };
+        localStorage.setItem(
+          "luxmo_pro_orders",
+          JSON.stringify([
+            pendingSnapshot,
+            ...safeExisting.filter(
+              (o) => String(o?.id || "") !== String(pendingSnapshot.id || "")
+            )
+          ])
+        );
+      } catch (e) {
+        console.warn("Could not persist hosted checkout snapshot:", e);
+      }
 
-            // IMPORTANT: Payment is now verified. Shipment failure must NOT
-            // change payment status to failed.
-            console.log("Razorpay payment verified:", response.razorpay_payment_id);
+      /*
+       * Razorpay Hosted Checkout is a normal POST form. Submitting the
+       * form in the same tab gives the customer a real full-page payment
+       * experience instead of the small mobile bottom-sheet.
+       */
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "https://api.razorpay.com/v1/checkout/embedded";
+      form.style.position = "fixed";
+      form.style.left = "-99999px";
+      form.style.width = "1px";
+      form.style.height = "1px";
+      form.style.opacity = "0";
+      form.setAttribute("aria-hidden", "true");
 
-            // STEP 2: Shiprocket is the production checkout provider.
-            // Old iThink/localStorage selections are migrated automatically so
-            // a paid order cannot get stuck because ITHINK_PICKUP_ADDRESS_ID is missing.
-            const provider = "shiprocket";
-            try {
-              localStorage.setItem("luxmo_selected_courier", provider);
-            } catch {}
+      const addField = (name, value) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = String(value ?? "");
+        form.appendChild(input);
+      };
 
-            // STEP 3: Do not create the same shipment twice.
-            const shipmentKey = `luxmo_shipment_${orderData.orderId}`;
-            let existingShipment = null;
-            try {
-              const savedShipment = localStorage.getItem(shipmentKey);
-              existingShipment = savedShipment ? JSON.parse(savedShipment) : null;
-            } catch {}
+      addField(
+        "key_id",
+        import.meta.env.VITE_RAZORPAY_KEY_ID
+      );
+      addField("order_id", razorpayOrderId);
+      addField("name", PUBLIC_BUSINESS_INFO.tradeName);
+      addField("description", "Luxmo Hub Order");
+      addField(
+        "image",
+        `${window.location.origin}/luxmo-hub-logo.png`
+      );
 
-            if (existingShipment?.success === true) {
-              alert(
-                `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nAWB: ${existingShipment.awb || "Already created"}`
-              );
-              localStorage.removeItem(shipmentLockKey);
-              luxmoRememberPaidOrder(orderPayload, response);
-              if (!wasBuyNowCheckout) setCart([]);
-              setBuyNowItem(null);
-              setShowCheckoutModal(false);
-              try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
-              setActiveTab("my-orders");
-              return;
-            }
+      addField(
+        "prefill[name]",
+        orderPayload.customer?.name || "Customer"
+      );
+      addField(
+        "prefill[email]",
+        orderPayload.customer?.email || ""
+      );
+      addField(
+        "prefill[contact]",
+        orderPayload.customer?.phone || ""
+      );
 
-            // STEP 4: Create shipment only AFTER payment verification.
-            const shipmentResponse = await fetch("/api/create-shipment", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                provider,
-                order: {
-                  ...orderPayload,
-                  provider,
-                  courierProvider: provider
-                },
-                orderData: {
-                  ...orderPayload,
-                  provider,
-                  courierProvider: provider
-                }
-              })
-            });
+      addField("notes[website_order_id]", pendingOrder.id || "");
+      addField(
+        "notes[source]",
+        "luxmo-website-hosted-checkout"
+      );
 
-            let shipmentData = {};
-            try {
-              shipmentData = await shipmentResponse.json();
-            } catch {
-              shipmentData = {};
-            }
+      addField("callback_url", hostedReturnUrl);
+      addField("cancel_url", hostedCancelUrl);
 
-            // PAYMENT SUCCESS + SHIPMENT FAILURE = payment remains PAID.
-            // If a stale client somehow sent iThink, retry once through Shiprocket
-            // before marking the shipment as pending. Never ask the customer to pay again.
-            if ((!shipmentResponse.ok || !shipmentData.success) && provider !== "shiprocket") {
-              try {
-                const retryResponse = await fetch("/api/create-shipment", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    razorpay_order_id: response.razorpay_order_id,
-                    razorpay_payment_id: response.razorpay_payment_id,
-                    razorpay_signature: response.razorpay_signature,
-                    provider: "shiprocket",
-                    order: { ...orderPayload, provider: "shiprocket", courierProvider: "shiprocket", razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, paymentStatus: "Paid", paymentVerified: true },
-                    orderData: { ...orderPayload, provider: "shiprocket", courierProvider: "shiprocket", razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, paymentStatus: "Paid", paymentVerified: true }
-                  })
-                });
-                const retryData = await retryResponse.json().catch(() => ({}));
-                if (retryResponse.ok && retryData?.success) {
-                  shipmentData = retryData;
-                }
-              } catch (retryError) {
-                console.error("Shiprocket fallback after courier failure:", retryError);
-              }
-            }
+      addField("theme[color]", "#2563eb");
 
-            const rawShipment = shipmentData?.shipment || shipmentData || {};
-            const returnedShipmentId =
-              rawShipment?.shipmentId ||
-              rawShipment?.shipment_id ||
-              rawShipment?.id ||
-              "";
-            const returnedAwb =
-              rawShipment?.awb ||
-              rawShipment?.awb_code ||
-              rawShipment?.waybill ||
-              rawShipment?.tracking_number ||
-              "";
+      document.body.appendChild(form);
 
-            // Do not treat a courier response as a completed shipment unless
-            // it returned a real shipment identifier or AWB.
-            if (
-              !shipmentResponse.ok ||
-              !shipmentData.success ||
-              (!returnedShipmentId && !returnedAwb)
-            ) {
-              console.error(
-                "Shipment failed after successful payment:",
-                shipmentData
-              );
-
-              const pendingShipmentOrder = {
-                ...orderPayload,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                paymentStatus: "Paid",
-                paymentVerified: true,
-                paidAt: orderPayload.paidAt || new Date().toISOString(),
-                verifiedAt: orderPayload.verifiedAt || new Date().toISOString(),
-                status: "Payment Confirmed - Shipment Pending",
-                courierProvider: provider,
-                shipmentStatus: "Pending",
-                shipmentError:
-                  shipmentData.error || "Shipment creation failed",
-                updatedAt: new Date().toISOString()
-              };
-
-              try {
-                const current = JSON.parse(
-                  localStorage.getItem("luxmo_pro_orders") || "[]"
-                );
-                const safeCurrent = Array.isArray(current) ? current : [];
-                const updated = [
-                  pendingShipmentOrder,
-                  ...safeCurrent.filter((o) => o?.id !== pendingShipmentOrder.id)
-                ];
-                localStorage.setItem("luxmo_pro_orders", JSON.stringify(updated));
-              } catch (e) {
-                console.error("Could not save shipment-pending order:", e);
-              }
-
-              localStorage.removeItem(shipmentLockKey);
-              luxmoRememberPaidOrder(pendingShipmentOrder, response);
-              if (!wasBuyNowCheckout) setCart([]);
-              setBuyNowItem(null);
-              setShowCheckoutModal(false);
-              try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
-              setActiveTab("my-orders");
-
-              alert(
-                "Payment was successful and verified, but shipment creation is pending. Your payment is NOT failed. Please do NOT pay again."
-              );
-              return;
-            }
-
-            // STEP 5: Save AWB + shipment details after successful shipment.
-            const shipment = shipmentData.shipment || shipmentData;
-            const awb =
-              shipment?.awb ||
-              shipment?.awb_code ||
-              shipment?.waybill ||
-              "";
-            const trackingUrl =
-              shipment?.trackingUrl ||
-              shipment?.tracking_url ||
-              "";
-            const courier =
-              shipment?.courier ||
-              shipment?.courier_name ||
-              shipment?.logistic_name ||
-              provider;
-            const shipmentId =
-              shipment?.shipmentId ||
-              shipment?.shipment_id ||
-              shipment?.id ||
-              returnedShipmentId ||
-              "";
-
-            const labelUrl =
-              shipment?.labelUrl ||
-              shipment?.label_url ||
-              "";
-
-            const invoiceUrl =
-              shipment?.invoiceUrl ||
-              shipment?.invoice_url ||
-              "";
-
-            const combinedLabelInvoiceUrl =
-              shipment?.combinedLabelInvoiceUrl ||
-              shipment?.combined_label_invoice_url ||
-              shipment?.label_invoice_url ||
-              "";
-
-            const pickupStatus =
-              shipment?.pickupStatus ||
-              shipment?.pickup_status ||
-              "";
-
-            const shipmentStatus =
-              shipment?.shipmentStatus ||
-              shipment?.status ||
-              "Created";
-
-            const shipmentRecord = {
-              success: true,
-              provider,
-              courier,
-              orderId: response.razorpay_order_id,
-              paymentId: response.razorpay_payment_id,
-              shipmentId,
-              awb,
-              trackingUrl,
-              labelUrl,
-              invoiceUrl,
-              combinedLabelInvoiceUrl,
-              pickupStatus,
-              shipmentStatus,
-              createdAt: new Date().toISOString()
-            };
-
-            localStorage.setItem(shipmentKey, JSON.stringify(shipmentRecord));
-
-            const completedOrder = {
-              ...orderPayload,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              paymentStatus: "Paid",
-              paymentVerified: true,
-              status: "Shipped",
-              courierProvider: provider,
-              courier,
-              shipmentId,
-              awb,
-              trackingUrl,
-              labelUrl,
-              invoiceUrl,
-              combinedLabelInvoiceUrl,
-              pickupStatus,
-              shipmentStatus,
-              updatedAt: new Date().toISOString()
-            };
-
-            try {
-              const current = JSON.parse(
-                localStorage.getItem("luxmo_pro_orders") || "[]"
-              );
-              const safeCurrent = Array.isArray(current) ? current : [];
-              const updated = [
-                completedOrder,
-                ...safeCurrent.filter((o) => o?.id !== completedOrder.id)
-              ];
-              localStorage.setItem("luxmo_pro_orders", JSON.stringify(updated));
-            } catch (e) {
-              console.error("Could not save completed order:", e);
-            }
-
-            localStorage.removeItem(shipmentLockKey);
-
-            alert(
-              `Payment Successful!\n\nPayment ID: ${response.razorpay_payment_id}\nCourier: ${courier}\nAWB: ${awb || "Will be assigned shortly"}\n\nYour order has been confirmed for shipment.`
-            );
-
-            luxmoRememberPaidOrder(completedOrder, response);
-            if (!wasBuyNowCheckout) setCart([]);
-            setBuyNowItem(null);
-            setShowCheckoutModal(false);
-            try { localStorage.removeItem("luxmo_pending_payment_order_id"); } catch {}
-            setActiveTab("my-orders");
-          } catch (error) {
+      /*
+       * The payment page now leaves the SPA and is controlled by Razorpay.
+       * Do not call paymentObject.open(); that would bring back the
+       * mobile bottom-sheet that the customer reported.
+       */
+      form.submit();
+    } catch (error) {
             // Never report a post-payment processing error as "payment failed".
             console.error("Payment/shipment processing error:", error);
             try {
@@ -6124,8 +6216,32 @@ export default function LuxmoHubApp() {
           contact: orderPayload.customer?.phone || ""
         },
 
+        // Keep Razorpay's full Standard Checkout available:
+        // UPI -> Cards -> Net Banking -> Wallets, with Razorpay's
+        // supported UPI apps shown according to the customer's device/account.
+        config: {
+          display: {
+            sequence: ["upi", "card", "netbanking", "wallet"],
+            preferences: {
+              show_default_blocks: true
+            }
+          }
+        },
+
+        modal: {
+          backdropclose: false,
+          escape: true,
+          handleback: true,
+          ondismiss: function () {
+            try {
+              localStorage.removeItem(shipmentLockKey);
+            } catch {}
+          }
+        },
+
         theme: {
-          color: "#2563eb"
+          color: "#2563eb",
+          backdrop_color: "#0f172a"
         }
       };
 
@@ -8082,8 +8198,8 @@ export default function LuxmoHubApp() {
 
         {showCheckoutModal && (
           <div className="fixed inset-0 z-[10000] bg-slate-950 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Secure Checkout">
-            <div className="min-h-full w-full p-2 md:p-5">
-              <div className="max-w-5xl mx-auto">
+            <div className="min-h-full w-full p-2 sm:p-4 md:p-5">
+              <div className="w-full max-w-[1500px] mx-auto">
                 <div className="flex justify-end gap-2 mb-2">
                   <button
                     type="button"
