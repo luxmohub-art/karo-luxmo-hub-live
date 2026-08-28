@@ -2449,7 +2449,6 @@ function LuxmoStoreSettingsPanel({ settings, setSettings }) {
 
 /* LUXMO HUB — ADDITIVE MARKETING / WHATSAPP LAYER */
 const LUXMO_MARKETING_CONSENT_KEY="luxmo_marketing_consent_v2";
-const LUXMO_ABANDONED_CHECKOUT_KEY="luxmo_abandoned_checkout_v2";
 const LUXMO_WHATSAPP_COOLDOWN_KEY="luxmo_whatsapp_cooldown_v2";
 const LUXMO_PURCHASE_EXCLUSION_KEY="luxmo_purchase_exclusion_v2";
 function luxmoMarketingConsentGranted(){try{return localStorage.getItem(LUXMO_MARKETING_CONSENT_KEY)==="granted"}catch{return false}}
