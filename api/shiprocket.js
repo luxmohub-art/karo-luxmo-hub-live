@@ -1,6 +1,8 @@
 // api/shiprocket.js
 // LUXMO HUB
 // SHIPROCKET: ORDER -> SHIPMENT -> AWB -> LABEL -> TRACKING
+// IMPORTANT: Payment success is independent from shipment readiness.
+// Existing endpoint only; no additional API route is required.
 
 const BASE =
   "https://apiv2.shiprocket.in/v1/external";
@@ -220,33 +222,70 @@ async function request(
   token,
   options = {}
 ) {
-  const response = await fetch(
-    `${BASE}${endpoint}`,
-    {
-      method:
-        options.method || "POST",
-
-      headers: {
-        Accept:
-          "application/json",
-
-        "Content-Type":
-          "application/json",
-
-        Authorization:
-          `Bearer ${token}`,
-      },
-
-      ...(options.body !== undefined
-        ? {
-            body:
-              JSON.stringify(
-                options.body
-              ),
-          }
-        : {}),
-    }
+  const controller = new AbortController();
+  const timeoutMs = Math.max(
+    5000,
+    num(
+      process.env.SHIPROCKET_TIMEOUT_MS,
+      15000
+    )
   );
+
+  const timeout = setTimeout(
+    () => controller.abort(),
+    timeoutMs
+  );
+
+  let response;
+
+  try {
+    response = await fetch(
+      `${BASE}${endpoint}`,
+      {
+        method:
+          options.method || "POST",
+
+        headers: {
+          Accept:
+            "application/json",
+
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            `Bearer ${token}`,
+        },
+
+        ...(options.body !== undefined
+          ? {
+              body:
+                JSON.stringify(
+                  options.body
+                ),
+            }
+          : {}),
+
+        signal:
+          controller.signal,
+      }
+    );
+  } catch (error) {
+    const timeoutError =
+      new Error(
+        error?.name === "AbortError"
+          ? "Shiprocket API request timed out."
+          : error?.message ||
+            "Shiprocket API request failed."
+      );
+
+    timeoutError.status = 504;
+    timeoutError.retryable = true;
+    timeoutError.cause = error;
+
+    throw timeoutError;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text =
     await response.text();
@@ -1618,23 +1657,34 @@ export default async function handler(
     ) {
       return sendJson(
         res,
-        502,
+        200,
         {
-          success: false,
+          success: true,
           provider:
             "shiprocket",
           stage:
             "shiprocket_order",
+          shipmentReady: false,
           retryable: true,
 
+          paymentStatus:
+            cod ? "Pending" : "Paid",
+
+          paymentVerified:
+            cod ? false : true,
+
           error:
-            "Shiprocket order was created/recovered, but Order ID and Shipment ID are not available yet.",
+            "Shiprocket order is being processed, but the shipment ID is not available yet.",
 
           message:
-            "Payment/order is successful. Do NOT pay again. Retry shipment creation after a short wait.",
+            "Payment/order is successful. Do NOT pay again. Shipment creation is pending; retry shipment processing later.",
 
           orderId:
             websiteOrderId,
+
+          shiprocketOrderId:
+            shiprocketOrderId ||
+            null,
         }
       );
     }
@@ -1679,20 +1729,27 @@ export default async function handler(
     if (!shipmentId) {
       return sendJson(
         res,
-        502,
+        200,
         {
-          success: false,
+          success: true,
           provider:
             "shiprocket",
           stage:
             "shipment_creation",
+          shipmentReady: false,
           retryable: true,
 
+          paymentStatus:
+            cod ? "Pending" : "Paid",
+
+          paymentVerified:
+            cod ? false : true,
+
           error:
-            "Shiprocket order exists, but Shipment ID is still not available.",
+            "Shiprocket order exists, but the Shipment ID is still not available.",
 
           message:
-            "Payment/order is successful. Do NOT pay again. Retry shipment creation after a short wait.",
+            "Payment/order is successful. Do NOT pay again. Shipment creation is pending; retry shipment processing later.",
 
           orderId:
             websiteOrderId,
@@ -1775,29 +1832,31 @@ export default async function handler(
         if (!info.awb) {
           return sendJson(
             res,
-            Number(
-              awbError?.status
-            ) >= 400
-              ? Number(
-                  awbError.status
-                )
-              : 502,
+            200,
             {
-              success: false,
+              success: true,
               provider:
                 "shiprocket",
 
               stage:
                 "awb_assignment",
 
+              shipmentReady: true,
+              awbReady: false,
               retryable: true,
+
+              paymentStatus:
+                cod ? "Pending" : "Paid",
+
+              paymentVerified:
+                cod ? false : true,
 
               error:
                 awbError?.message ||
-                "Shiprocket AWB assignment failed.",
+                "Shiprocket AWB assignment is still pending.",
 
               message:
-                "Shipment already exists. Do NOT create another order or payment. Retry AWB assignment.",
+                "Payment/order is successful and the shipment already exists. Do NOT pay again or create another order. Retry AWB assignment later.",
 
               orderId:
                 websiteOrderId,
@@ -1876,22 +1935,30 @@ export default async function handler(
     if (!info.awb) {
       return sendJson(
         res,
-        502,
+        200,
         {
-          success: false,
+          success: true,
           provider:
             "shiprocket",
 
           stage:
             "awb_assignment",
 
+          shipmentReady: true,
+          awbReady: false,
           retryable: true,
+
+          paymentStatus:
+            cod ? "Pending" : "Paid",
+
+          paymentVerified:
+            cod ? false : true,
 
           error:
             "Shipment exists, but Shiprocket has not assigned an AWB yet.",
 
           message:
-            "Payment/order is successful. Do NOT pay again. Shipment already exists; retry AWB later.",
+            "Payment/order is successful. Do NOT pay again. Shipment already exists; AWB assignment is pending.",
 
           orderId:
             websiteOrderId,
